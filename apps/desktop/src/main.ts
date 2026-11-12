@@ -1,6 +1,18 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
-import { app, BrowserWindow, dialog, ipcMain, Menu, session, shell, type IpcMainInvokeEvent, type MenuItemConstructorOptions } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  Menu,
+  screen,
+  session,
+  shell,
+  type IpcMainInvokeEvent,
+  type MenuItemConstructorOptions,
+  type Rectangle,
+} from "electron";
 import { defaultDataDir, startServer, type RunningServer } from "@aitrack/server";
 
 const PREFERRED_PORT = Number(process.env.AITRACK_PORT ?? 4317);
@@ -9,6 +21,7 @@ const REPO_URL = "https://github.com/mitradeniz/ai-tracking-system";
 let running: RunningServer | null = null;
 let baseUrl = "";
 let win: BrowserWindow | null = null;
+let mini: BrowserWindow | null = null;
 const pendingFiles: string[] = [];
 
 function uiDir(): string {
@@ -60,6 +73,98 @@ function isOwnFrame(event: IpcMainInvokeEvent): boolean {
   return Boolean(baseUrl) && url.startsWith(baseUrl);
 }
 
+/** Keeps a window inside the tracker: other links open in the default browser. */
+function guardNavigation(w: BrowserWindow): void {
+  w.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//.test(url) && !url.startsWith(baseUrl)) void shell.openExternal(url);
+    return { action: "deny" };
+  });
+  w.webContents.on("will-navigate", (event, url) => {
+    if (!url.startsWith(baseUrl)) {
+      event.preventDefault();
+      if (/^https?:\/\//.test(url)) void shell.openExternal(url);
+    }
+  });
+}
+
+const miniBoundsFile = () => path.join(app.getPath("userData"), "floating-window.json");
+
+function savedMiniBounds(): Rectangle | null {
+  try {
+    const b = JSON.parse(readFileSync(miniBoundsFile(), "utf8")) as Rectangle;
+    const visible = screen.getAllDisplays().some((d) => {
+      const a = d.workArea;
+      return b.x < a.x + a.width - 40 && b.x + b.width > a.x + 40 && b.y >= a.y - 10 && b.y < a.y + a.height - 40;
+    });
+    return visible && b.width >= 260 && b.height >= 200 ? b : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The floating window: small, frameless, above other apps and on every desktop. */
+function openMini(): void {
+  if (mini) {
+    mini.showInactive();
+    mini.focus();
+    return;
+  }
+  const area = screen.getPrimaryDisplay().workArea;
+  const bounds = savedMiniBounds() ?? { width: 380, height: 600, x: area.x + area.width - 380 - 24, y: area.y + 24 };
+  const isMac = process.platform === "darwin";
+  mini = new BrowserWindow({
+    ...bounds,
+    minWidth: 280,
+    minHeight: 220,
+    frame: false,
+    resizable: true,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: true,
+    title: "AI Tracking System",
+    show: false,
+    ...(isMac
+      ? { vibrancy: "hud" as const, visualEffectState: "active" as const, backgroundColor: "#00000000", roundedCorners: true }
+      : { backgroundColor: "#101010" }),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      spellcheck: false,
+    },
+  });
+  mini.setAlwaysOnTop(true, "floating");
+  mini.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  guardNavigation(mini);
+  mini.once("ready-to-show", () => mini?.show());
+  const persist = () => {
+    if (!mini) return;
+    try {
+      writeFileSync(miniBoundsFile(), JSON.stringify(mini.getBounds()));
+    } catch {
+      // The position is a convenience.
+    }
+  };
+  mini.on("moved", persist);
+  mini.on("resized", persist);
+  mini.on("closed", () => {
+    mini = null;
+  });
+  void mini.loadURL(`${baseUrl}/?mini=1`);
+}
+
+function showMain(): BrowserWindow {
+  if (!win) createWindow();
+  const w = win!;
+  if (w.isMinimized()) w.restore();
+  w.show();
+  w.focus();
+  return w;
+}
+
 function registerIpc(): void {
   const filters = [{ name: "AI Tracking project", extensions: ["aitrack", "json"] }];
   ipcMain.handle("aitrack:open-dialog", async (event) => {
@@ -82,14 +187,45 @@ function registerIpc(): void {
     const p = String(filePath ?? "");
     if (p && existsSync(p)) shell.showItemInFolder(p);
   });
+  ipcMain.handle("aitrack:mini-open", (event) => {
+    if (isOwnFrame(event)) openMini();
+  });
+  ipcMain.handle("aitrack:mini-close", (event) => {
+    if (isOwnFrame(event)) mini?.close();
+  });
+  ipcMain.handle("aitrack:mini-set", (event, options: unknown) => {
+    if (!isOwnFrame(event) || !mini || !options || typeof options !== "object") return;
+    const { pinned, opacity } = options as { pinned?: unknown; opacity?: unknown };
+    if (typeof pinned === "boolean") mini.setAlwaysOnTop(pinned, "floating");
+    if (typeof opacity === "number" && Number.isFinite(opacity)) mini.setOpacity(Math.min(1, Math.max(0.4, opacity)));
+  });
+  ipcMain.handle("aitrack:focus-main", (event, projectKey: unknown, taskId: unknown) => {
+    if (!isOwnFrame(event)) return;
+    const w = showMain();
+    const key = typeof projectKey === "string" && /^[\w-]{1,80}$/.test(projectKey) ? projectKey : undefined;
+    const task = typeof taskId === "string" && taskId.length <= 120 ? taskId : undefined;
+    if (key || task) {
+      const send = () => w.webContents.send("aitrack:open-task", key, task);
+      if (w.webContents.isLoading()) w.webContents.once("did-finish-load", send);
+      else send();
+    }
+  });
 }
 
 function buildMenu(): void {
   const isMac = process.platform === "darwin";
   const tr = app.getLocale().toLowerCase().startsWith("tr");
   const L = tr
-    ? { file: "Dosya", open: "Proje Aç…", view: "Görünüm", docs: "Belgeler", issue: "Sorun Bildir" }
-    : { file: "File", open: "Open Project…", view: "View", docs: "Documentation", issue: "Report an Issue" };
+    ? { file: "Dosya", open: "Proje Aç…", view: "Görünüm", docs: "Belgeler", issue: "Sorun Bildir", window: "Pencere", floating: "Kayan Pencere" }
+    : {
+        file: "File",
+        open: "Open Project…",
+        view: "View",
+        docs: "Documentation",
+        issue: "Report an Issue",
+        window: "Window",
+        floating: "Floating Window",
+      };
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: "appMenu" as const }] : []),
     {
@@ -125,7 +261,15 @@ function buildMenu(): void {
         { role: "togglefullscreen" },
       ],
     },
-    { role: "windowMenu" },
+    {
+      label: L.window,
+      submenu: [
+        { label: L.floating, accelerator: "CmdOrCtrl+Shift+F", click: () => openMini() },
+        { type: "separator" },
+        { role: "minimize" },
+        ...(isMac ? [{ role: "zoom" as const }, { type: "separator" as const }, { role: "front" as const }] : [{ role: "close" as const }]),
+      ],
+    },
     {
       role: "help",
       submenu: [
@@ -157,16 +301,7 @@ function createWindow(): void {
   win.once("ready-to-show", () => win?.show());
 
   // Keep the window on the local tracker; open other links in the default browser.
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//.test(url) && !url.startsWith(baseUrl)) void shell.openExternal(url);
-    return { action: "deny" };
-  });
-  win.webContents.on("will-navigate", (event, url) => {
-    if (!url.startsWith(baseUrl)) {
-      event.preventDefault();
-      if (/^https?:\/\//.test(url)) void shell.openExternal(url);
-    }
-  });
+  guardNavigation(win);
 
   void win.loadURL(`${baseUrl}/`);
   win.on("closed", () => {
@@ -219,7 +354,7 @@ if (!gotLock) {
     for (const f of pendingFiles.splice(0)) await addProjectFile(f);
 
     app.on("activate", () => {
-      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+      showMain();
     });
   });
 
@@ -228,6 +363,7 @@ if (!gotLock) {
   });
 
   app.on("before-quit", () => {
+    mini?.destroy();
     void running?.close();
   });
 }

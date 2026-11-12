@@ -17,4 +17,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - `install-macos.command`: double-click installer that builds the app, installs it in Applications and registers `.aitrack` files.
 - Add, edit and remove chats from the app. A chat can be allowed to take the tasks of other chats; edits keep the project file's formatting and fields that were left out.
 - Black liquid glass design: monochrome frosted surfaces, soft status colours, light theme in white glass; monochrome app icon.
+- Screens built from panels (ready to send, chat lanes, flow, list, needs you, recent activity, progress): add, move by drag or arrows, resize, filter by chat; several named layouts, stored per user.
+- Floating window: frameless, always on top, on every desktop, with project picker, overview / compact list / mini lanes, selectable sections and chats, one-click "copy & send", pin and opacity; opens tasks in the main window.
+- Appearance settings: theme (dark, light, system), accent colour, density, text size and glass strength, shared live between windows.
 - The UI follows the project's `settings.language` until a language is picked with the toggle; the desktop menu follows the system language (English or Turkish).

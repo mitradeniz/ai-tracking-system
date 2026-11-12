@@ -17,6 +17,9 @@ When three to five AI chats work on the same codebase, the slow part is no longe
 - **Reports, not guesswork.** Each prompt tells the chat how to report `started`, `blocked`, `review`, `done` or `failed`. A blocked task shows the reason on the board.
 - **Why not now?** Every task that cannot be sent explains itself: waiting for `T-05`, chat busy with `T-02`, blocked by the agent, awaiting your approval, failed.
 - **Critical path.** The longest chain is marked, so you know which work to unblock first.
+- **Build your own screens.** Every screen is made of panels — ready to send, chat lanes, flow, list, needs you, recent activity, progress. Add, move, resize and filter them by chat, and keep several layouts (for example "Morning" or "Only Claude").
+- **Floating window.** A small always-on-top glass window follows your chats while you work in other apps: what each chat is doing, what waits for you, and one click to copy the next prompt and mark it sent. Choose the project, the view (overview, compact list, mini lanes), the sections and the chats.
+- **Your look.** Dark, light or system theme, accent colour, density, text size and glass strength.
 - **Chats are editable.** Add a chat (say, a fourth Codex session) from the board, let it take over the tasks of busy chats, edit its role or remove it. The app edits the project file in place and keeps your formatting.
 - **Local and private.** Everything runs on `127.0.0.1`. No account, no telemetry, no cloud.
 - **Plain files.** The plan is a JSON file you keep in your repository and review in pull requests. Status lives in a local event log and can be exported back into the file as a snapshot.
@@ -54,6 +57,14 @@ npm install
 npm run desktop          # build and start the desktop app from the repository
 npm run serve -- examples/landing-page.aitrack   # or the same UI in a browser tab at http://127.0.0.1:4317
 ```
+
+![Customizing the Overview layout](docs/images/customize.png)
+
+<img src="docs/images/floating.png" alt="Floating window" width="300" align="right">
+
+**Floating window.** Click **Floating window** in the sidebar (or **Window → Floating Window**, ⇧⌘F). It stays on top of other apps and on every desktop, remembers its position, and can be unpinned or made more transparent from its settings. Click a chat or task to jump to it in the main window.
+
+<br clear="right">
 
 ## How it works
 
