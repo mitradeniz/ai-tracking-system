@@ -14,3 +14,4 @@ All notable changes to this project are documented here. The format follows [Kee
 - Session prompts and quick prompts per chat; manual status changes, approval and notes.
 - Export to `.aitrack` with an optional status snapshot; importing a snapshot is idempotent.
 - Electron desktop app with `.aitrack` file association and installers via electron-builder.
+- `install-macos.command`: double-click installer that builds the app, installs it in Applications and registers `.aitrack` files.

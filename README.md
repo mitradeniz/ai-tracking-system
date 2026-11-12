@@ -20,28 +20,39 @@ When three to five AI chats work on the same codebase, the slow part is no longe
 - **Local and private.** Everything runs on `127.0.0.1`. No account, no telemetry, no cloud.
 - **Plain files.** The plan is a JSON file you keep in your repository and review in pull requests. Status lives in a local event log and can be exported back into the file as a snapshot.
 
-## Quick start
+## Install
 
-Requirements: Node.js 22.12 or newer.
+Requirements: Node.js 22.12 or newer to build the app (the installed app does not need it).
+
+### macOS
+
+1. Clone the repository: `git clone https://github.com/mitradeniz/ai-tracking-system.git` (or GitHub Desktop).
+2. In Finder, open the folder and double-click **`install-macos.command`**.
+
+The installer builds the app for your Mac, puts **AI Tracking System** in Applications (and Launchpad) and opens it. After that, double-clicking any `.aitrack` file opens it in the app. Run the installer again after pulling updates.
+
+If macOS says the installer cannot be opened, right-click it and choose **Open**. The app is signed ad hoc on your machine, not with a Developer ID, so it is meant for your own computer.
+
+### Windows and Linux
 
 ```bash
-git clone https://github.com/mitradeniz/ai-tracking-system.git
-cd ai-tracking-system
 npm install
-npm run desktop          # builds and opens the desktop app
+npm run dist             # installers in apps/desktop/release/ (.exe, .AppImage)
 ```
 
-Then **Add project → Open** and pick `examples/landing-page.aitrack`, or a `.aitrack` file from your own repository.
+The builds are not code-signed; on Windows choose "More info → Run anyway".
 
-Prefer a browser tab? `npm run serve -- examples/landing-page.aitrack` starts the same tracker and UI at <http://127.0.0.1:4317>.
+### First steps
 
-To build installers (`.dmg`, `.exe`, `.AppImage`) for your platform:
+Open the app, click **Add project → Browse…** and pick `examples/landing-page.aitrack`, or a `.aitrack` file from your own repository.
+
+### Without installing
 
 ```bash
-npm run dist             # output in apps/desktop/release/
+npm install
+npm run desktop          # build and start the desktop app from the repository
+npm run serve -- examples/landing-page.aitrack   # or the same UI in a browser tab at http://127.0.0.1:4317
 ```
-
-The builds are not code-signed. On macOS, open the app with right-click → Open the first time; on Windows, choose "More info → Run anyway".
 
 ## How it works
 
@@ -137,6 +148,7 @@ The app keeps a list of open projects; each points to a `.aitrack` file that liv
 | `npm run serve -- [files…]` | Start the tracker and web UI on `127.0.0.1:4317` (`--port`, `--data-dir`). |
 | `npm run dev:web` | Development: tracker with reload plus the Vite dev server. |
 | `npm run dist` | Build installers with electron-builder. |
+| `npm run install:mac` | Same as double-clicking `install-macos.command`. |
 | `npm test` | Unit and API tests (Vitest). |
 | `npm run typecheck` | TypeScript checks for all packages. |
 | `npm run validate -- <files…>` | Validate `.aitrack` files. |

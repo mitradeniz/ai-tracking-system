@@ -17,5 +17,9 @@
     "electron-builder": "26.18.0"
   },
   "author": "AI Tracking System contributors",
-  "homepage": "https://github.com/mitradeniz/ai-tracking-system"
+  "homepage": "https://github.com/mitradeniz/ai-tracking-system",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mitradeniz/ai-tracking-system.git"
+  }
 }

@@ -12,6 +12,7 @@ extraResources:
     to: ui
 asar: true
 npmRebuild: false
+publish: null
 fileAssociations:
   - ext: aitrack
     name: AI Tracking Project
@@ -27,6 +28,7 @@ win:
   target:
     - nsis
 linux:
+  executableName: ai-tracking-system
   category: Development
   target:
     - AppImage
