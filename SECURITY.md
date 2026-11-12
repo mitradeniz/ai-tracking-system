@@ -1,0 +1,28 @@
+# Security
+
+AI Tracking System is a local tool: the tracker and the desktop app run on your machine and talk only to `127.0.0.1`. There is no account, no telemetry and no remote service.
+
+## Reporting a vulnerability
+
+Please report vulnerabilities privately through GitHub: **Security → Report a vulnerability** on this repository. Do not open a public issue for security problems. Include the version, your platform, steps to reproduce and the impact you expect. We aim to acknowledge reports within a week.
+
+## Threat model
+
+Trusted: you, and programs running as your user (they can already read and write your files).
+Not trusted: web pages open in any browser, and the content of reports and project files.
+
+What the tracker does about it:
+
+- **Loopback only.** The HTTP server binds to `127.0.0.1`.
+- **DNS rebinding.** Requests whose `Host` header is not `127.0.0.1`, `localhost` or `[::1]` on the tracker's port are refused (`421`).
+- **CSRF.** State-changing requests that carry a foreign `Origin` are refused (`403`), and they must be `application/json`, which a page cannot send cross-origin without a CORS preflight the tracker never approves.
+- **Content Security Policy** and `nosniff`, `same-origin` opener and resource policies on every page.
+- **Reports are data.** They are validated against a schema with length limits, stored as events, and rendered as text. Nothing in a report or project file is executed, and Markdown/HTML in them is not rendered.
+- **File writes** happen only where you point them: the data directory (`~/.aitrack` or `AITRACK_DATA_DIR`), export targets ending in `.aitrack` or `.json`, and moving processed inbox files into `processed/` or `rejected/` next to them.
+- **Desktop app.** The window runs with `contextIsolation`, `sandbox` and no Node integration. The preload bridge exposes only open/save dialogs and "show in folder"; IPC handlers check that the caller is the tracker's own page. Navigation away from the tracker opens in your default browser instead.
+
+## What you should do
+
+- Do not put secrets, tokens or personal data in `.aitrack` files, prompts or reports. Project files are meant to be committed.
+- Keep `.aitrack/inbox/` in `.gitignore`.
+- Remember that the prompts you paste into AI chats leave your machine with those chats.
