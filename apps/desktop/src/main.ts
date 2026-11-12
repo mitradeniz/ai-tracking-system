@@ -86,13 +86,17 @@ function registerIpc(): void {
 
 function buildMenu(): void {
   const isMac = process.platform === "darwin";
+  const tr = app.getLocale().toLowerCase().startsWith("tr");
+  const L = tr
+    ? { file: "Dosya", open: "Proje Aç…", view: "Görünüm", docs: "Belgeler", issue: "Sorun Bildir" }
+    : { file: "File", open: "Open Project…", view: "View", docs: "Documentation", issue: "Report an Issue" };
   const template: MenuItemConstructorOptions[] = [
     ...(isMac ? [{ role: "appMenu" as const }] : []),
     {
-      label: "File",
+      label: L.file,
       submenu: [
         {
-          label: "Open Project…",
+          label: L.open,
           accelerator: "CmdOrCtrl+O",
           click: async () => {
             if (!win) return;
@@ -109,7 +113,7 @@ function buildMenu(): void {
     },
     { role: "editMenu" },
     {
-      label: "View",
+      label: L.view,
       submenu: [
         { role: "reload" },
         ...(app.isPackaged ? [] : [{ role: "toggleDevTools" as const }]),
@@ -125,8 +129,8 @@ function buildMenu(): void {
     {
       role: "help",
       submenu: [
-        { label: "Documentation", click: () => void shell.openExternal(REPO_URL) },
-        { label: "Report an Issue", click: () => void shell.openExternal(`${REPO_URL}/issues`) },
+        { label: L.docs, click: () => void shell.openExternal(REPO_URL) },
+        { label: L.issue, click: () => void shell.openExternal(`${REPO_URL}/issues`) },
       ],
     },
   ];
@@ -139,7 +143,7 @@ function createWindow(): void {
     height: 920,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: "#0b1120",
+    backgroundColor: "#050505",
     title: "AI Tracking System",
     show: false,
     webPreferences: {

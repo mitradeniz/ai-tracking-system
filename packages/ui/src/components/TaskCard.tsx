@@ -40,7 +40,7 @@ export function TaskCard({ model, snap, onOpen, showAgent, highlight, onHover }:
         {snap.critical && <span className="crit" title={t("critical")}>●</span>}
         <span className="spacer" />
         {showAgent && <span className="agent-chip">{agentName(model, who)}</span>}
-        <span className={`pill ${snap.dispatchable ? "ready" : snap.status}`}>
+        <span className={`pill ${snap.dispatchable ? "sendable" : snap.status}`}>
           {snap.dispatchable ? t("sendable") : t(`status_${snap.status}`)}
         </span>
       </div>

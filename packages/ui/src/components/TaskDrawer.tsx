@@ -94,7 +94,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
         <div className="drawer-head">
           <div className="row">
             <span className="mono muted">{task.id}</span>
-            <span className={`pill ${snap.dispatchable ? "ready" : s}`}>
+            <span className={`pill ${snap.dispatchable ? "sendable" : s}`}>
               {snap.dispatchable ? t("sendable") : t(`status_${s}`)}
             </span>
             {snap.critical && <span className="crit">● {t("critical")}</span>}

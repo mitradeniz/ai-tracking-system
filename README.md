@@ -17,6 +17,7 @@ When three to five AI chats work on the same codebase, the slow part is no longe
 - **Reports, not guesswork.** Each prompt tells the chat how to report `started`, `blocked`, `review`, `done` or `failed`. A blocked task shows the reason on the board.
 - **Why not now?** Every task that cannot be sent explains itself: waiting for `T-05`, chat busy with `T-02`, blocked by the agent, awaiting your approval, failed.
 - **Critical path.** The longest chain is marked, so you know which work to unblock first.
+- **Chats are editable.** Add a chat (say, a fourth Codex session) from the board, let it take over the tasks of busy chats, edit its role or remove it. The app edits the project file in place and keeps your formatting.
 - **Local and private.** Everything runs on `127.0.0.1`. No account, no telemetry, no cloud.
 - **Plain files.** The plan is a JSON file you keep in your repository and review in pull requests. Status lives in a local event log and can be exported back into the file as a snapshot.
 
@@ -65,7 +66,7 @@ npm run serve -- examples/landing-page.aitrack   # or the same UI in a browser t
    │ project registry · event log (JSONL) · DAG · report API · SSE   │
    └──────────────────────────────┬──────────────────────────────────┘
                                   ▼
-                 Desktop app: lanes · flow · list · task drawer
+                 Desktop app: lanes · flow · list · task drawer · chat editor
 ```
 
 1. **Plan.** A `.aitrack` file lists the chats (`agents`), the `tasks` with `dependsOn`, and reusable `prompts`. You can write it by hand or have an AI write it from your plan — see [Authoring a project with AI](docs/authoring-with-ai.md).

@@ -15,3 +15,6 @@ All notable changes to this project are documented here. The format follows [Kee
 - Export to `.aitrack` with an optional status snapshot; importing a snapshot is idempotent.
 - Electron desktop app with `.aitrack` file association and installers via electron-builder.
 - `install-macos.command`: double-click installer that builds the app, installs it in Applications and registers `.aitrack` files.
+- Add, edit and remove chats from the app. A chat can be allowed to take the tasks of other chats; edits keep the project file's formatting and fields that were left out.
+- Black liquid glass design: monochrome frosted surfaces, soft status colours, light theme in white glass; monochrome app icon.
+- The UI follows the project's `settings.language` until a language is picked with the toggle; the desktop menu follows the system language (English or Turkish).
