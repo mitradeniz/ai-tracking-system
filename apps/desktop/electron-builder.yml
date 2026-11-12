@@ -1,0 +1,32 @@
+appId: io.github.mitradeniz.aitrackingsystem
+productName: AI Tracking System
+copyright: Copyright © AI Tracking System contributors
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - package.json
+extraResources:
+  - from: ../../packages/ui/dist
+    to: ui
+asar: true
+npmRebuild: false
+fileAssociations:
+  - ext: aitrack
+    name: AI Tracking Project
+    description: AI Tracking System project
+    mimeType: application/vnd.aitrack+json
+    role: Editor
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+    - zip
+win:
+  target:
+    - nsis
+linux:
+  category: Development
+  target:
+    - AppImage

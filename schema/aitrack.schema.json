@@ -1,0 +1,405 @@
+{
+  "$id": "https://raw.githubusercontent.com/mitradeniz/ai-tracking-system/main/schema/aitrack.schema.json",
+  "title": "AI Tracking System project file (.aitrack)",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "format": {
+      "type": "string",
+      "const": "aitrack"
+    },
+    "version": {
+      "type": "number",
+      "const": 1
+    },
+    "project": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "links": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "url"
+            ]
+          }
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "settings": {
+      "default": {
+        "requireApproval": false,
+        "inboxDir": ".aitrack/inbox"
+      },
+      "type": "object",
+      "properties": {
+        "requireApproval": {
+          "default": false,
+          "description": "When true, a task reported done goes to review until a human approves it.",
+          "type": "boolean"
+        },
+        "inboxDir": {
+          "default": ".aitrack/inbox",
+          "description": "Directory, relative to a repository root, where agents drop report files.",
+          "type": "string"
+        },
+        "repoPath": {
+          "description": "Path of the main git repository, relative to this file. Its worktrees are scanned for report files.",
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "enum": [
+            "en",
+            "tr"
+          ]
+        }
+      }
+    },
+    "agents": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+            "description": "Stable identifier used in tasks and reports, e.g. \"codex-b\"."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name of the chat, e.g. \"Codex B\"."
+          },
+          "tool": {
+            "description": "The AI tool behind the chat, e.g. \"claude\", \"codex\".",
+            "type": "string"
+          },
+          "role": {
+            "description": "One line describing what this chat is responsible for.",
+            "type": "string"
+          },
+          "capabilities": {
+            "default": [],
+            "description": "Free-form capability tags, e.g. \"computer-use\".",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "color": {
+            "description": "Optional CSS color used for this chat in the UI.",
+            "type": "string"
+          },
+          "maxParallel": {
+            "default": 1,
+            "description": "How many tasks this chat may hold at once.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "bootstrapPrompts": {
+            "default": [],
+            "description": "Prompt ids pasted, in order, when a new session of this chat starts.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "quickPrompts": {
+            "default": [],
+            "description": "Prompt ids for recurring duties (reviews, QA rounds) shown as quick-copy buttons.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    "prompts": {
+      "default": {},
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "body"
+        ]
+      }
+    },
+    "templates": {
+      "default": {},
+      "type": "object",
+      "properties": {
+        "dispatch": {
+          "description": "Template of the prompt copied for a task. See docs/file-format.md.",
+          "type": "string"
+        },
+        "report": {
+          "description": "Template of the reporting instructions appended to every task prompt.",
+          "type": "string"
+        }
+      }
+    },
+    "milestones": {
+      "default": [],
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      }
+    },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Id of the chat that owns this task."
+          },
+          "alsoAgents": {
+            "default": [],
+            "description": "Other chats allowed to take this task when the owner is busy.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "dependsOn": {
+            "default": [],
+            "description": "Task ids that must be done before this task can start.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "prompts": {
+            "default": [],
+            "description": "Prompt ids whose bodies are pasted for this task, in order.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "instructions": {
+            "description": "Extra instructions appended after the prompts.",
+            "type": "string"
+          },
+          "scope": {
+            "description": "Which part of the prompts this task covers, for split tasks.",
+            "type": "string"
+          },
+          "allowedPaths": {
+            "default": [],
+            "description": "Paths the chat may change for this task.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "acceptance": {
+            "description": "How to tell the task is done.",
+            "type": "string"
+          },
+          "milestone": {
+            "type": "string"
+          },
+          "estimateDays": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 365
+          },
+          "tags": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "agent"
+        ]
+      }
+    },
+    "state": {
+      "type": "object",
+      "properties": {
+        "exportedAt": {
+          "type": "string"
+        },
+        "events": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "ts": {
+                "type": "string",
+                "minLength": 1,
+                "description": "ISO 8601 timestamp."
+              },
+              "task": {
+                "type": "string",
+                "minLength": 1
+              },
+              "agent": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "dispatched",
+                  "started",
+                  "progress",
+                  "blocked",
+                  "review",
+                  "done",
+                  "approved",
+                  "failed",
+                  "reopened",
+                  "note"
+                ]
+              },
+              "message": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "reason": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "pr": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "verify": {
+                "type": "string",
+                "maxLength": 20000
+              },
+              "source": {
+                "default": "ui",
+                "type": "string",
+                "enum": [
+                  "ui",
+                  "http",
+                  "file",
+                  "paste",
+                  "import"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "ts",
+              "task",
+              "type"
+            ]
+          }
+        }
+      },
+      "required": [
+        "exportedAt"
+      ]
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "project",
+    "agents",
+    "tasks"
+  ]
+}

@@ -1,0 +1,419 @@
+import { EventEmitter } from "node:events";
+import { existsSync } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
+import path from "node:path";
+import {
+  computeBoard,
+  createProjectTemplate,
+  EventSchema,
+  FILE_EXTENSION,
+  newEventId,
+  nextTasksFor,
+  parseProjectFile,
+  parseReports,
+  renderBootstrapPrompt,
+  renderPrompt,
+  renderTaskPrompt,
+  reportToEvent,
+  serializeBoard,
+  serializeProject,
+  type BoardSnapshot,
+  type EventSource,
+  type Issue,
+  type ProjectFile,
+  type Report,
+  type TrackEvent,
+} from "@aitrack/core";
+import { archiveInboxFile, discoverInboxDirs, readInbox } from "./inbox.ts";
+import { projectKey, Store, writeFileAtomic, type RegistryEntry } from "./store.ts";
+
+
+export interface ProjectHandle extends RegistryEntry {
+  project: ProjectFile | null;
+  issues: Issue[];
+  mtimeMs: number;
+  events: TrackEvent[];
+  inboxDirs: string[];
+}
+
+export interface ProjectSummary {
+  key: string;
+  filePath: string;
+  addedAt: string;
+  id: string | null;
+  name: string;
+  ok: boolean;
+  errors: number;
+  counts: BoardSnapshot["counts"] | null;
+}
+
+export interface ProjectDetail extends ProjectSummary {
+  project: Omit<ProjectFile, "state"> | null;
+  issues: Issue[];
+  board: BoardSnapshot | null;
+  events: TrackEvent[];
+  inboxDirs: string[];
+  serverUrl: string;
+}
+
+export interface ReportResult {
+  key: string;
+  task: string;
+  status: string;
+  next: { id: string; title: string }[];
+}
+
+export class HttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+const UI_EVENT_TYPES = new Set(["dispatched", "started", "progress", "blocked", "review", "done", "approved", "failed", "reopened", "note"]);
+
+export class ProjectManager extends EventEmitter {
+  private handles = new Map<string, ProjectHandle>();
+  private timer: NodeJS.Timeout | null = null;
+  private lastInboxDiscovery = 0;
+  serverUrl = "http://127.0.0.1:4317";
+
+  constructor(readonly store: Store) {
+    super();
+  }
+
+  async init(): Promise<void> {
+    for (const entry of await this.store.readRegistry()) {
+      const handle = await this.load(entry);
+      this.handles.set(entry.key, handle);
+    }
+    await this.refreshInboxDirs();
+  }
+
+  /** Starts polling project files and report inboxes. */
+  startWatching(intervalMs = 1500): void {
+    if (this.timer) return;
+    const tick = async () => {
+      try {
+        await this.checkFiles();
+        if (Date.now() - this.lastInboxDiscovery > 30_000) await this.refreshInboxDirs();
+        await this.pollInboxes();
+      } catch (e) {
+        this.emit("warning", e);
+      }
+    };
+    this.timer = setInterval(() => void tick(), intervalMs);
+    this.timer.unref?.();
+  }
+
+  stopWatching(): void {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+  }
+
+  private async load(entry: RegistryEntry, existingEvents?: TrackEvent[]): Promise<ProjectHandle> {
+    let text = "";
+    let mtimeMs = 0;
+    try {
+      text = await readFile(entry.filePath, "utf8");
+      mtimeMs = (await stat(entry.filePath)).mtimeMs;
+    } catch (e) {
+      return {
+        ...entry,
+        project: null,
+        issues: [{ level: "error", path: "", message: `Cannot read ${entry.filePath}: ${(e as Error).message}` }],
+        mtimeMs: 0,
+        events: existingEvents ?? (await this.store.readEvents(entry.key)),
+        inboxDirs: [],
+      };
+    }
+    const { project, issues } = parseProjectFile(text);
+    const events = existingEvents ?? (await this.store.readEvents(entry.key));
+    return { ...entry, project, issues, mtimeMs, events, inboxDirs: [] };
+  }
+
+  private async checkFiles(): Promise<void> {
+    for (const handle of this.handles.values()) {
+      let mtimeMs = 0;
+      try {
+        mtimeMs = (await stat(handle.filePath)).mtimeMs;
+      } catch {
+        mtimeMs = 0;
+      }
+      if (mtimeMs !== handle.mtimeMs) await this.reload(handle.key);
+    }
+  }
+
+  private async refreshInboxDirs(): Promise<void> {
+    this.lastInboxDiscovery = Date.now();
+    for (const handle of this.handles.values()) {
+      if (!handle.project) continue;
+      handle.inboxDirs = await discoverInboxDirs(
+        handle.filePath,
+        handle.project.settings.inboxDir,
+        handle.project.settings.repoPath,
+      );
+    }
+  }
+
+  async pollInboxes(): Promise<number> {
+    let processed = 0;
+    const seen = new Set<string>();
+    for (const handle of this.handles.values()) {
+      for (const dir of handle.inboxDirs) {
+        if (seen.has(dir)) continue;
+        seen.add(dir);
+        for (const { file, text } of await readInbox(dir)) {
+          const { reports, errors } = parseReports(text);
+          const failures: string[] = [...errors];
+          for (const report of reports) {
+            try {
+              await this.recordReport(report, "file", handle.key);
+            } catch (e) {
+              failures.push((e as Error).message);
+            }
+          }
+          const ok = reports.length > 0 && failures.length === 0;
+          try {
+            await archiveInboxFile(file, ok, failures.join("\n") || (reports.length === 0 ? "No report found." : undefined));
+          } catch (e) {
+            this.emit("warning", e);
+          }
+          processed += 1;
+        }
+      }
+    }
+    return processed;
+  }
+
+  list(): ProjectSummary[] {
+    return [...this.handles.values()]
+      .sort((a, b) => a.addedAt.localeCompare(b.addedAt))
+      .map((h) => this.summary(h));
+  }
+
+  private summary(h: ProjectHandle): ProjectSummary {
+    const board = h.project ? computeBoard(h.project, h.events) : null;
+    return {
+      key: h.key,
+      filePath: h.filePath,
+      addedAt: h.addedAt,
+      id: h.project?.project.id ?? null,
+      name: h.project?.project.name ?? path.basename(h.filePath),
+      ok: Boolean(h.project) && !h.issues.some((i) => i.level === "error"),
+      errors: h.issues.filter((i) => i.level === "error").length,
+      counts: board ? board.counts : null,
+    };
+  }
+
+  private get(key: string): ProjectHandle {
+    const h = this.handles.get(key);
+    if (!h) throw new HttpError(404, `Unknown project "${key}"`);
+    return h;
+  }
+
+  private requireProject(h: ProjectHandle): ProjectFile {
+    if (!h.project) throw new HttpError(409, `Project file has errors: ${h.issues[0]?.message ?? "unknown"}`);
+    return h.project;
+  }
+
+  detail(key: string): ProjectDetail {
+    const h = this.get(key);
+    const board = h.project ? computeBoard(h.project, h.events) : null;
+    let project: Omit<ProjectFile, "state"> | null = null;
+    if (h.project) {
+      const { state: _state, ...rest } = h.project;
+      project = rest;
+    }
+    return {
+      ...this.summary(h),
+      project,
+      issues: h.issues,
+      board: board ? serializeBoard(board) : null,
+      events: [...h.events].sort((a, b) => (a.ts < b.ts ? -1 : 1)).slice(-2000),
+      inboxDirs: h.inboxDirs,
+      serverUrl: this.serverUrl,
+    };
+  }
+
+  async addProject(filePath: string): Promise<ProjectSummary> {
+    const abs = path.resolve(filePath);
+    if (!existsSync(abs)) throw new HttpError(400, `File not found: ${abs}`);
+    const key = projectKey(abs);
+    if (!this.handles.has(key)) {
+      const entry: RegistryEntry = { key, filePath: abs, addedAt: new Date().toISOString() };
+      const handle = await this.load(entry);
+      // Import events embedded in the file (an exported snapshot) that the log does not have yet.
+      if (handle.project?.state?.events.length) {
+        const known = new Set(handle.events.map((e) => e.id));
+        const fresh = handle.project.state.events.filter((e) => !known.has(e.id)).map((e) => ({ ...e }));
+        await this.store.appendEvents(key, fresh);
+        handle.events.push(...fresh);
+      }
+      this.handles.set(key, handle);
+      await this.persistRegistry();
+      await this.refreshInboxDirs();
+      this.changed(key);
+    }
+    return this.summary(this.get(key));
+  }
+
+  async createProject(filePath: string, id: string, name: string): Promise<ProjectSummary> {
+    let abs = path.resolve(filePath);
+    if (!abs.endsWith(FILE_EXTENSION)) abs += FILE_EXTENSION;
+    if (existsSync(abs)) throw new HttpError(409, `File already exists: ${abs}`);
+    await writeFileAtomic(abs, serializeProject(createProjectTemplate(id, name)));
+    return this.addProject(abs);
+  }
+
+  async removeProject(key: string): Promise<void> {
+    this.get(key);
+    this.handles.delete(key);
+    await this.persistRegistry();
+    this.changed(key);
+  }
+
+  async reload(key: string): Promise<void> {
+    const h = this.get(key);
+    const next = await this.load(h, h.events);
+    next.inboxDirs = h.inboxDirs;
+    this.handles.set(key, next);
+    if (next.project) {
+      next.inboxDirs = await discoverInboxDirs(next.filePath, next.project.settings.inboxDir, next.project.settings.repoPath);
+    }
+    this.changed(key);
+  }
+
+  private async persistRegistry(): Promise<void> {
+    await this.store.writeRegistry(
+      [...this.handles.values()].map(({ key, filePath, addedAt }) => ({ key, filePath, addedAt })),
+    );
+  }
+
+  private changed(key: string): void {
+    this.emit("changed", { key });
+  }
+
+  async addEvent(key: string, input: Record<string, unknown>, source: EventSource): Promise<TrackEvent> {
+    const h = this.get(key);
+    const project = this.requireProject(h);
+    const type = String(input.type ?? "");
+    if (!UI_EVENT_TYPES.has(type)) throw new HttpError(400, `Unknown event type "${type}"`);
+    const task = String(input.task ?? "");
+    if (!project.tasks.some((t) => t.id === task)) throw new HttpError(400, `Unknown task "${task}"`);
+    const now = new Date();
+    const parsed = EventSchema.safeParse({
+      id: newEventId(now),
+      ts: now.toISOString(),
+      task,
+      type,
+      agent: input.agent ? String(input.agent) : undefined,
+      message: input.message ? String(input.message) : undefined,
+      reason: input.reason ? String(input.reason) : undefined,
+      pr: input.pr ? String(input.pr) : undefined,
+      verify: input.verify ? String(input.verify) : undefined,
+      source,
+    });
+    if (!parsed.success) throw new HttpError(400, parsed.error.issues.map((i) => i.message).join("; "));
+    await this.store.appendEvents(key, [parsed.data]);
+    h.events.push(parsed.data);
+    this.changed(key);
+    this.emit("activity", { key, event: parsed.data, projectName: project.project.name });
+    return parsed.data;
+  }
+
+  /** Records a report from an agent. Finds the project by id, by key, or by the task id. */
+  async recordReport(report: Report, source: EventSource, preferKey?: string): Promise<ReportResult> {
+    const candidates = [...this.handles.values()].filter((h) => h.project);
+    let target: ProjectHandle | undefined;
+    const hasTask = (h: ProjectHandle) => Boolean(h.project?.tasks.some((t) => t.id === report.task));
+    if (preferKey) {
+      const h = this.handles.get(preferKey);
+      if (h && hasTask(h) && (!report.project || h.project?.project.id === report.project)) target = h;
+    }
+    if (!target && report.project) {
+      target = candidates.find((h) => (h.project?.project.id === report.project || h.key === report.project) && hasTask(h));
+    }
+    if (!target && !report.project) {
+      const matches = candidates.filter(hasTask);
+      if (matches.length > 1) {
+        throw new HttpError(409, `Task "${report.task}" exists in several projects; add "project" to the report.`);
+      }
+      target = matches[0];
+    }
+    if (!target) {
+      throw new HttpError(404, `No open project has task "${report.task}"${report.project ? ` (project "${report.project}")` : ""}.`);
+    }
+    const event = reportToEvent(report, source);
+    await this.store.appendEvents(target.key, [event]);
+    target.events.push(event);
+    this.changed(target.key);
+    this.emit("activity", { key: target.key, event, projectName: target.project?.project.name });
+
+    const project = target.project as ProjectFile;
+    const board = computeBoard(project, target.events);
+    const agent = report.agent ?? board.byId.get(report.task)?.runtime.agent ?? project.tasks.find((t) => t.id === report.task)?.agent;
+    const next = agent ? nextTasksFor(board, agent).map((v) => ({ id: v.task.id, title: v.task.title })) : [];
+    return { key: target.key, task: report.task, status: board.byId.get(report.task)?.status ?? "unknown", next };
+  }
+
+  async paste(key: string, text: string): Promise<{ recorded: number; errors: string[] }> {
+    const { reports, errors } = parseReports(text);
+    let recorded = 0;
+    for (const r of reports) {
+      try {
+        await this.recordReport(r, "paste", key);
+        recorded += 1;
+      } catch (e) {
+        errors.push((e as Error).message);
+      }
+    }
+    if (reports.length === 0 && errors.length === 0) errors.push("No aitrack-report block found.");
+    return { recorded, errors };
+  }
+
+  taskPrompt(key: string, taskId: string, agentId?: string): string {
+    const project = this.requireProject(this.get(key));
+    if (!project.tasks.some((t) => t.id === taskId)) throw new HttpError(404, `Unknown task "${taskId}"`);
+    return renderTaskPrompt(project, taskId, { serverUrl: this.serverUrl, agentId });
+  }
+
+  bootstrapPrompt(key: string, agentId: string): string {
+    const project = this.requireProject(this.get(key));
+    if (!project.agents.some((a) => a.id === agentId)) throw new HttpError(404, `Unknown agent "${agentId}"`);
+    return renderBootstrapPrompt(project, agentId);
+  }
+
+  libraryPrompt(key: string, promptId: string): string {
+    const project = this.requireProject(this.get(key));
+    if (!project.prompts[promptId]) throw new HttpError(404, `Unknown prompt "${promptId}"`);
+    return renderPrompt(project, promptId);
+  }
+
+  next(key: string, agentId: string): { tasks: { id: string; title: string }[]; prompt: string | null } {
+    const project = this.requireProject(this.get(key));
+    const board = computeBoard(project, this.get(key).events);
+    const tasks = nextTasksFor(board, agentId).map((v) => ({ id: v.task.id, title: v.task.title }));
+    const first = tasks[0];
+    return { tasks, prompt: first ? this.taskPrompt(key, first.id, agentId) : null };
+  }
+
+  exportText(key: string, includeState: boolean): { fileName: string; text: string } {
+    const h = this.get(key);
+    const project = this.requireProject(h);
+    const text = serializeProject(project, includeState ? { events: h.events } : {});
+    return { fileName: `${project.project.id}${FILE_EXTENSION}`, text };
+  }
+
+  async exportTo(key: string, target: string, includeState: boolean): Promise<string> {
+    const abs = path.resolve(target);
+    if (!abs.endsWith(FILE_EXTENSION) && !abs.endsWith(".json")) {
+      throw new HttpError(400, `Export target must end with ${FILE_EXTENSION} or .json`);
+    }
+    const { text } = this.exportText(key, includeState);
+    await writeFileAtomic(abs, text);
+    return abs;
+  }
+}

@@ -1,0 +1,191 @@
+{
+  "$schema": "https://raw.githubusercontent.com/mitradeniz/ai-tracking-system/main/schema/aitrack.schema.json",
+  "format": "aitrack",
+  "version": 1,
+  "project": {
+    "id": "landing-page",
+    "name": "Example: SaaS landing page",
+    "description": "A small example: three chats build a landing page with a signup form in parallel.",
+    "links": []
+  },
+  "settings": {
+    "requireApproval": false,
+    "inboxDir": ".aitrack/inbox"
+  },
+  "agents": [
+    {
+      "id": "claude-a",
+      "name": "Claude A",
+      "tool": "claude",
+      "role": "Complex work: API design, signup backend, security review",
+      "capabilities": ["complex", "review"],
+      "maxParallel": 1,
+      "bootstrapPrompts": ["context", "claude-a-start"],
+      "quickPrompts": ["review"]
+    },
+    {
+      "id": "codex-a",
+      "name": "Codex A",
+      "tool": "codex",
+      "role": "Web pages and components",
+      "capabilities": ["web"],
+      "maxParallel": 1,
+      "bootstrapPrompts": ["context", "codex-a-start"],
+      "quickPrompts": []
+    },
+    {
+      "id": "codex-b",
+      "name": "Codex B",
+      "tool": "codex",
+      "role": "Repository, CI, images and browser checks",
+      "capabilities": ["computer-use", "images"],
+      "maxParallel": 1,
+      "bootstrapPrompts": ["context", "codex-b-start"],
+      "quickPrompts": ["qa"]
+    }
+  ],
+  "milestones": [
+    { "id": "m1", "name": "Skeleton", "date": "2026-12-04" },
+    { "id": "m2", "name": "Launch", "date": "2026-12-18" }
+  ],
+  "tasks": [
+    {
+      "id": "T-01",
+      "title": "Repository, tooling and CI",
+      "agent": "codex-b",
+      "prompts": ["repo"],
+      "allowedPaths": ["/", ".github/"],
+      "acceptance": "`npm run dev` serves an empty page; CI runs lint and tests.",
+      "milestone": "m1",
+      "estimateDays": 0.5
+    },
+    {
+      "id": "T-02",
+      "title": "API contract for the signup endpoint",
+      "agent": "claude-a",
+      "prompts": ["contract"],
+      "allowedPaths": ["contracts/"],
+      "acceptance": "OpenAPI file merged; mock server starts from it.",
+      "milestone": "m1",
+      "estimateDays": 0.5
+    },
+    {
+      "id": "T-03",
+      "title": "Design tokens and base components",
+      "agent": "codex-a",
+      "dependsOn": ["T-01"],
+      "prompts": ["components"],
+      "allowedPaths": ["src/components/", "src/styles/"],
+      "milestone": "m1",
+      "estimateDays": 1
+    },
+    {
+      "id": "T-04",
+      "title": "Hero illustrations",
+      "agent": "codex-b",
+      "dependsOn": ["T-01"],
+      "instructions": "Generate two hero illustrations in the brand palette (no text, no people). Save SVG or WebP under public/images with a MANIFEST.md entry per file.",
+      "allowedPaths": ["public/images/"],
+      "estimateDays": 0.5
+    },
+    {
+      "id": "T-05",
+      "title": "Signup backend with rate limiting",
+      "agent": "claude-a",
+      "dependsOn": ["T-01", "T-02"],
+      "prompts": ["signup-backend"],
+      "allowedPaths": ["api/"],
+      "acceptance": "Contract tests pass; the 6th request per minute from one IP gets 429.",
+      "milestone": "m2",
+      "estimateDays": 1.5
+    },
+    {
+      "id": "T-06",
+      "title": "Landing page with signup form (against the mock)",
+      "agent": "codex-a",
+      "dependsOn": ["T-02", "T-03"],
+      "prompts": ["landing"],
+      "allowedPaths": ["src/"],
+      "milestone": "m2",
+      "estimateDays": 1
+    },
+    {
+      "id": "T-07",
+      "title": "Switch the form to the real API",
+      "agent": "codex-a",
+      "alsoAgents": ["codex-b"],
+      "dependsOn": ["T-05", "T-06"],
+      "instructions": "Replace the mock base URL with the real API behind a feature flag. Add one end-to-end test for a successful signup and one for a validation error.",
+      "allowedPaths": ["src/"],
+      "milestone": "m2",
+      "estimateDays": 0.5
+    },
+    {
+      "id": "T-08",
+      "title": "Browser QA and Lighthouse",
+      "agent": "codex-b",
+      "dependsOn": ["T-04", "T-07"],
+      "prompts": ["qa"],
+      "allowedPaths": ["docs/qa/"],
+      "milestone": "m2",
+      "estimateDays": 0.5
+    },
+    {
+      "id": "T-09",
+      "title": "Security review before launch",
+      "agent": "claude-a",
+      "dependsOn": ["T-07"],
+      "prompts": ["review"],
+      "instructions": "Review the signup flow end to end: input validation, rate limiting, error messages that do not leak whether an e-mail exists, CSP and headers.",
+      "milestone": "m2",
+      "estimateDays": 0.5
+    }
+  ],
+  "prompts": {
+    "context": {
+      "title": "Shared context",
+      "body": "You are working on a small SaaS landing page with a signup form. Stack: Vite + React + TypeScript for the web, a Node API in api/, contracts in contracts/. Several AI chats work in parallel: only change the paths listed for your task, keep pull requests small, and ask instead of guessing."
+    },
+    "claude-a-start": {
+      "title": "Claude A session start",
+      "body": "You are Claude A: you own contracts/ and api/, and you review security-sensitive changes. Read the repository and summarize its state, then wait for a task."
+    },
+    "codex-a-start": {
+      "title": "Codex A session start",
+      "body": "You are Codex A: you own src/. Build screens from the design tokens and use the mock server until the real API is merged. Read the repository and wait for a task."
+    },
+    "codex-b-start": {
+      "title": "Codex B session start",
+      "body": "You are Codex B: you own the repository setup, CI, public/images and docs/qa. You can use the browser and generate images. Read the repository and wait for a task."
+    },
+    "repo": {
+      "title": "Repository and CI",
+      "body": "Create the repository: Vite + React + TypeScript (strict), ESLint, Prettier, Vitest, a GitHub Actions workflow running lint, typecheck and tests, and a README with the commands. Pin exact dependency versions."
+    },
+    "contract": {
+      "title": "Signup contract",
+      "body": "Write contracts/openapi.yaml for POST /api/signup { email, name } -> 201 | 400 (validation errors) | 429 (rate limited), with problem+json errors. Add a script that starts a Prism mock server from it."
+    },
+    "components": {
+      "title": "Tokens and components",
+      "body": "Create CSS custom properties for colors, spacing and type, and base components: Button, Input, Field with error text, Card. Add Storybook stories and accessibility checks."
+    },
+    "signup-backend": {
+      "title": "Signup backend",
+      "body": "Implement POST /api/signup exactly as in contracts/openapi.yaml: validation, storage behind an interface (in-memory for now), rate limiting of 5 requests per minute per IP, structured logs without personal data, and contract tests."
+    },
+    "landing": {
+      "title": "Landing page",
+      "body": "Build the landing page: hero, three feature cards, the signup form with inline validation, success and error states, keyboard access and responsive layout. Use the mock server from contracts/."
+    },
+    "review": {
+      "title": "Review",
+      "body": "Review the given change for correctness, security and tests. Output a verdict, blocking issues with file:line and a concrete fix, then suggestions."
+    },
+    "qa": {
+      "title": "Browser QA",
+      "body": "Open the app in Chrome at 1440 px and 390 px, walk the signup flow, run Lighthouse and axe, and file each finding with steps, expected vs actual, a screenshot and a severity in docs/qa/<date>.md."
+    }
+  },
+  "templates": {}
+}

@@ -1,0 +1,36 @@
+{
+  "name": "ai-tracking-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop mission control for running many AI coding chats in parallel on one project: a task graph, live status reports from agents, and copy-ready prompts.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/server",
+    "packages/ui",
+    "packages/reporter",
+    "apps/desktop"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "npm run build -w @aitrack/ui && npm run build -w @aitrack/server && npm run build -w @aitrack/desktop",
+    "dev:web": "node scripts/dev-web.mjs",
+    "serve": "npm run build -w @aitrack/ui && npm run build -w @aitrack/server && node packages/server/dist/cli.js serve",
+    "desktop": "npm run build && npm run start -w @aitrack/desktop",
+    "dist": "npm run build && npm run dist -w @aitrack/desktop",
+    "typecheck": "tsc -p packages/core && tsc -p packages/server && tsc -p packages/ui && tsc -p apps/desktop",
+    "test": "vitest run",
+    "schema": "tsx scripts/generate-schema.ts",
+    "validate": "tsx scripts/validate.ts"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  }
+}

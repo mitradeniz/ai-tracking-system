@@ -1,0 +1,14 @@
+{
+  "name": "@aitrack/reporter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-dependency CLI that AI agents use to report task status to AI Tracking System.",
+  "type": "module",
+  "bin": {
+    "aitrack-report": "./bin/aitrack-report.mjs"
+  },
+  "files": ["bin"],
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+out/
+coverage/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+# runtime data written by agents when the local server is unreachable
+.aitrack/inbox/
