@@ -22,6 +22,7 @@
     "desktop": "npm run build && npm run start -w @aitrack/desktop",
     "dist": "npm run build && npm run dist -w @aitrack/desktop",
     "install:mac": "bash install-macos.command",
+    "update:mac": "bash update-macos.command",
     "typecheck": "tsc -p packages/core && tsc -p packages/server && tsc -p packages/ui && tsc -p apps/desktop",
     "test": "vitest run",
     "schema": "tsx scripts/generate-schema.ts",
