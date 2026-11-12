@@ -176,6 +176,38 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
   route("GET", "/api/projects/:key/agents/:agent/bootstrap", (ctx, [key, agent]) =>
     send(ctx.res, 200, { text: manager.bootstrapPrompt(key!, decodeURIComponent(agent!)) }),
   );
+  route("POST", "/api/projects/:key/agents", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    const agent = body.agent as Record<string, unknown> | undefined;
+    if (!agent || typeof agent !== "object" || typeof agent.id !== "string" || typeof agent.name !== "string") {
+      throw new HttpError(400, '"agent" with "id" and "name" is required.');
+    }
+    const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : undefined);
+    const text = (v: unknown) => (typeof v === "string" ? v : undefined);
+    send(
+      ctx.res,
+      200,
+      await manager.saveAgent(key!, {
+        agent: {
+          id: agent.id,
+          name: agent.name,
+          tool: text(agent.tool),
+          role: text(agent.role),
+          color: text(agent.color),
+          capabilities: list(agent.capabilities),
+          maxParallel: typeof agent.maxParallel === "number" ? agent.maxParallel : undefined,
+          bootstrapPrompts: list(agent.bootstrapPrompts),
+          quickPrompts: list(agent.quickPrompts),
+        },
+        helpsWith: list(body.helpsWith),
+      }),
+    );
+  });
+  route("POST", "/api/projects/:key/agents/:agent/remove", async (ctx, [key, agent]) => {
+    const body = await readJson(ctx.req);
+    const reassignTo = typeof body.reassignTo === "string" && body.reassignTo ? body.reassignTo : undefined;
+    send(ctx.res, 200, await manager.removeAgent(key!, decodeURIComponent(agent!), reassignTo));
+  });
   route("GET", "/api/projects/:key/prompts/:prompt", (ctx, [key, prompt]) =>
     send(ctx.res, 200, { text: manager.libraryPrompt(key!, decodeURIComponent(prompt!)) }),
   );

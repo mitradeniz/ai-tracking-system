@@ -5,6 +5,9 @@ import path from "node:path";
 import {
   computeBoard,
   createProjectTemplate,
+  EditError,
+  removeAgentFromFile,
+  upsertAgentInFile,
   EventSchema,
   FILE_EXTENSION,
   newEventId,
@@ -17,6 +20,7 @@ import {
   reportToEvent,
   serializeBoard,
   serializeProject,
+  type AgentChange,
   type BoardSnapshot,
   type EventSource,
   type Issue,
@@ -284,6 +288,39 @@ export class ProjectManager extends EventEmitter {
       next.inboxDirs = await discoverInboxDirs(next.filePath, next.project.settings.inboxDir, next.project.settings.repoPath);
     }
     this.changed(key);
+  }
+
+  /** Adds or updates a chat in the project file on disk. */
+  async saveAgent(key: string, change: AgentChange): Promise<ProjectSummary> {
+    await this.editFile(key, (text) => upsertAgentInFile(text, change));
+    return this.summary(this.get(key));
+  }
+
+  /** Removes a chat from the project file on disk; its tasks move to `reassignTo`. */
+  async removeAgent(key: string, agentId: string, reassignTo?: string): Promise<ProjectSummary> {
+    const h = this.get(key);
+    const project = this.requireProject(h);
+    const board = computeBoard(project, h.events);
+    const holding = board.agents.find((a) => a.agent.id === agentId)?.holding ?? [];
+    if (holding.length > 0) {
+      throw new HttpError(409, `This chat is still working on ${holding.join(", ")}. Mark those tasks done, failed or reopened first.`);
+    }
+    await this.editFile(key, (text) => removeAgentFromFile(text, agentId, reassignTo));
+    return this.summary(this.get(key));
+  }
+
+  private async editFile(key: string, edit: (text: string) => string): Promise<void> {
+    const h = this.get(key);
+    const text = await readFile(h.filePath, "utf8");
+    let next: string;
+    try {
+      next = edit(text);
+    } catch (e) {
+      if (e instanceof EditError) throw new HttpError(e.code === "not_found" ? 404 : e.code === "invalid_agent" ? 400 : 409, e.message);
+      throw e;
+    }
+    if (next !== text) await writeFileAtomic(h.filePath, next);
+    await this.reload(key);
   }
 
   private async persistRegistry(): Promise<void> {

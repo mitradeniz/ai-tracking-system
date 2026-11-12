@@ -20,6 +20,15 @@ export interface ProjectDetail extends ProjectSummary {
   serverUrl: string;
 }
 
+export interface AgentPayload {
+  id: string;
+  name: string;
+  tool?: string;
+  role?: string;
+  maxParallel?: number;
+  bootstrapPrompts?: string[];
+}
+
 export interface Activity {
   key: string;
   projectName?: string;
@@ -88,6 +97,10 @@ export const api = {
     request<{ text: string }>("GET", `/api/projects/${enc(key)}/prompts/${enc(prompt)}`).then((r) => r.text),
   exportTo: (key: string, filePath: string, includeState: boolean) =>
     request<{ filePath: string }>("POST", `/api/projects/${enc(key)}/export`, { filePath, includeState }),
+  saveAgent: (key: string, agent: AgentPayload, helpsWith: string[]) =>
+    request<ProjectSummary>("POST", `/api/projects/${enc(key)}/agents`, { agent, helpsWith }),
+  removeAgent: (key: string, agent: string, reassignTo?: string) =>
+    request<ProjectSummary>("POST", `/api/projects/${enc(key)}/agents/${enc(agent)}/remove`, { reassignTo }),
   exportUrl: (key: string, includeState: boolean) => `/api/projects/${enc(key)}/export${includeState ? "?state=1" : ""}`,
 };
 

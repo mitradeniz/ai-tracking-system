@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, type Activity, type ProjectDetail, type ProjectSummary } from "./api.ts";
-import { AddProjectDialog, ExportDialog, PasteDialog } from "./components/Dialogs.tsx";
+import { AddProjectDialog, AgentDialog, ExportDialog, PasteDialog } from "./components/Dialogs.tsx";
 import { TaskDrawer } from "./components/TaskDrawer.tsx";
 import { FlowView, LanesView, ListView, ReadyStrip } from "./components/Views.tsx";
-import { I18nContext, initialLang, translator, type Key, type Lang } from "./i18n.ts";
+import { chosenLang, I18nContext, initialLang, rememberLang, translator, type Key, type Lang } from "./i18n.ts";
 import { buildModel } from "./model.ts";
 
 type View = "lanes" | "flow" | "list";
@@ -38,7 +38,8 @@ export function App() {
   const [detail, setDetail] = useState<ProjectDetail | null>(null);
   const [view, setView] = useState<View>(() => (readPref("aitrack.view", "lanes") as View) ?? "lanes");
   const [openTask, setOpenTask] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"add" | "paste" | "export" | null>(null);
+  const [dialog, setDialog] = useState<"add" | "paste" | "export" | "agent" | null>(null);
+  const [agentToEdit, setAgentToEdit] = useState<string | undefined>(undefined);
   const [live, setLive] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const selectedRef = useRef(selected);
@@ -48,8 +49,13 @@ export function App() {
     document.documentElement.dataset.theme = theme;
     document.documentElement.lang = lang;
     writePref("aitrack.theme", theme);
-    writePref("aitrack.lang", lang);
   }, [theme, lang]);
+
+  // A project may set its language; it applies until the user picks one with the toggle.
+  const projectLang = detail?.project?.settings.language;
+  useEffect(() => {
+    if (projectLang && !chosenLang()) setLang(projectLang);
+  }, [projectLang]);
 
   useEffect(() => writePref("aitrack.view", view), [view]);
   useEffect(() => writePref("aitrack.project", selected ?? ""), [selected]);
@@ -169,7 +175,14 @@ export function App() {
               + {t("addProject")}
             </button>
             <div className="row">
-              <button className="btn small ghost" onClick={() => setLang(lang === "tr" ? "en" : "tr")}>
+              <button
+                className="btn small ghost"
+                onClick={() => {
+                  const next = lang === "tr" ? "en" : "tr";
+                  rememberLang(next);
+                  setLang(next);
+                }}
+              >
                 {t("language")}
               </button>
               <button className="btn small ghost" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("theme")}>
@@ -282,7 +295,17 @@ export function App() {
               </header>
               {model && <ReadyStrip model={model} onOpen={setOpenTask} />}
               <div className="content">
-                {model && view === "lanes" && <LanesView model={model} onOpen={setOpenTask} onError={(m) => toast(m, "failed")} />}
+                {model && view === "lanes" && (
+                  <LanesView
+                    model={model}
+                    onOpen={setOpenTask}
+                    onError={(m) => toast(m, "failed")}
+                    onEditAgent={(agentId) => {
+                      setAgentToEdit(agentId);
+                      setDialog("agent");
+                    }}
+                  />
+                )}
                 {model && view === "flow" && <FlowView model={model} onOpen={setOpenTask} />}
                 {model && view === "list" && <ListView model={model} onOpen={setOpenTask} />}
               </div>
@@ -305,6 +328,20 @@ export function App() {
           onClose={() => setDialog(null)}
           onAdded={(key) => {
             setSelected(key);
+            void loadProjects();
+          }}
+        />
+      )}
+      {dialog === "agent" && detail?.project && (
+        <AgentDialog
+          key={agentToEdit ?? "new"}
+          projectKey={detail.key}
+          project={detail.project}
+          agentId={agentToEdit}
+          onClose={() => setDialog(null)}
+          onDone={(message) => {
+            toast(message, "done");
+            void loadDetail(detail.key);
             void loadProjects();
           }}
         />

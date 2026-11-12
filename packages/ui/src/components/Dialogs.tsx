@@ -1,6 +1,8 @@
+import type { ProjectFile } from "@aitrack/core";
 import { useState, type ReactNode } from "react";
 import { api, desktop } from "../api.ts";
 import { useI18n } from "../i18n.ts";
+import { agentIdFromName, helpedChats, sharedBootstrapPrompts } from "../model.ts";
 
 function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return (
@@ -214,6 +216,243 @@ export function ExportDialog({
         </div>
       )}
       {error && <div className="error">{error}</div>}
+    </Dialog>
+  );
+}
+
+const TOOLS = ["claude", "codex", "cursor"];
+
+/** A prompt's title without a leading copy of its id ("P00 — Shared context" -> "Shared context"). */
+function promptLabel(id: string, title: string | undefined): string {
+  if (!title) return "";
+  return title.startsWith(id) ? title.slice(id.length).replace(/^[\s—–:-]+/, "") : title;
+}
+
+export function AgentDialog({
+  projectKey,
+  project,
+  agentId,
+  onClose,
+  onDone,
+}: {
+  projectKey: string;
+  project: Omit<ProjectFile, "state">;
+  agentId?: string;
+  onClose: () => void;
+  onDone: (message: string) => void;
+}) {
+  const { t } = useI18n();
+  const existing = agentId ? project.agents.find((a) => a.id === agentId) : undefined;
+  const others = project.agents.filter((a) => a.id !== agentId);
+  const [name, setName] = useState(existing?.name ?? "");
+  const [id, setId] = useState(existing?.id ?? "");
+  const [idTouched, setIdTouched] = useState(Boolean(existing));
+  const initialTool = existing?.tool ?? "codex";
+  const [toolChoice, setToolChoice] = useState(TOOLS.includes(initialTool) ? initialTool : "other");
+  const [toolOther, setToolOther] = useState(TOOLS.includes(initialTool) ? "" : initialTool);
+  const [role, setRole] = useState(existing?.role ?? "");
+  const [maxParallel, setMaxParallel] = useState(existing?.maxParallel ?? 1);
+  const [helps, setHelps] = useState<Set<string>>(() => new Set(existing ? helpedChats(project.tasks, existing.id) : []));
+  const [prompts, setPrompts] = useState<Set<string>>(
+    () => new Set(existing ? existing.bootstrapPrompts : sharedBootstrapPrompts(project.agents)),
+  );
+  const [removing, setRemoving] = useState(false);
+  const [moveTo, setMoveTo] = useState(others[0]?.id ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const effectiveId = idTouched
+    ? id
+    : agentIdFromName(
+        name,
+        others.map((a) => a.id),
+      );
+  const ownedTasks = existing ? project.tasks.filter((x) => x.agent === existing.id).length : 0;
+  const promptIds = Object.keys(project.prompts);
+
+  const toggle = (set: Set<string>, value: string, update: (s: Set<string>) => void) => {
+    const next = new Set(set);
+    if (next.has(value)) next.delete(value);
+    else next.add(value);
+    update(next);
+  };
+
+  const run = async (fn: () => Promise<unknown>, message: string) => {
+    setBusy(true);
+    setError(null);
+    try {
+      await fn();
+      onDone(message);
+      onClose();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const save = () =>
+    run(
+      () =>
+        api.saveAgent(
+          projectKey,
+          {
+            id: effectiveId,
+            name: name.trim(),
+            tool: toolChoice === "other" ? toolOther.trim() : toolChoice,
+            role: role.trim(),
+            maxParallel,
+            bootstrapPrompts: promptIds.filter((p) => prompts.has(p)),
+          },
+          [...helps],
+        ),
+      t(existing ? "agentSaved" : "agentAdded", { name: name.trim() }),
+    );
+
+  return (
+    <Dialog title={existing ? t("editAgent") : t("addAgent")} onClose={onClose}>
+      <div className="row wrap">
+        <div className="field grow">
+          <label htmlFor="agent-name">{t("agentName")}</label>
+          <input id="agent-name" className="input" value={name} placeholder="Codex D" autoFocus onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="field grow">
+          <label htmlFor="agent-id">{t("agentId")}</label>
+          <input
+            id="agent-id"
+            className="input mono"
+            value={effectiveId}
+            disabled={Boolean(existing)}
+            title={t("agentIdHint")}
+            onChange={(e) => {
+              setIdTouched(true);
+              setId(e.target.value);
+            }}
+          />
+        </div>
+      </div>
+      <div className="row wrap">
+        <div className="field">
+          <label htmlFor="agent-tool">{t("agentTool")}</label>
+          <div className="row">
+            <select id="agent-tool" className="input" value={toolChoice} onChange={(e) => setToolChoice(e.target.value)}>
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+              <option value="cursor">Cursor</option>
+              <option value="other">{t("agentToolOther")}</option>
+            </select>
+            {toolChoice === "other" && (
+              <input className="input" value={toolOther} aria-label={t("agentToolOther")} onChange={(e) => setToolOther(e.target.value)} />
+            )}
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="agent-parallel">{t("agentParallel")}</label>
+          <input
+            id="agent-parallel"
+            className="input narrow"
+            type="number"
+            min={1}
+            max={10}
+            value={maxParallel}
+            onChange={(e) => setMaxParallel(Math.min(10, Math.max(1, Number(e.target.value) || 1)))}
+          />
+        </div>
+      </div>
+      <div className="field">
+        <label htmlFor="agent-role">{t("agentRole")}</label>
+        <input
+          id="agent-role"
+          className="input"
+          value={role}
+          placeholder={t("agentRolePlaceholder")}
+          onChange={(e) => setRole(e.target.value)}
+        />
+      </div>
+      {others.length > 0 && (
+        <div className="field">
+          <label>{t("agentHelps")}</label>
+          <div className="checks">
+            {others.map((a) => (
+              <label key={a.id} className="check">
+                <input type="checkbox" checked={helps.has(a.id)} onChange={() => toggle(helps, a.id, setHelps)} />
+                {a.name}
+              </label>
+            ))}
+          </div>
+          <span className="small muted">{t("agentHelpsHint")}</span>
+        </div>
+      )}
+      {promptIds.length > 0 && (
+        <div className="field">
+          <label>{t("agentPrompts")}</label>
+          <div className="checks scroll">
+            {promptIds.map((p) => (
+              <label key={p} className="check" title={project.prompts[p]?.title ?? p}>
+                <input type="checkbox" checked={prompts.has(p)} onChange={() => toggle(prompts, p, setPrompts)} />
+                <span className="mono">{p}</span>
+                {promptLabel(p, project.prompts[p]?.title) && (
+                  <span className="muted ellipsis">{promptLabel(p, project.prompts[p]?.title)}</span>
+                )}
+              </label>
+            ))}
+          </div>
+          <span className="small muted">{t("agentPromptsHint")}</span>
+        </div>
+      )}
+      {existing && removing && (
+        <div className="danger-zone">
+          <span>{t("removeAgentConfirm")}</span>
+          {ownedTasks > 0 && (
+            <div className="row">
+              <label htmlFor="move-to" className="small muted">
+                {t("removeAgentMoveTo")} ({ownedTasks})
+              </label>
+              <select id="move-to" className="input" value={moveTo} onChange={(e) => setMoveTo(e.target.value)}>
+                {others.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="row">
+            <span className="spacer" />
+            <button className="btn ghost" onClick={() => setRemoving(false)}>
+              {t("cancel")}
+            </button>
+            <button
+              className="btn danger-solid"
+              disabled={busy}
+              onClick={() =>
+                run(
+                  () => api.removeAgent(projectKey, existing.id, ownedTasks > 0 ? moveTo : undefined),
+                  t("agentRemoved", { name: existing.name }),
+                )
+              }
+            >
+              {t("removeAgent")}
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="small muted">{t("agentWritesFile")}</div>
+      {error && <div className="error">{error}</div>}
+      <div className="row">
+        {existing && !removing && others.length > 0 && (
+          <button className="btn ghost danger" onClick={() => setRemoving(true)}>
+            {t("removeAgent")}
+          </button>
+        )}
+        <span className="spacer" />
+        <button className="btn ghost" onClick={onClose}>
+          {t("cancel")}
+        </button>
+        <button className="btn primary" disabled={busy || !name.trim() || !effectiveId} onClick={save}>
+          {existing ? t("save") : t("addAgent")}
+        </button>
+      </div>
     </Dialog>
   );
 }

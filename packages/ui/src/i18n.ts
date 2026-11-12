@@ -132,6 +132,31 @@ const en = {
   quickPrompts: "Recurring",
   layer: "Step",
   sentTo: "Sent to",
+  addAgent: "Add chat",
+  editAgent: "Edit chat",
+  agentName: "Name",
+  agentId: "Id",
+  agentIdHint: "Used in tasks and reports; cannot be changed later.",
+  agentTool: "Tool",
+  agentToolOther: "Other",
+  agentRole: "Role",
+  agentRolePlaceholder: "What this chat is responsible for",
+  agentParallel: "Tasks at the same time",
+  agentHelps: "May also take tasks of",
+  agentHelpsHint: "Tasks of the selected chats can be given to this chat when they are ready.",
+  agentPrompts: "Session prompt",
+  agentPromptsHint: "Pasted once when a new session of this chat starts.",
+  agentWritesFile: "Changes are saved to the project file.",
+  removeAgent: "Remove chat",
+  removeAgentMoveTo: "Move its tasks to",
+  removeAgentConfirm: "Remove this chat from the project file?",
+  edit: "Edit",
+  agentAdded: "{name} added",
+  agentSaved: "{name} saved",
+  agentRemoved: "{name} removed",
+  helpsWith: "Also takes tasks of {names}",
+  laneEmpty: "No tasks for this chat yet.",
+  laneEmptyHelper: "No tasks right now. Tasks of the chats it helps appear here when they are ready.",
 };
 
 export type Key = keyof typeof en;
@@ -266,18 +291,59 @@ const tr: Record<Key, string> = {
   quickPrompts: "Tekrarlayan",
   layer: "Adım",
   sentTo: "Gönderildi:",
+  addAgent: "Sohbet ekle",
+  editAgent: "Sohbeti düzenle",
+  agentName: "Ad",
+  agentId: "Kimlik",
+  agentIdHint: "Görevlerde ve raporlarda kullanılır; sonradan değiştirilemez.",
+  agentTool: "Araç",
+  agentToolOther: "Diğer",
+  agentRole: "Rol",
+  agentRolePlaceholder: "Bu sohbetin sorumlu olduğu işler",
+  agentParallel: "Aynı anda görev",
+  agentHelps: "Şu sohbetlerin görevlerini de alabilir",
+  agentHelpsHint: "Seçilen sohbetlerin görevleri hazır olduğunda bu sohbete de verilebilir.",
+  agentPrompts: "Oturum promptu",
+  agentPromptsHint: "Bu sohbetin yeni oturumu açılınca bir kez yapıştırılır.",
+  agentWritesFile: "Değişiklikler proje dosyasına kaydedilir.",
+  removeAgent: "Sohbeti kaldır",
+  removeAgentMoveTo: "Görevlerini şuna taşı",
+  removeAgentConfirm: "Bu sohbet proje dosyasından kaldırılsın mı?",
+  edit: "Düzenle",
+  agentAdded: "{name} eklendi",
+  agentSaved: "{name} kaydedildi",
+  agentRemoved: "{name} kaldırıldı",
+  helpsWith: "{names} görevlerini de alır",
+  laneEmpty: "Bu sohbete atanmış görev yok.",
+  laneEmptyHelper: "Şu an görev yok. Yardım ettiği sohbetlerin görevleri hazır olunca burada görünür.",
 };
 
 const dictionaries: Record<Lang, Record<Key, string>> = { en, tr };
 
-export function initialLang(): Lang {
+const LANG_KEY = "aitrack.lang.chosen";
+
+/** The language the user picked with the toggle, if any. */
+export function chosenLang(): Lang | null {
   try {
-    const saved = localStorage.getItem("aitrack.lang");
+    const saved = localStorage.getItem(LANG_KEY);
     if (saved === "en" || saved === "tr") return saved;
   } catch {
-    // Storage unavailable; fall through.
+    // Storage unavailable.
   }
-  return navigator.language.toLowerCase().startsWith("tr") ? "tr" : "en";
+  return null;
+}
+
+export function rememberLang(lang: Lang): void {
+  try {
+    localStorage.setItem(LANG_KEY, lang);
+  } catch {
+    // Ignore: the choice is a convenience.
+  }
+}
+
+/** The user's choice first, then the system language. A project's own language applies when nothing was chosen. */
+export function initialLang(): Lang {
+  return chosenLang() ?? (navigator.language.toLowerCase().startsWith("tr") ? "tr" : "en");
 }
 
 export function translator(lang: Lang) {

@@ -41,6 +41,8 @@ An agent is one chat session (or a person) that takes tasks.
 | `bootstrapPrompts` | string[] | `[]` | Prompt ids joined into the **session prompt**, pasted once when a chat session starts. |
 | `quickPrompts` | string[] | `[]` | Prompt ids for recurring duties (reviews, QA rounds), shown as copy buttons on the lane. |
 
+Chats can also be added, edited and removed in the app (**Add chat** at the end of the lanes, or the pencil on a lane). The app changes the file in place: it keeps key order and fields you left out, and removing a chat moves its tasks to another chat. Choosing "may also take tasks of" adds the chat to `alsoAgents` of those chats' tasks.
+
 ## Tasks
 
 | Field | Type | Default | Notes |

@@ -74,3 +74,33 @@ export function formatTime(iso: string | null | undefined, lang: string): string
   const d = new Date(iso);
   return d.toLocaleString(lang === "tr" ? "tr-TR" : "en-US", { dateStyle: "short", timeStyle: "short" });
 }
+
+/** Chats whose tasks the given chat may also take (it is in their tasks' `alsoAgents`). */
+export function helpedChats(tasks: Task[], agentId: string): string[] {
+  const out = new Set<string>();
+  for (const t of tasks) if (t.agent !== agentId && t.alsoAgents.includes(agentId)) out.add(t.agent);
+  return [...out];
+}
+
+/** A free chat id derived from a display name, e.g. "Codex D" -> "codex-d". */
+export function agentIdFromName(name: string, taken: Iterable<string>): string {
+  const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" };
+  const base =
+    name
+      .toLowerCase()
+      .replace(/[çğıöşü]/g, (c) => map[c] ?? c)
+      .normalize("NFKD")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "chat";
+  const used = new Set(taken);
+  if (!used.has(base)) return base;
+  for (let n = 2; ; n += 1) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+/** Session prompts every chat shares (for example the shared context), in the first chat's order. */
+export function sharedBootstrapPrompts(agents: Agent[]): string[] {
+  const [first, ...rest] = agents;
+  if (!first) return [];
+  return first.bootstrapPrompts.filter((p) => rest.every((a) => a.bootstrapPrompts.includes(p)));
+}

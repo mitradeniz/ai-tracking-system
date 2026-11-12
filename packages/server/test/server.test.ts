@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -148,5 +148,38 @@ describe("server", () => {
     const again = await call("POST", "/api/projects", { filePath: target });
     const detail = await call("GET", `/api/projects/${again.json.key}`);
     expect(detail.json.board.tasks.find((t: any) => t.id === "T1").status).toBe("done");
+  });
+
+  it("adds, edits and removes chats in the project file", async () => {
+    const added = await call("POST", "/api/projects", { filePath: file });
+    const key = added.json.key as string;
+
+    const bad = await call("POST", `/api/projects/${key}/agents`, { agent: { id: "has space", name: "X" } });
+    expect(bad.status).toBe(400);
+
+    const ok = await call("POST", `/api/projects/${key}/agents`, {
+      agent: { id: "c", name: "Agent C", tool: "codex" },
+      helpsWith: ["a"],
+    });
+    expect(ok.status).toBe(200);
+    const onDisk = JSON.parse(await readFile(file, "utf8"));
+    expect(onDisk.agents.map((a: { id: string }) => a.id)).toEqual(["a", "b", "c"]);
+    expect(onDisk.tasks.find((t: { id: string }) => t.id === "T1").alsoAgents).toEqual(["c"]);
+
+    const detail = await call("GET", `/api/projects/${key}`);
+    expect(detail.json.board.tasks.find((t: { id: string }) => t.id === "T1").candidates).toEqual(["a", "c"]);
+
+    // A chat that holds a task cannot be removed.
+    await call("POST", `/api/projects/${key}/events`, { task: "T3", type: "started", agent: "b" });
+    const busy = await call("POST", `/api/projects/${key}/agents/b/remove`, { reassignTo: "c" });
+    expect(busy.status).toBe(409);
+
+    const needsTarget = await call("POST", `/api/projects/${key}/agents/a/remove`, {});
+    expect(needsTarget.status).toBe(409);
+    const removed = await call("POST", `/api/projects/${key}/agents/a/remove`, { reassignTo: "c" });
+    expect(removed.status).toBe(200);
+    const after = JSON.parse(await readFile(file, "utf8"));
+    expect(after.agents.map((a: { id: string }) => a.id)).toEqual(["b", "c"]);
+    expect(after.tasks.filter((t: { agent: string }) => t.agent === "c").map((t: { id: string }) => t.id)).toEqual(["T1", "T2"]);
   });
 });

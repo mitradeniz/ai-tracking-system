@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import type { TaskSnapshot } from "@aitrack/core";
 import { api, copyText } from "../api.ts";
 import { useI18n } from "../i18n.ts";
-import { agentName, cardNote, formatTime, type Model } from "../model.ts";
+import { agentName, cardNote, formatTime, helpedChats, type Model } from "../model.ts";
 import { TaskCard } from "./TaskCard.tsx";
 
 interface ViewProps {
@@ -27,7 +27,7 @@ export function ReadyStrip({ model, onOpen }: Omit<ViewProps, "onError">) {
   const groups = (model.detail.board?.agents ?? []).filter((a) => a.dispatchable.length > 0);
   return (
     <div className="ready-strip" aria-live="polite">
-      <span className="label">● {t("readyNow")}</span>
+      <span className="label">{t("readyNow")}</span>
       {groups.length === 0 && <span className="muted small">{t("nothingReady")}</span>}
       {groups.map((g) => (
         <div className="ready-group" key={g.id}>
@@ -43,7 +43,7 @@ export function ReadyStrip({ model, onOpen }: Omit<ViewProps, "onError">) {
   );
 }
 
-export function LanesView({ model, onOpen, onError }: ViewProps) {
+export function LanesView({ model, onOpen, onError, onEditAgent }: ViewProps & { onEditAgent: (agentId?: string) => void }) {
   const { t } = useI18n();
   const [showDone, setShowDone] = useState<Record<string, boolean>>({});
   const [copiedFor, setCopiedFor] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function LanesView({ model, onOpen, onError }: ViewProps) {
   };
 
   return (
-    <div className="lanes">
+    <div className="lanes" style={{ gridTemplateColumns: `repeat(${project.agents.length}, minmax(276px, 1fr)) 150px` }}>
       {project.agents.map((agent) => {
         const av = board.agents.find((a) => a.id === agent.id);
         const holding = (av?.holding ?? []).map((id) => model.snap.get(id)).filter((s): s is TaskSnapshot => Boolean(s));
@@ -76,6 +76,9 @@ export function LanesView({ model, onOpen, onError }: ViewProps) {
         const failed = own.filter((s) => s.status === "failed");
         const done = own.filter((s) => s.status === "done");
         const isIdle = av?.hasRoom ?? true;
+        const helped = helpedChats(model.tasks, agent.id);
+        const empty =
+          holding.length + sendable.length + failed.length + review.length + readyBusy.length + waiting.length + done.length === 0;
 
         const section = (title: string, items: TaskSnapshot[], extra?: React.ReactNode) =>
           items.length > 0 && (
@@ -96,12 +99,37 @@ export function LanesView({ model, onOpen, onError }: ViewProps) {
           <section className="lane" key={agent.id} aria-label={agent.name}>
             <div className="lane-head">
               <div className="lane-title">
-                <strong style={agent.color ? { color: agent.color } : undefined}>{agent.name}</strong>
+                {agent.color && <span className="agent-dot" style={{ background: agent.color }} aria-hidden="true" />}
+                <strong>{agent.name}</strong>
                 {agent.tool && <span className="badge">{agent.tool}</span>}
                 <span className="spacer" />
                 <span className={`badge ${isIdle ? "idle" : "busy"}`}>{isIdle ? t("idle") : t("busy")}</span>
+                <button
+                  className="icon-btn"
+                  title={t("editAgent")}
+                  aria-label={`${t("editAgent")}: ${agent.name}`}
+                  onClick={() => onEditAgent(agent.id)}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
               </div>
               {agent.role && <div className="small muted">{agent.role}</div>}
+              {helped.length > 0 && (
+                <div className="small muted">{t("helpsWith", { names: helped.map((h) => agentName(model, h)).join(", ") })}</div>
+              )}
               <div className="lane-actions">
                 {agent.bootstrapPrompts.length > 0 && (
                   <button
@@ -143,10 +171,17 @@ export function LanesView({ model, onOpen, onError }: ViewProps) {
                 {showDone[agent.id] && done.map((s) => <TaskCard key={s.id} model={model} snap={s} onOpen={onOpen} />)}
               </div>
             )}
+            {empty && <div className="lane-empty small muted">{helped.length > 0 ? t("laneEmptyHelper") : t("laneEmpty")}</div>}
             <div style={{ height: 8 }} />
           </section>
         );
       })}
+      <button className="lane add-lane" onClick={() => onEditAgent()}>
+        <span className="plus" aria-hidden="true">
+          +
+        </span>
+        {t("addAgent")}
+      </button>
     </div>
   );
 }
@@ -252,7 +287,7 @@ export function ListView({ model, onOpen }: Omit<ViewProps, "onError">) {
                 </td>
                 <td>{agentName(model, s.agent ?? task.agent)}</td>
                 <td>
-                  <span className={`pill ${s.dispatchable ? "ready" : s.status}`}>
+                  <span className={`pill ${s.dispatchable ? "sendable" : s.status}`}>
                     {s.dispatchable ? t("sendable") : t(`status_${s.status}`)}
                   </span>
                 </td>
