@@ -20,4 +20,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Screens built from panels (ready to send, chat lanes, flow, list, needs you, recent activity, progress): add, move by drag or arrows, resize, filter by chat; several named layouts, stored per user.
 - Floating window: frameless, always on top, on every desktop, with project picker, overview / compact list / mini lanes, selectable sections and chats, one-click "copy & send", pin and opacity; opens tasks in the main window.
 - Appearance settings: theme (dark, light, system), accent colour, density, text size and glass strength, shared live between windows.
+- Glass that takes the tone of what is behind it: on macOS the main and floating windows are translucent (vibrancy) with the title bar hidden and the traffic lights in the sidebar; native materials follow the app theme. The dark palette is a warm neutral grey instead of black.
+- `update-macos.command`: double-click updater that pulls from GitHub (fast-forward only, refuses local changes) and reinstalls only when there is something new.
+- README rewritten with animated demos, theme-aware screenshots, Mermaid diagrams, install and update guides and the plan for automatic updates; Turkish README (`README.tr.md`).
 - The UI follows the project's `settings.language` until a language is picked with the toggle; the desktop menu follows the system language (English or Turkish).

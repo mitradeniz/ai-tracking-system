@@ -1,124 +1,259 @@
+<div align="center">
+
+<img src="apps/desktop/build/icon.svg" width="104" alt="AI Tracking System icon">
+
 # AI Tracking System
 
-Desktop mission control for running several AI coding chats in parallel on one project.
+**Mission control for running many AI coding chats in parallel.**
+Plan once, send the green tasks, watch the board move.
 
-You describe the work once as a task graph in a `.aitrack` file: which chat does what, what each task depends on, and the prompt to send. The app shows which tasks can be sent **right now** (they glow green), which chat to give each one to, and the exact prompt to copy. The chats report back when they start, finish or get stuck, and the board updates live — so you always see what is done, what is running, and why the rest is not moving.
+![version](https://img.shields.io/badge/version-0.1.0-f5f4ef?style=flat-square&labelColor=262624)
+![platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-desktop-f5f4ef?style=flat-square&labelColor=262624)
+![local first](https://img.shields.io/badge/runs%20on-127.0.0.1-8fcfa6?style=flat-square&labelColor=262624)
+![no telemetry](https://img.shields.io/badge/telemetry-none-8fcfa6?style=flat-square&labelColor=262624)
 
-It is tool-agnostic: the "chats" can be Claude, Codex, Cursor, a human, or anything that can run one shell command or write one JSON file.
+**English** · [Türkçe](README.tr.md)
 
-![Lanes view: one lane per chat, the sendable task glows green](docs/images/lanes.png)
+<picture>
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/hero-light.png">
+  <img src="docs/images/hero-dark.png" alt="The board: one lane per chat; the task that can be sent right now is green" width="100%">
+</picture>
 
-## Why
+</div>
 
-When three to five AI chats work on the same codebase, the slow part is no longer writing code. It is you: remembering which task unblocks which, which chat is free, which prompt goes where, and noticing that a chat has been stuck for an hour. AI Tracking System turns that into a board:
+> [!TIP]
+> **The whole idea in one line:** a task turns **green** when everything it depends on is done and its chat is free. Click it, copy the prompt, paste it into that chat. The chat reports back, the board moves, the next tasks turn green.
 
-- **Parallel by default.** Tasks only wait for their real dependencies. Everything whose dependencies are done and whose chat has room is shown as sendable.
-- **One click to dispatch.** Click a task: you see the chat it goes to and the full prompt (shared context, task instructions, allowed paths, acceptance criteria and reporting instructions). Copy, paste, done.
-- **Reports, not guesswork.** Each prompt tells the chat how to report `started`, `blocked`, `review`, `done` or `failed`. A blocked task shows the reason on the board.
-- **Why not now?** Every task that cannot be sent explains itself: waiting for `T-05`, chat busy with `T-02`, blocked by the agent, awaiting your approval, failed.
-- **Critical path.** The longest chain is marked, so you know which work to unblock first.
-- **Build your own screens.** Every screen is made of panels — ready to send, chat lanes, flow, list, needs you, recent activity, progress. Add, move, resize and filter them by chat, and keep several layouts (for example "Morning" or "Only Claude").
-- **Floating window.** A small always-on-top glass window follows your chats while you work in other apps: what each chat is doing, what waits for you, and one click to copy the next prompt and mark it sent. Choose the project, the view (overview, compact list, mini lanes), the sections and the chats.
-- **Your look.** Dark, light or system theme, accent colour, density, text size and glass strength.
-- **Chats are editable.** Add a chat (say, a fourth Codex session) from the board, let it take over the tasks of busy chats, edit its role or remove it. The app edits the project file in place and keeps your formatting.
-- **Local and private.** Everything runs on `127.0.0.1`. No account, no telemetry, no cloud.
-- **Plain files.** The plan is a JSON file you keep in your repository and review in pull requests. Status lives in a local event log and can be exported back into the file as a snapshot.
+<details>
+<summary><b>Contents</b></summary>
 
-## Install
+- [See it move](#-see-it-move)
+- [Install](#-install)
+- [Update](#-update)
+- [Automatic updates: how we add them](#-automatic-updates-how-we-add-them)
+- [How it works](#-how-it-works)
+- [Reporting from a chat](#-reporting-from-a-chat)
+- [The `.aitrack` file](#-the-aitrack-file)
+- [Make it yours](#-make-it-yours)
+- [Commands](#-commands)
+- [Security](#-security)
+- [FAQ](#-faq)
 
-Requirements: Node.js 22.12 or newer to build the app (the installed app does not need it).
+</details>
 
-### macOS
+## 🎬 See it move
 
-1. Clone the repository: `git clone https://github.com/mitradeniz/ai-tracking-system.git` (or GitHub Desktop).
+### The board updates itself
+
+Two chats get their first tasks, they report back, and the next tasks light up — without touching anything.
+
+<img src="docs/images/board.gif" alt="Sending T-01 and T-02, the chats report done, T-03, T-04 and T-05 turn green, then T-04 gets blocked" width="100%">
+
+<details>
+<summary>What happens in this clip</summary>
+
+1. **T-01** and **T-02** are green: they depend on nothing and their chats are free.
+2. Clicking a green task opens the drawer: **which chat** gets it, and the **full prompt** — shared context, task, allowed paths, acceptance criteria and how to report.
+3. **Copy prompt and mark as sent** puts the prompt on the clipboard; the task moves to *Sent*.
+4. The chats report `started`, then `done`. **T-03**, **T-04** and **T-05** unlock and turn green.
+5. A chat reports `blocked` with a reason — the card shows it in red, and you get a notification.
+
+</details>
+
+### Floating window
+
+<table>
+<tr>
+<td width="300"><img src="docs/images/floating.gif" alt="Floating window: chat statuses change live, one click copies the next prompt" width="300"></td>
+<td>
+
+A small glass window that **stays on top of every app** — your editor, the Codex app, Claude — and on every desktop.
+
+- what each chat is doing right now
+- what **waits for you**: tasks to send, approvals, blocks
+- **one click** copies the next prompt and marks it sent
+- click a chat or task to jump to it in the main window
+- views: **overview**, **compact list**, **mini lanes**; choose sections and chats, pin it, change its opacity
+
+Open it from the sidebar, or <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd>.
+
+</td>
+</tr>
+</table>
+
+### Make it yours
+
+Screens are built from **panels**. Add, drag, resize, filter them by chat, keep several layouts, and pick your theme and accent.
+
+<img src="docs/images/customize.gif" alt="Customizing the Overview layout: adding a chat lanes panel filtered to two chats, then changing accent and theme" width="100%">
+
+## 📦 Install
+
+> [!NOTE]
+> You need **Node.js 22.12+** to build the app. The installed app does not need it.
+
+<details open>
+<summary><b>macOS — double-click install</b></summary>
+
+1. Clone the repository (Terminal or GitHub Desktop):
+   ```bash
+   git clone https://github.com/mitradeniz/ai-tracking-system.git
+   ```
 2. In Finder, open the folder and double-click **`install-macos.command`**.
+3. A Terminal window builds the app, puts **AI Tracking System** in Applications and Launchpad, and opens it.
 
-The installer builds the app for your Mac, puts **AI Tracking System** in Applications (and Launchpad) and opens it. After that, double-clicking any `.aitrack` file opens it in the app. Run the installer again after pulling updates.
+From then on, double-clicking any `.aitrack` file opens it in the app.
 
-If macOS says the installer cannot be opened, right-click it and choose **Open**. The app is signed ad hoc on your machine, not with a Developer ID, so it is meant for your own computer.
+> [!IMPORTANT]
+> If macOS says the installer cannot be opened, **right-click → Open** once. The app is signed ad hoc on your own machine, not with a Developer ID, so it is meant for your computer, not for sharing as a download.
 
-### Windows and Linux
+</details>
 
-```bash
-npm install
-npm run dist             # installers in apps/desktop/release/ (.exe, .AppImage)
-```
-
-The builds are not code-signed; on Windows choose "More info → Run anyway".
-
-### First steps
-
-Open the app, click **Add project → Browse…** and pick `examples/landing-page.aitrack`, or a `.aitrack` file from your own repository.
-
-### Without installing
+<details>
+<summary><b>Windows and Linux</b></summary>
 
 ```bash
 npm install
-npm run desktop          # build and start the desktop app from the repository
-npm run serve -- examples/landing-page.aitrack   # or the same UI in a browser tab at http://127.0.0.1:4317
+npm run dist        # installers in apps/desktop/release/ (.exe, .AppImage)
 ```
 
-![Customizing the Overview layout](docs/images/customize.png)
+The builds are not code-signed; on Windows choose *More info → Run anyway*.
 
-<img src="docs/images/floating.png" alt="Floating window" width="300" align="right">
+</details>
 
-**Floating window.** Click **Floating window** in the sidebar (or **Window → Floating Window**, ⇧⌘F). It stays on top of other apps and on every desktop, remembers its position, and can be unpinned or made more transparent from its settings. Click a chat or task to jump to it in the main window.
+<details>
+<summary><b>Run from source, or in a browser tab</b></summary>
 
-<br clear="right">
-
-## How it works
-
-```text
- .aitrack file (in your repo)          AI chats (Claude, Codex, …)
- agents · tasks · dependsOn · prompts       │  report started / blocked / done
-            │                               │  HTTP · CLI · inbox file · paste
-            ▼                               ▼
-   ┌──────────────── local tracker on 127.0.0.1:4317 ────────────────┐
-   │ project registry · event log (JSONL) · DAG · report API · SSE   │
-   └──────────────────────────────┬──────────────────────────────────┘
-                                  ▼
-                 Desktop app: lanes · flow · list · task drawer · chat editor
+```bash
+npm install
+npm run desktop                                   # build and start the desktop app
+npm run serve -- examples/landing-page.aitrack    # same UI at http://127.0.0.1:4317
 ```
 
-1. **Plan.** A `.aitrack` file lists the chats (`agents`), the `tasks` with `dependsOn`, and reusable `prompts`. You can write it by hand or have an AI write it from your plan — see [Authoring a project with AI](docs/authoring-with-ai.md).
-2. **Open.** Add the file to the app. It is validated (unknown ids, cycles, missing prompts) and laid out as a graph.
-3. **Start sessions.** In each chat's lane, copy the **session prompt** once to give that chat its role and shared context.
-4. **Dispatch.** Green tasks are ready. Click one, check the chat, press **Copy prompt and mark as sent**, paste it into that chat.
-   ![Task drawer: the chat to give it to and the prompt to copy](docs/images/drawer.png)
+</details>
 
-5. **Track.** The chat reports as it works. The board moves; newly unblocked tasks turn green; when the window is in the background you get a desktop notification.
-6. **Share.** **Export** writes the plan (optionally with a status snapshot) back to a `.aitrack` file you can commit.
+**First steps:** open the app → **Add project → Browse…** → pick `examples/landing-page.aitrack` (or a `.aitrack` file from your own repository).
 
-### Task states
+## 🔄 Update
+
+| | How |
+| --- | --- |
+| **macOS** | Double-click **`update-macos.command`**. It pulls the latest version from GitHub and, if there is one, reinstalls the app. Your projects and task status are kept. |
+| **Terminal** | `git pull` then double-click `install-macos.command` again (or `npm run update:mac`). |
+| **Windows / Linux** | `git pull && npm install && npm run dist`, then install the new build. |
+
+<details>
+<summary>What the updater checks before it changes anything</summary>
+
+- The folder must be a clean git clone. If `package-lock.json` is the only changed file (npm rewrites it on some machines), it is restored, because the installer always uses the committed lockfile.
+- Any other local change stops the update and tells you to commit or stash it.
+- The current branch must follow a branch on GitHub (usually `main`), and the update must be a fast-forward — nothing is merged or overwritten.
+- If you are already up to date, nothing is rebuilt.
+
+</details>
+
+## 🚀 Automatic updates: how we add them
+
+Today updates are one double-click. True in-app updates ("A new version is ready — restart") are on the roadmap. This is the plan:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant CI as GitHub Actions
+    participant R as GitHub Releases
+    participant A as AI Tracking System
+    participant U as You
+    CI->>R: tag v0.2.0 → build, sign, notarize, upload<br/>(.dmg, .zip, latest-mac.yml)
+    A->>R: on start and every few hours: is there a newer version?
+    R-->>A: latest-mac.yml (version, sha512)
+    A->>A: download in the background, verify signature and hash
+    A->>U: "Version 0.2.0 is ready — Restart"
+    U->>A: Restart
+    A->>A: replace itself, reopen your projects
+```
+
+- [ ] **Release pipeline** — a GitHub Actions workflow that runs `electron-builder --publish always` on version tags and uploads installers plus the `latest*.yml` update manifests to GitHub Releases.
+- [ ] **Code signing** — Apple Developer ID + notarization on macOS (the macOS updater only installs signed builds), Authenticode on Windows. Secrets live in GitHub encrypted secrets, never in the repository.
+- [ ] **`electron-updater`** in the desktop shell — check on start and every few hours, download in the background, verify, and offer *Restart to update*; never interrupt a running task.
+- [ ] **Update banner in the UI** — version, release notes, *Restart* / *Later*; a setting to turn checks off.
+- [ ] **Channels** — `stable` and `beta`, chosen in settings.
+- [ ] **Until signing is in place** — a lightweight check of the GitHub Releases API that only *tells* you a new version exists and points to `update-macos.command`.
+
+## 🧭 How it works
+
+```mermaid
+flowchart LR
+    F["📄 .aitrack file<br/>chats · tasks · dependsOn · prompts"] --> T
+    subgraph T["Local tracker · 127.0.0.1:4317"]
+      direction TB
+      G[task graph] --> B[board state]
+      L[(event log)] --> B
+    end
+    T --> UI["🖥️ Desktop app<br/>panels · floating window"]
+    UI -- "copy prompt & mark sent" --> C["🤖 AI chats<br/>Claude · Codex · Cursor · you"]
+    C -- "started / blocked / done<br/>HTTP · CLI · inbox file · paste" --> L
+```
+
+1. **Plan.** A `.aitrack` file lists the chats, the tasks with their real dependencies, and the prompts. Write it by hand or let an AI write it from your plan — see [Authoring a project with AI](docs/authoring-with-ai.md).
+2. **Open.** The app validates it (unknown ids, cycles, missing prompts) and lays it out as a graph.
+3. **Start sessions.** In each chat's lane, copy the **Session prompt** once.
+4. **Dispatch.** Send the green tasks.
+5. **Track.** Chats report as they work; dependents unlock; blocked tasks say why.
+6. **Share.** **Export** writes the plan, optionally with a status snapshot, back to a file you can commit.
+
+<details>
+<summary><b>Task lifecycle</b></summary>
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Waiting
+    Waiting --> Ready: dependencies done
+    Ready --> Sent: copy & mark sent
+    Sent --> InProgress: started
+    InProgress --> Blocked: blocked (reason)
+    Blocked --> InProgress: resumed
+    InProgress --> Review: done (approval on)
+    InProgress --> Done: done
+    Review --> Done: you approve
+    InProgress --> Failed: failed (reason)
+    Failed --> Ready: reopen
+    Done --> [*]
+```
 
 | State | Meaning |
 | --- | --- |
 | Waiting | Some dependencies are not done yet. |
-| Ready / **Send now** | Dependencies done and an eligible chat has room. Shown in green. |
+| Ready / **Send now** | Dependencies done and an eligible chat has room. Green. |
 | Ready, chat busy | Dependencies done, but every eligible chat is at its `maxParallel` limit. |
 | Sent | You copied the prompt to a chat; it has not reported yet. |
 | In progress | The chat reported `started` or `progress`. |
 | Blocked | The chat reported `blocked`, with a reason. Still holds the chat. |
-| In review | Waiting for your approval (when `requireApproval` is on, or the chat reported `review`). |
+| In review | Waiting for your approval (`requireApproval`, or the chat reported `review`). |
 | Done | Reported `done` (and approved, if approval is required). Unblocks dependents. |
 | Failed | The chat gave up, with a reason. Reopen it to send it again. |
 
-You can also change any state by hand from the task drawer.
+Every state can also be set by hand from the task drawer.
 
-## Reporting from a chat
+</details>
 
-Every rendered prompt ends with a reporting section that tells the chat exactly how to report. Four channels are accepted, in this order of preference:
+## 📡 Reporting from a chat
 
-1. **HTTP** — `curl -s -X POST http://127.0.0.1:4317/api/report -H 'content-type: application/json' -d '{"task":"T-03","status":"done","summary":"…"}'`
-2. **CLI** — `node <path-to-this-repo>/packages/reporter/bin/aitrack-report.mjs --task T-03 --status done --summary "…"` (zero dependencies; falls back to the inbox automatically)
-3. **Inbox file** — write the same JSON to `.aitrack/inbox/<task>-<status>-<unix-ms>.json` in the repository (any git worktree of `settings.repoPath` is scanned too). Useful when the chat runs in a sandbox that cannot reach localhost.
-4. **Paste** — the chat ends its reply with an ` ```aitrack-report ` block; paste it into **Paste report**.
+Every prompt ends with a short **REPORTING** section, so chats know how to report without extra setup. Four channels, in order of preference:
 
-Details and the full report schema: [docs/agent-reporting.md](docs/agent-reporting.md).
+| Channel | When to use it |
+| --- | --- |
+| **HTTP** `POST /api/report` | The chat runs on your machine. |
+| **CLI** `aitrack-report --task T-03 --status done` | Same, with automatic fallback to the inbox. |
+| **Inbox file** `.aitrack/inbox/<task>-<status>-<ms>.json` | The chat runs in a sandbox that cannot reach localhost. Git worktrees are scanned too. |
+| **Paste** an ` ```aitrack-report ` block | Cloud chats that cannot reach your disk. |
 
-## The `.aitrack` file
+Details and the report schema: [docs/agent-reporting.md](docs/agent-reporting.md).
 
-A small example:
+## 📄 The `.aitrack` file
+
+<details>
+<summary>A small example</summary>
 
 ```json
 {
@@ -142,53 +277,96 @@ A small example:
 }
 ```
 
-Full reference: [docs/file-format.md](docs/file-format.md). JSON Schema: [`schema/aitrack.schema.json`](schema/aitrack.schema.json). Validate files from the command line with `npm run validate -- path/to/project.aitrack`.
+</details>
 
-## Using it across projects
+Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`schema/aitrack.schema.json`](schema/aitrack.schema.json) · validate with `npm run validate -- path/to/project.aitrack`.
 
-The app keeps a list of open projects; each points to a `.aitrack` file that lives in that project's repository. Add as many as you like. To bring a new project in:
+**New project?** Give your plan to an AI together with [these instructions](docs/authoring-with-ai.md), save the answer as `<project>.aitrack` in that repository, validate it and **Add project**.
 
-1. Give your planning document to an AI together with the instructions in [docs/authoring-with-ai.md](docs/authoring-with-ai.md).
-2. Save its output as `<project>.aitrack` in the repository and run `npm run validate -- <file>`.
-3. **Add project** in the app.
+## 🎨 Make it yours
 
-## Commands
+| | |
+| --- | --- |
+| **Panels** | Ready to send · Chat lanes · Flow · List · Needs you · Recent activity · Progress. Add, drag, resize (¼ to full width, auto to full height) and limit each to some chats. |
+| **Layouts** | As many as you like — *Morning*, *Only Claude*, *Review time*. Built-in: Chats, Overview, Flow, List. |
+| **Chats** | **+ Add chat** at the end of the lanes, ✏️ on a lane to edit or remove one. A new chat can take over tasks of busy chats. |
+| **Appearance** | Theme (dark, light, system), accent colour, density, text size, glass strength, language (English, Türkçe). |
+| **Glass** | On macOS the window is translucent and takes the tone of whatever is behind it; the floating window too. |
+
+## 🧰 Commands
 
 | Command | What it does |
 | --- | --- |
 | `npm run desktop` | Build everything and start the desktop app. |
-| `npm run serve -- [files…]` | Start the tracker and web UI on `127.0.0.1:4317` (`--port`, `--data-dir`). |
+| `npm run serve -- [files…]` | Tracker and web UI on `127.0.0.1:4317` (`--port`, `--data-dir`). |
 | `npm run dev:web` | Development: tracker with reload plus the Vite dev server. |
 | `npm run dist` | Build installers with electron-builder. |
-| `npm run install:mac` | Same as double-clicking `install-macos.command`. |
-| `npm test` | Unit and API tests (Vitest). |
-| `npm run typecheck` | TypeScript checks for all packages. |
+| `npm run install:mac` / `npm run update:mac` | Same as double-clicking the installer / updater. |
+| `npm test` · `npm run typecheck` | Tests (Vitest) and TypeScript checks. |
 | `npm run validate -- <files…>` | Validate `.aitrack` files. |
-| `npm run schema` | Regenerate `schema/aitrack.schema.json` from the zod schema. |
+| `npm run schema` | Regenerate the JSON Schema from the zod schema. |
 
-Environment variables: `AITRACK_PORT` (desktop app, default `4317`), `AITRACK_DATA_DIR` (default `~/.aitrack`), `AITRACK_SERVER` (reporter CLI).
+Environment: `AITRACK_PORT` (default `4317`), `AITRACK_DATA_DIR` (default `~/.aitrack`), `AITRACK_SERVER` (reporter CLI).
 
-## Repository layout
+<details>
+<summary>Repository layout</summary>
 
 ```text
-packages/core       file format (zod), DAG, board logic, prompt rendering — no I/O
+packages/core       file format (zod), task graph, board logic, prompt rendering, file edits — no I/O
 packages/server     local tracker: registry, event log, inbox watcher, HTTP API, SSE
-packages/ui         React UI (lanes, flow, list, task drawer), English and Turkish
+packages/ui         React UI: panels, layouts, floating window, appearance; English and Turkish
 packages/reporter   aitrack-report CLI for agents, zero dependencies
-apps/desktop        Electron shell: starts the tracker, file dialogs, .aitrack association
+apps/desktop        Electron shell: tracker, translucent windows, floating window, .aitrack association
 schema/             generated JSON Schema
 examples/           example projects
-docs/               file format, reporting, authoring with AI
+docs/               file format, reporting, authoring with AI, images
 ```
 
-## Security
+</details>
 
-The tracker listens on `127.0.0.1` only, refuses requests whose `Host` is not a loopback name (DNS rebinding), refuses cross-origin browser writes, and requires `application/json` for writes. The desktop window runs with context isolation and sandboxing; the only native bridge is file dialogs. Reports are data: they change task status and are shown as text, never executed. See [SECURITY.md](SECURITY.md).
+## 🔒 Security
 
-Do not put secrets in `.aitrack` files or in reports — the file is meant to be committed.
+- The tracker listens on **127.0.0.1 only**, refuses foreign `Host` headers (DNS rebinding) and cross-origin writes, and requires `application/json` for writes.
+- Windows run with context isolation and the sandbox; the native bridge is limited to file dialogs and the floating window, and every call is checked in the main process.
+- Reports are data: they change task status and are shown as text, never executed.
+- Do not put secrets in `.aitrack` files or reports — the file is meant to be committed.
 
-## Status
+More in [SECURITY.md](SECURITY.md).
 
-Version 0.1. The file format is versioned (`"version": 1`) and will stay backward compatible within a major version.
+## ❓ FAQ
 
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
+<details>
+<summary><b>Does it talk to Claude or Codex for me?</b></summary>
+
+Not yet. You paste prompts into your chats, and the chats report back. Opening sessions and sending tasks automatically through the agents' SDKs is a possible next step.
+
+</details>
+
+<details>
+<summary><b>Where is my data?</b></summary>
+
+The plan is your `.aitrack` file. Status events are in `~/.aitrack/events/` on your machine. Layouts and appearance are stored in the app. Nothing leaves your computer.
+
+</details>
+
+<details>
+<summary><b>Can several projects be open at once?</b></summary>
+
+Yes. Each project is a `.aitrack` file in its own repository; the sidebar lists them and the floating window can follow any of them.
+
+</details>
+
+<details>
+<summary><b>My chat runs in the cloud and cannot reach localhost.</b></summary>
+
+Use the inbox file (if the chat works in a worktree on your disk) or paste the `aitrack-report` block that every prompt asks the chat to end with.
+
+</details>
+
+---
+
+<div align="center">
+
+Version 0.1 · the file format is versioned and stays backward compatible within a major version · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
+
+</div>
