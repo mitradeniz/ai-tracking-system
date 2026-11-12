@@ -9,6 +9,15 @@ interface ViewProps {
   model: Model;
   onOpen: (id: string) => void;
   onError: (message: string) => void;
+  /** Only these chats; null or undefined means every chat. */
+  agents?: Set<string> | null;
+}
+
+/** True when a task belongs to one of the chats (as owner or as the chat holding it now). */
+export function inChats(model: Model, s: TaskSnapshot, agents: Set<string> | null | undefined): boolean {
+  if (!agents) return true;
+  const owner = model.task.get(s.id)?.agent;
+  return (owner !== undefined && agents.has(owner)) || (s.agent !== null && s.agent !== undefined && agents.has(s.agent));
 }
 
 function byUrgency(model: Model) {
@@ -22,9 +31,9 @@ function byStep(model: Model) {
   return (a: TaskSnapshot, b: TaskSnapshot) => a.layer - b.layer || urgency(a, b);
 }
 
-export function ReadyStrip({ model, onOpen }: Omit<ViewProps, "onError">) {
+export function ReadyStrip({ model, onOpen, agents }: Omit<ViewProps, "onError">) {
   const { t } = useI18n();
-  const groups = (model.detail.board?.agents ?? []).filter((a) => a.dispatchable.length > 0);
+  const groups = (model.detail.board?.agents ?? []).filter((a) => a.dispatchable.length > 0 && (!agents || agents.has(a.id)));
   return (
     <div className="ready-strip" aria-live="polite">
       <span className="label">{t("readyNow")}</span>
@@ -43,7 +52,7 @@ export function ReadyStrip({ model, onOpen }: Omit<ViewProps, "onError">) {
   );
 }
 
-export function LanesView({ model, onOpen, onError, onEditAgent }: ViewProps & { onEditAgent: (agentId?: string) => void }) {
+export function LanesView({ model, onOpen, onError, onEditAgent, agents }: ViewProps & { onEditAgent: (agentId?: string) => void }) {
   const { t } = useI18n();
   const [showDone, setShowDone] = useState<Record<string, boolean>>({});
   const [copiedFor, setCopiedFor] = useState<string | null>(null);
@@ -52,6 +61,7 @@ export function LanesView({ model, onOpen, onError, onEditAgent }: ViewProps & {
   if (!project || !board) return null;
   const urgency = byUrgency(model);
   const step = byStep(model);
+  const shown = project.agents.filter((a) => !agents || agents.has(a.id));
 
   const copyPrompt = async (label: string, load: () => Promise<string>) => {
     try {
@@ -64,8 +74,8 @@ export function LanesView({ model, onOpen, onError, onEditAgent }: ViewProps & {
   };
 
   return (
-    <div className="lanes" style={{ gridTemplateColumns: `repeat(${project.agents.length}, minmax(276px, 1fr)) 150px` }}>
-      {project.agents.map((agent) => {
+    <div className="lanes" style={{ gridTemplateColumns: `repeat(${shown.length}, minmax(276px, 1fr)) 150px` }}>
+      {shown.map((agent) => {
         const av = board.agents.find((a) => a.id === agent.id);
         const holding = (av?.holding ?? []).map((id) => model.snap.get(id)).filter((s): s is TaskSnapshot => Boolean(s));
         const sendable = (av?.dispatchable ?? []).map((id) => model.snap.get(id)).filter((s): s is TaskSnapshot => Boolean(s));
@@ -186,7 +196,7 @@ export function LanesView({ model, onOpen, onError, onEditAgent }: ViewProps & {
   );
 }
 
-export function FlowView({ model, onOpen }: Omit<ViewProps, "onError">) {
+export function FlowView({ model, onOpen, agents }: Omit<ViewProps, "onError">) {
   const { t } = useI18n();
   const [hover, setHover] = useState<string | null>(null);
   const board = model.detail.board;
@@ -198,33 +208,38 @@ export function FlowView({ model, onOpen }: Omit<ViewProps, "onError">) {
   if (!board) return null;
   const columns: TaskSnapshot[][] = Array.from({ length: board.layers }, () => []);
   const order = board.order;
-  for (const s of [...board.tasks].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))) columns[s.layer]?.push(s);
+  for (const s of [...board.tasks].sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))) {
+    if (inChats(model, s, agents)) columns[s.layer]?.push(s);
+  }
 
   return (
     <div className="flow">
-      {columns.map((col, i) => (
-        <div className="flow-col" key={i}>
-          <h3>
-            {t("layer")} {i + 1}
-          </h3>
-          {col.map((s) => (
-            <TaskCard
-              key={s.id}
-              model={model}
-              snap={s}
-              onOpen={onOpen}
-              showAgent
-              onHover={setHover}
-              highlight={hover === s.id ? "self" : related.has(s.id) ? "related" : null}
-            />
-          ))}
-        </div>
-      ))}
+      {columns.map(
+        (col, i) =>
+          col.length > 0 && (
+            <div className="flow-col" key={i}>
+              <h3>
+                {t("layer")} {i + 1}
+              </h3>
+              {col.map((s) => (
+                <TaskCard
+                  key={s.id}
+                  model={model}
+                  snap={s}
+                  onOpen={onOpen}
+                  showAgent
+                  onHover={setHover}
+                  highlight={hover === s.id ? "self" : related.has(s.id) ? "related" : null}
+                />
+              ))}
+            </div>
+          ),
+      )}
     </div>
   );
 }
 
-export function ListView({ model, onOpen }: Omit<ViewProps, "onError">) {
+export function ListView({ model, onOpen, agents }: Omit<ViewProps, "onError">) {
   const { t, lang } = useI18n();
   const [q, setQ] = useState("");
   const [agent, setAgent] = useState("");
@@ -236,6 +251,7 @@ export function ListView({ model, onOpen }: Omit<ViewProps, "onError">) {
   const rows = board.tasks.filter((s) => {
     const task = model.task.get(s.id);
     if (!task) return false;
+    if (!inChats(model, s, agents)) return false;
     if (agent && task.agent !== agent && s.agent !== agent) return false;
     if (status && s.status !== status) return false;
     if (q && !`${task.id} ${task.title}`.toLowerCase().includes(q.toLowerCase())) return false;
@@ -248,11 +264,13 @@ export function ListView({ model, onOpen }: Omit<ViewProps, "onError">) {
         <input className="input" placeholder={t("search")} value={q} onChange={(e) => setQ(e.target.value)} aria-label={t("search")} />
         <select className="input" value={agent} onChange={(e) => setAgent(e.target.value)} aria-label={t("chat")}>
           <option value="">{t("allChats")}</option>
-          {project.agents.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
+          {project.agents
+            .filter((a) => !agents || agents.has(a.id))
+            .map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
         </select>
         <select className="input" value={status} onChange={(e) => setStatus(e.target.value)} aria-label={t("status")}>
           <option value="">{t("allStatuses")}</option>

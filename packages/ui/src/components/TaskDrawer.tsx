@@ -94,9 +94,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
         <div className="drawer-head">
           <div className="row">
             <span className="mono muted">{task.id}</span>
-            <span className={`pill ${snap.dispatchable ? "sendable" : s}`}>
-              {snap.dispatchable ? t("sendable") : t(`status_${s}`)}
-            </span>
+            <span className={`pill ${snap.dispatchable ? "sendable" : s}`}>{snap.dispatchable ? t("sendable") : t(`status_${s}`)}</span>
             {snap.critical && <span className="crit">● {t("critical")}</span>}
             <span className="spacer" />
             <button className="icon-btn" onClick={onClose} aria-label={t("close")}>
@@ -125,7 +123,11 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
             </div>
             {!holding && eligible.length > 1 && (
               <span className="small muted">
-                {t("orAlso")}: {eligible.slice(1).map((a) => agentName(model, a)).join(", ")}
+                {t("orAlso")}:{" "}
+                {eligible
+                  .slice(1)
+                  .map((a) => agentName(model, a))
+                  .join(", ")}
               </span>
             )}
             {snap.dispatchable && <span className="small">{t("canSendNow")}</span>}
@@ -258,7 +260,15 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
                 {snap.pr && (
                   <>
                     <dt>{t("pr")}</dt>
-                    <dd>{/^https?:\/\//.test(snap.pr) ? <a href={snap.pr} target="_blank" rel="noreferrer">{snap.pr}</a> : snap.pr}</dd>
+                    <dd>
+                      {/^https?:\/\//.test(snap.pr) ? (
+                        <a href={snap.pr} target="_blank" rel="noreferrer">
+                          {snap.pr}
+                        </a>
+                      ) : (
+                        snap.pr
+                      )}
+                    </dd>
                   </>
                 )}
                 {snap.verify && (
@@ -375,7 +385,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
                 {events.map((e) => (
                   <li key={e.id}>
                     <div className="when">
-                      {formatTime(e.ts, lang)} · {e.type} · {e.source}
+                      {formatTime(e.ts, lang)} · {t(`type_${e.type}`)} · {e.source}
                       {e.agent ? ` · ${agentName(model, e.agent)}` : ""}
                     </div>
                     {(e.message || e.reason) && <div>{e.reason ?? e.message}</div>}

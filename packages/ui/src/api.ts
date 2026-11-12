@@ -42,6 +42,17 @@ export interface DesktopBridge {
   saveProjectDialog(defaultName: string): Promise<string | null>;
   newProjectDialog(): Promise<string | null>;
   showInFolder(filePath: string): Promise<void>;
+  platform?: string;
+  /** Opens (or focuses) the floating window. */
+  openMini?(): Promise<void>;
+  /** Hides the floating window (called from inside it). */
+  closeMini?(): Promise<void>;
+  /** Floating window options. */
+  setMini?(options: { pinned?: boolean; opacity?: number }): Promise<void>;
+  /** Brings the main window forward, optionally on a project and task. */
+  focusMain?(projectKey?: string, taskId?: string): Promise<void>;
+  /** Main window: called when the floating window asks to show a task. Returns an unsubscribe function. */
+  onOpenTask?(callback: (projectKey: string | undefined, taskId: string | undefined) => void): () => void;
 }
 
 declare global {
@@ -87,10 +98,9 @@ export const api = {
   paste: (key: string, text: string) =>
     request<{ recorded: number; errors: string[] }>("POST", `/api/projects/${enc(key)}/paste`, { text }),
   taskPrompt: (key: string, task: string, agent?: string) =>
-    request<{ text: string }>(
-      "GET",
-      `/api/projects/${enc(key)}/tasks/${enc(task)}/prompt${agent ? `?agent=${enc(agent)}` : ""}`,
-    ).then((r) => r.text),
+    request<{ text: string }>("GET", `/api/projects/${enc(key)}/tasks/${enc(task)}/prompt${agent ? `?agent=${enc(agent)}` : ""}`).then(
+      (r) => r.text,
+    ),
   bootstrapPrompt: (key: string, agent: string) =>
     request<{ text: string }>("GET", `/api/projects/${enc(key)}/agents/${enc(agent)}/bootstrap`).then((r) => r.text),
   libraryPrompt: (key: string, prompt: string) =>
@@ -120,4 +130,10 @@ export async function copyText(text: string): Promise<void> {
   area.select();
   document.execCommand("copy");
   area.remove();
+}
+
+/** Copies a task's prompt for a chat and records that it was sent to that chat. */
+export async function dispatchTask(projectKey: string, taskId: string, agentId: string): Promise<void> {
+  await copyText(await api.taskPrompt(projectKey, taskId, agentId));
+  await api.addEvent(projectKey, { task: taskId, type: "dispatched", agent: agentId });
 }

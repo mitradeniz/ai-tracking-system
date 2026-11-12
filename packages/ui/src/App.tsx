@@ -1,64 +1,42 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, type Activity, type ProjectDetail, type ProjectSummary } from "./api.ts";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, desktop, type Activity } from "./api.ts";
+import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { AddProjectDialog, AgentDialog, ExportDialog, PasteDialog } from "./components/Dialogs.tsx";
+import { SettingsDialog } from "./components/Settings.tsx";
 import { TaskDrawer } from "./components/TaskDrawer.tsx";
-import { FlowView, LanesView, ListView, ReadyStrip } from "./components/Views.tsx";
+import { Workspace } from "./components/Workspace.tsx";
+import { useTracker } from "./hooks.ts";
 import { chosenLang, I18nContext, initialLang, rememberLang, translator, type Key, type Lang } from "./i18n.ts";
+import { defaultLayouts, newLayout, useLayouts, type Layout } from "./layouts.ts";
 import { buildModel } from "./model.ts";
+import { usePref } from "./prefs.ts";
 
-type View = "lanes" | "flow" | "list";
 interface Toast {
   id: number;
   text: string;
   kind: string;
 }
 
-function readPref(name: string, fallback: string): string {
-  try {
-    return localStorage.getItem(name) ?? fallback;
-  } catch {
-    return fallback;
+/** Opens the floating window: a native always-on-top window in the desktop app, a popup in a browser. */
+export function openFloating(): void {
+  if (desktop?.openMini) {
+    void desktop.openMini();
+    return;
   }
-}
-
-function writePref(name: string, value: string): void {
-  try {
-    localStorage.setItem(name, value);
-  } catch {
-    // Ignore: preferences are a convenience.
-  }
+  window.open("/?mini=1", "aitrack-mini", "popup,width=380,height=620");
 }
 
 export function App() {
   const [lang, setLang] = useState<Lang>(initialLang);
-  const [theme, setTheme] = useState(() => readPref("aitrack.theme", "dark"));
   const t = useMemo(() => translator(lang), [lang]);
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [selected, setSelected] = useState<string | null>(() => readPref("aitrack.project", "") || null);
-  const [detail, setDetail] = useState<ProjectDetail | null>(null);
-  const [view, setView] = useState<View>(() => (readPref("aitrack.view", "lanes") as View) ?? "lanes");
+  const [appearance, setAppearance] = useAppearance();
+  useApplyAppearance(appearance);
+  const [selected, setSelected] = usePref<string | null>("selectedProject", null);
   const [openTask, setOpenTask] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"add" | "paste" | "export" | "agent" | null>(null);
+  const [dialog, setDialog] = useState<"add" | "paste" | "export" | "agent" | "settings" | null>(null);
   const [agentToEdit, setAgentToEdit] = useState<string | undefined>(undefined);
-  const [live, setLive] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
-  const selectedRef = useRef(selected);
-  selectedRef.current = selected;
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.lang = lang;
-    writePref("aitrack.theme", theme);
-  }, [theme, lang]);
-
-  // A project may set its language; it applies until the user picks one with the toggle.
-  const projectLang = detail?.project?.settings.language;
-  useEffect(() => {
-    if (projectLang && !chosenLang()) setLang(projectLang);
-  }, [projectLang]);
-
-  useEffect(() => writePref("aitrack.view", view), [view]);
-  useEffect(() => writePref("aitrack.project", selected ?? ""), [selected]);
 
   const toast = useCallback((text: string, kind = "info") => {
     const id = Date.now() + Math.random();
@@ -66,80 +44,74 @@ export function App() {
     window.setTimeout(() => setToasts((list) => list.filter((x) => x.id !== id)), 5000);
   }, []);
 
-  const loadProjects = useCallback(async () => {
-    try {
-      const list = await api.projects();
-      setProjects(list);
-      if (list.length > 0 && !list.some((p) => p.key === selectedRef.current)) setSelected(list[0]!.key);
-      if (list.length === 0) setSelected(null);
-    } catch (e) {
-      toast((e as Error).message, "failed");
-    }
-  }, [toast]);
+  const onActivity = useCallback(
+    (a: Activity) => {
+      if (!["done", "blocked", "failed", "started", "review"].includes(a.event.type)) return;
+      const text = `${a.projectName ? `${a.projectName}: ` : ""}${t(`activity_${a.event.type}` as Key, { task: a.event.task })}`;
+      toast(text, a.event.type);
+      if (a.event.source !== "ui" && "Notification" in window && Notification.permission === "granted" && document.hidden) {
+        new Notification("AI Tracking System", { body: text });
+      }
+    },
+    [t, toast],
+  );
 
-  const loadDetail = useCallback(async (key: string | null) => {
-    if (!key) {
-      setDetail(null);
-      return;
+  const { projects, loaded, detail, live, refresh } = useTracker(selected, onActivity, (m) => toast(m, "failed"));
+
+  // Keep a valid project selected.
+  useEffect(() => {
+    if (!loaded) return;
+    if (projects.length === 0) {
+      if (selected !== null) setSelected(null);
+    } else if (!projects.some((p) => p.key === selected)) {
+      setSelected(projects[0]!.key);
     }
-    try {
-      setDetail(await api.project(key));
-    } catch {
-      setDetail(null);
-    }
+  }, [loaded, projects, selected, setSelected]);
+
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
   }, []);
 
   useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
+    document.documentElement.lang = lang;
+  }, [lang]);
 
+  // A project may set its language; it applies until the user picks one.
+  const projectLang = detail?.project?.settings.language;
   useEffect(() => {
-    void loadDetail(selected);
-  }, [selected, loadDetail]);
+    if (projectLang && !chosenLang()) setLang(projectLang);
+  }, [projectLang]);
 
-  // Live updates: server-sent events, with a slow poll as a safety net.
-  useEffect(() => {
-    let timer: number | undefined;
-    const refresh = () => {
-      window.clearTimeout(timer);
-      timer = window.setTimeout(() => {
-        void loadProjects();
-        void loadDetail(selectedRef.current);
-      }, 120);
-    };
-    const source = new EventSource("/api/stream");
-    source.addEventListener("hello", () => setLive(true));
-    source.addEventListener("changed", refresh);
-    source.addEventListener("activity", (msg) => {
-      try {
-        const a = JSON.parse((msg as MessageEvent<string>).data) as Activity;
-        const key = `activity_${a.event.type}` as Key;
-        if (["done", "blocked", "failed", "started", "review"].includes(a.event.type)) {
-          const text = `${a.projectName ? `${a.projectName}: ` : ""}${t(key, { task: a.event.task })}`;
-          toast(text, a.event.type);
-          if (a.event.source !== "ui" && "Notification" in window && Notification.permission === "granted" && document.hidden) {
-            new Notification("AI Tracking System", { body: text });
-          }
-        }
-      } catch {
-        // Ignore malformed activity.
-      }
-    });
-    source.onerror = () => setLive(false);
-    const poll = window.setInterval(refresh, 15000);
-    if ("Notification" in window && Notification.permission === "default") void Notification.requestPermission();
-    return () => {
-      source.close();
-      window.clearInterval(poll);
-      window.clearTimeout(timer);
-    };
-  }, [loadProjects, loadDetail, toast, t]);
+  const chooseLang = (next: Lang) => {
+    rememberLang(next);
+    setLang(next);
+  };
+
+  // The floating window asks the main window to show a task.
+  useEffect(
+    () =>
+      desktop?.onOpenTask?.((projectKey, taskId) => {
+        if (projectKey) setSelected(projectKey);
+        if (taskId) setOpenTask(taskId);
+      }),
+    [setSelected],
+  );
+
+  const [layouts, setLayouts] = useLayouts(defaultLayouts);
+  const [activeLayout, setActiveLayout] = usePref<string>("activeLayout", "lanes");
+  const layout = layouts.find((l) => l.id === activeLayout) ?? layouts[0]!;
+  const layoutName = (l: Layout) => l.name || (["lanes", "overview", "flow", "list"].includes(l.id) ? t(`layout_${l.id}` as Key) : l.id);
+  const saveLayout = (next: Layout) => setLayouts((all) => all.map((l) => (l.id === next.id ? next : l)));
 
   const model = useMemo(() => (detail ? buildModel(detail) : null), [detail]);
   const counts = detail?.board?.counts;
   const readyCount = detail?.board?.tasks.filter((x) => x.dispatchable).length ?? 0;
   const errors = detail?.issues.filter((i) => i.level === "error") ?? [];
   const warnings = detail?.issues.filter((i) => i.level === "warning") ?? [];
+  const editAgent = (agentId?: string) => {
+    setAgentToEdit(agentId);
+    setDialog("agent");
+  };
 
   return (
     <I18nContext.Provider value={{ t, lang }}>
@@ -174,19 +146,28 @@ export function App() {
             <button className="btn primary" onClick={() => setDialog("add")}>
               + {t("addProject")}
             </button>
+            <button className="btn" onClick={openFloating} title={t("floatingHint")}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="3" />
+                <rect x="12" y="11" width="7" height="7" rx="1.5" fill="currentColor" stroke="none" />
+              </svg>
+              {t("floating")}
+            </button>
             <div className="row">
-              <button
-                className="btn small ghost"
-                onClick={() => {
-                  const next = lang === "tr" ? "en" : "tr";
-                  rememberLang(next);
-                  setLang(next);
-                }}
-              >
+              <button className="btn small ghost" onClick={() => chooseLang(lang === "tr" ? "en" : "tr")}>
                 {t("language")}
               </button>
-              <button className="btn small ghost" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("theme")}>
-                {theme === "dark" ? "☀" : "☾"}
+              <span className="spacer" />
+              <button
+                className="btn small ghost"
+                onClick={() => setDialog("settings")}
+                aria-label={t("appearance")}
+                title={t("appearance")}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+                </svg>
               </button>
             </div>
           </div>
@@ -249,7 +230,7 @@ export function App() {
                         if (window.confirm(t("removeConfirm"))) {
                           await api.removeProject(detail.key);
                           setSelected(null);
-                          void loadProjects();
+                          refresh();
                         }
                       }}
                     >
@@ -259,12 +240,71 @@ export function App() {
                 </div>
                 <div className="header-row">
                   <div className="tabs" role="tablist">
-                    {(["lanes", "flow", "list"] as View[]).map((v) => (
-                      <button key={v} role="tab" aria-selected={view === v} onClick={() => setView(v)}>
-                        {t(`views_${v}`)}
+                    {layouts.map((l) =>
+                      editing && l.id === layout.id ? (
+                        <input
+                          key={l.id}
+                          className="input tab-name"
+                          value={l.name || layoutName(l)}
+                          aria-label={t("layoutName")}
+                          onChange={(e) => saveLayout({ ...l, name: e.target.value })}
+                        />
+                      ) : (
+                        <button key={l.id} role="tab" aria-selected={l.id === layout.id} onClick={() => setActiveLayout(l.id)}>
+                          {layoutName(l)}
+                        </button>
+                      ),
+                    )}
+                    {editing && (
+                      <button
+                        className="tab-add"
+                        title={t("newLayout")}
+                        aria-label={t("newLayout")}
+                        onClick={() => {
+                          const l = newLayout(t("newLayoutName"));
+                          setLayouts((all) => [...all, l]);
+                          setActiveLayout(l.id);
+                        }}
+                      >
+                        +
                       </button>
-                    ))}
+                    )}
                   </div>
+                  {editing && layouts.length > 1 && (
+                    <button
+                      className="btn small ghost danger"
+                      onClick={() => {
+                        const rest = layouts.filter((l) => l.id !== layout.id);
+                        setLayouts(rest);
+                        setActiveLayout(rest[0]!.id);
+                      }}
+                    >
+                      {t("deleteLayout")}
+                    </button>
+                  )}
+                  <button className={`btn small ${editing ? "primary" : ""}`} onClick={() => setEditing(!editing)}>
+                    {editing ? (
+                      t("doneEditing")
+                    ) : (
+                      <>
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          aria-hidden="true"
+                        >
+                          <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                          <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                          <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                          <rect x="3" y="16" width="7" height="5" rx="1.5" />
+                        </svg>
+                        {t("editScreen")}
+                      </>
+                    )}
+                  </button>
                   <span className="spacer" />
                   <div className="serverline">
                     <span>
@@ -293,21 +333,19 @@ export function App() {
                   </div>
                 )}
               </header>
-              {model && <ReadyStrip model={model} onOpen={setOpenTask} />}
               <div className="content">
-                {model && view === "lanes" && (
-                  <LanesView
+                {model && (
+                  <Workspace
                     model={model}
+                    layout={layout}
+                    editing={editing}
+                    onChange={saveLayout}
                     onOpen={setOpenTask}
                     onError={(m) => toast(m, "failed")}
-                    onEditAgent={(agentId) => {
-                      setAgentToEdit(agentId);
-                      setDialog("agent");
-                    }}
+                    onInfo={(m) => toast(m, "done")}
+                    onEditAgent={editAgent}
                   />
                 )}
-                {model && view === "flow" && <FlowView model={model} onOpen={setOpenTask} />}
-                {model && view === "list" && <ListView model={model} onOpen={setOpenTask} />}
               </div>
             </>
           )}
@@ -328,7 +366,7 @@ export function App() {
           onClose={() => setDialog(null)}
           onAdded={(key) => {
             setSelected(key);
-            void loadProjects();
+            refresh();
           }}
         />
       )}
@@ -341,9 +379,21 @@ export function App() {
           onClose={() => setDialog(null)}
           onDone={(message) => {
             toast(message, "done");
-            void loadDetail(detail.key);
-            void loadProjects();
+            refresh();
           }}
+        />
+      )}
+      {dialog === "settings" && (
+        <SettingsDialog
+          appearance={appearance}
+          onAppearance={setAppearance}
+          lang={lang}
+          onLang={chooseLang}
+          onResetLayouts={() => {
+            setLayouts(defaultLayouts());
+            setActiveLayout("lanes");
+          }}
+          onClose={() => setDialog(null)}
         />
       )}
       {dialog === "paste" && detail && <PasteDialog projectKey={detail.key} onClose={() => setDialog(null)} />}
