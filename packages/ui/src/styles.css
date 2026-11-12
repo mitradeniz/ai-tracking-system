@@ -1,30 +1,32 @@
 /*
- * AI Tracking System — black liquid glass.
- * Monochrome surfaces of frosted glass over a deep black backdrop; colour is used only, and softly,
- * for task status. The light theme is the same system in white glass.
+ * AI Tracking System — liquid glass that takes the tone of what is behind it.
+ * In the desktop app the window is translucent (macOS vibrancy, Windows Mica): the sidebar shows the
+ * blurred desktop behind it and the content area is a lightly tinted pane. In a browser the same
+ * surfaces sit on a warm neutral backdrop. Colour is used only, and softly, for task status.
  */
 
 :root {
-  --bg: #050505;
+  --bg: #262624;
+  --pane: rgba(38, 38, 36, 0.8);
   --backdrop:
-    radial-gradient(1100px 700px at 0% -10%, rgba(255, 255, 255, 0.075), transparent 60%),
-    radial-gradient(900px 620px at 105% 0%, rgba(255, 255, 255, 0.05), transparent 62%),
-    radial-gradient(800px 600px at 60% 115%, rgba(255, 255, 255, 0.04), transparent 60%);
-  --glass: rgba(255, 255, 255, 0.045);
-  --glass-2: rgba(255, 255, 255, 0.07);
-  --glass-3: rgba(255, 255, 255, 0.11);
-  --glass-solid: rgba(16, 16, 16, 0.78);
+    radial-gradient(1100px 700px at 0% -10%, rgba(255, 255, 255, 0.07), transparent 60%),
+    radial-gradient(900px 620px at 105% 0%, rgba(255, 244, 230, 0.045), transparent 62%),
+    radial-gradient(800px 600px at 60% 115%, rgba(255, 255, 255, 0.035), transparent 60%);
+  --glass: rgba(255, 255, 255, 0.05);
+  --glass-2: rgba(255, 255, 255, 0.08);
+  --glass-3: rgba(255, 255, 255, 0.12);
+  --glass-solid: rgba(44, 44, 42, 0.86);
   --sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.015) 42%, rgba(255, 255, 255, 0));
   --edge: rgba(255, 255, 255, 0.09);
   --edge-strong: rgba(255, 255, 255, 0.17);
   --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.07);
   --blur: blur(22px) saturate(140%);
-  --text: #f4f4f2;
-  --muted: #a1a1a0;
-  --faint: #6e6e6c;
-  --ink: #0a0a0a;
-  --primary: #f4f4f2;
-  --primary-text: #0a0a0a;
+  --text: #f5f4ef;
+  --muted: #a8a59d;
+  --faint: #7a7871;
+  --ink: #1a1a18;
+  --primary: #f5f4ef;
+  --primary-text: #1a1a18;
   --primary-hover: #ffffff;
   --focus: rgba(255, 255, 255, 0.55);
   --ready: #8fcfa6;
@@ -37,10 +39,10 @@
   --blocked-bg: rgba(229, 154, 146, 0.07);
   --review: #c8bde0;
   --review-line: rgba(200, 189, 224, 0.4);
-  --done: #7d7d7b;
-  --waiting: #6e6e6c;
+  --done: #82807a;
+  --waiting: #7a7871;
   --critical: #d8c08c;
-  --shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
+  --shadow: 0 20px 50px rgba(0, 0, 0, 0.45);
   --radius: 16px;
   --radius-sm: 11px;
   --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
@@ -49,7 +51,8 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #f3f3f1;
+  --bg: #f3f2ee;
+  --pane: rgba(250, 249, 246, 0.82);
   --backdrop:
     radial-gradient(1100px 700px at 0% -10%, rgba(255, 255, 255, 0.95), transparent 60%),
     radial-gradient(900px 620px at 105% 0%, rgba(210, 210, 206, 0.55), transparent 62%),
@@ -2020,7 +2023,7 @@ pre.prompt {
   background-color: var(--glass-solid);
 }
 :root[data-mini][data-vibrancy] .mini {
-  background-color: rgba(8, 8, 8, 0.32);
+  background-color: rgba(38, 38, 36, 0.28);
 }
 :root[data-mini][data-vibrancy][data-theme="light"] .mini {
   background-color: rgba(255, 255, 255, 0.35);
@@ -2296,4 +2299,53 @@ pre.prompt {
   border: 1px solid var(--edge);
   background-color: var(--glass-solid);
   box-shadow: var(--shadow), var(--highlight);
+}
+
+/* ───────────── Desktop: translucent window (macOS vibrancy, Windows Mica) ───────────── */
+
+:root[data-vibrancy] body {
+  background: transparent;
+}
+
+:root[data-vibrancy]:not([data-mini]) .sidebar {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+:root[data-vibrancy]:not([data-mini]) .main {
+  background-color: var(--pane);
+  border-left: 1px solid var(--edge);
+}
+
+:root[data-vibrancy] .project-list button[aria-current="true"] {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-vibrancy][data-theme="light"] .project-list button[aria-current="true"] {
+  background: rgba(0, 0, 0, 0.07);
+}
+
+/* macOS: hidden title bar; the traffic lights sit in the sidebar, the top strip drags the window. */
+:root[data-platform="darwin"]:not([data-mini]) .brand {
+  padding-top: 46px;
+}
+
+:root[data-desktop]:not([data-mini]) .brand,
+:root[data-desktop]:not([data-mini]) .header,
+:root[data-desktop]:not([data-mini]) .sidebar > h2 {
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+:root[data-desktop] .header button,
+:root[data-desktop] .header input,
+:root[data-desktop] .header select,
+:root[data-desktop] .header a,
+:root[data-desktop] .header summary,
+:root[data-desktop] .header .serverline,
+:root[data-desktop] .header .counts,
+:root[data-desktop] .header .issues {
+  -webkit-app-region: no-drag;
 }

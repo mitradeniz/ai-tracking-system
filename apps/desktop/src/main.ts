@@ -6,6 +6,7 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeTheme,
   screen,
   session,
   shell,
@@ -126,14 +127,15 @@ function openMini(): void {
     title: "AI Tracking System",
     show: false,
     ...(isMac
-      ? { vibrancy: "hud" as const, visualEffectState: "active" as const, backgroundColor: "#00000000", roundedCorners: true }
-      : { backgroundColor: "#101010" }),
+      ? { vibrancy: "under-window" as const, visualEffectState: "active" as const, backgroundColor: "#00000000", roundedCorners: true }
+      : { backgroundColor: "#2c2c2a" }),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
+      additionalArguments: isMac ? ["--aitrack-vibrancy"] : [],
     },
   });
   mini.setAlwaysOnTop(true, "floating");
@@ -186,6 +188,11 @@ function registerIpc(): void {
     if (!isOwnFrame(event)) return;
     const p = String(filePath ?? "");
     if (p && existsSync(p)) shell.showItemInFolder(p);
+  });
+  // Native materials follow the app's theme, not only the system's.
+  ipcMain.handle("aitrack:set-theme", (event, theme: unknown) => {
+    if (!isOwnFrame(event)) return;
+    if (theme === "dark" || theme === "light" || theme === "system") nativeTheme.themeSource = theme;
   });
   ipcMain.handle("aitrack:mini-open", (event) => {
     if (isOwnFrame(event)) openMini();
@@ -282,20 +289,32 @@ function buildMenu(): void {
 }
 
 function createWindow(): void {
+  const isMac = process.platform === "darwin";
   win = new BrowserWindow({
     width: 1440,
     height: 920,
     minWidth: 900,
     minHeight: 600,
-    backgroundColor: "#050505",
     title: "AI Tracking System",
     show: false,
+    // macOS: a translucent window that takes the tone of what is behind it, with the traffic
+    // lights inside the sidebar (like other native Mac apps).
+    ...(isMac
+      ? {
+          titleBarStyle: "hiddenInset" as const,
+          trafficLightPosition: { x: 18, y: 18 },
+          vibrancy: "under-window" as const,
+          visualEffectState: "followWindow" as const,
+          backgroundColor: "#00000000",
+        }
+      : { backgroundColor: "#262624" }),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
+      additionalArguments: isMac ? ["--aitrack-vibrancy"] : [],
     },
   });
   win.once("ready-to-show", () => win?.show());

@@ -6,6 +6,9 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 contextBridge.exposeInMainWorld("aitrackDesktop", {
   isDesktop: true,
   platform: process.platform,
+  /** True when the window is translucent and the page should let the material show through. */
+  vibrancy: process.argv.includes("--aitrack-vibrancy"),
+  setTheme: (theme: "dark" | "light" | "system"): Promise<void> => ipcRenderer.invoke("aitrack:set-theme", String(theme)),
   openProjectDialog: (): Promise<string | null> => ipcRenderer.invoke("aitrack:open-dialog"),
   saveProjectDialog: (defaultName: string): Promise<string | null> =>
     ipcRenderer.invoke("aitrack:save-dialog", String(defaultName)),

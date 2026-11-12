@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { desktop } from "./api.ts";
 import { usePref } from "./prefs.ts";
 
 export type ThemeChoice = "dark" | "light" | "system";
@@ -66,6 +67,15 @@ function systemTheme(): "dark" | "light" {
   return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
+/** Marks the document with what the desktop shell provides (platform, translucent window). */
+export function markDesktop(): void {
+  const root = document.documentElement;
+  if (!desktop) return;
+  root.dataset.desktop = "1";
+  if (desktop.platform) root.dataset.platform = desktop.platform;
+  if (desktop.vibrancy) root.dataset.vibrancy = "1";
+}
+
 /** Applies the appearance to the document as data attributes that the stylesheet reads. */
 export function useApplyAppearance(appearance: Appearance): void {
   useEffect(() => {
@@ -78,6 +88,7 @@ export function useApplyAppearance(appearance: Appearance): void {
       root.dataset.glass = appearance.glass;
     };
     apply();
+    void desktop?.setTheme?.(appearance.theme);
     if (appearance.theme !== "system") return;
     const query = window.matchMedia?.("(prefers-color-scheme: light)");
     query?.addEventListener("change", apply);

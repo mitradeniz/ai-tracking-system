@@ -43,6 +43,10 @@ export interface DesktopBridge {
   newProjectDialog(): Promise<string | null>;
   showInFolder(filePath: string): Promise<void>;
   platform?: string;
+  /** The window is translucent (macOS vibrancy). */
+  vibrancy?: boolean;
+  /** Makes native materials follow the app theme. */
+  setTheme?(theme: "dark" | "light" | "system"): Promise<void>;
   /** Opens (or focuses) the floating window. */
   openMini?(): Promise<void>;
   /** Hides the floating window (called from inside it). */

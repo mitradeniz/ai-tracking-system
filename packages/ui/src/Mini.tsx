@@ -117,7 +117,6 @@ export function MiniApp() {
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.mini = "1";
-    if (desktop?.platform === "darwin") root.dataset.vibrancy = "1";
     root.lang = lang;
   }, [lang]);
 
