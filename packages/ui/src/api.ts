@@ -37,6 +37,7 @@ export interface ChatRunner {
   provider: RunnerProvider;
   workdir?: string;
   model?: string;
+  effort?: string;
   access: "readonly" | "edit" | "full";
   session: "keep" | "perTask";
   sessionId?: string;
@@ -75,11 +76,20 @@ export interface RunnerState {
   hooks: { claude: string; codex: string; generic: string };
 }
 
+export interface ModelChoice {
+  id: string;
+  label: string;
+  efforts?: string[];
+  defaultEffort?: string;
+}
+
 export interface DetectedProvider {
   id: ProviderId;
   name: string;
   path: string | null;
   version: string | null;
+  models: ModelChoice[];
+  efforts: string[];
 }
 
 export interface RunLogEvent {

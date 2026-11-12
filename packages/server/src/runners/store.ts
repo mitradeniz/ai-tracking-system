@@ -40,12 +40,19 @@ export function normalizeRunner(input: unknown, base: ChatRunner = DEFAULT_RUNNE
   if (sessionId && !/^[\w.:-]+$/.test(sessionId)) throw new Error("A session id may contain letters, digits, '.', ':', '_' and '-'.");
   const workdir = pick("workdir", 1000);
   if (workdir && !path.isAbsolute(workdir)) throw new Error("The working folder must be an absolute path.");
+  const model = pick("model", 200);
+  if (model && !/^[\w.:@/[\]-]+$/.test(model)) {
+    throw new Error(`"${model}" is not a model name the CLI understands. Pick one from the list, or type its id without spaces (for example "opus" or "gpt-6-sol").`);
+  }
+  const effort = pick("effort", 20);
+  if (effort && !/^[a-z]+$/.test(effort)) throw new Error(`Unknown effort level "${effort}".`);
   const binary = pick("binary", 1000);
   if (binary && !path.isAbsolute(binary)) throw new Error("The program path must be an absolute path.");
   return {
     provider,
     workdir,
-    model: pick("model", 200),
+    model,
+    effort,
     access,
     session,
     sessionId,
@@ -66,7 +73,12 @@ function normalizeProject(input: unknown): ProjectRunners {
     try {
       chats[id] = normalizeRunner(cfg);
     } catch {
-      // A broken entry is dropped; the chat falls back to manual.
+      try {
+        // Keep the chat's runner; drop a model or effort written by an older version that the CLI would refuse.
+        chats[id] = normalizeRunner({ ...(cfg as object), model: undefined, effort: undefined });
+      } catch {
+        // A broken entry is dropped; the chat falls back to manual.
+      }
     }
   }
   const max = Number(o.maxConcurrent);

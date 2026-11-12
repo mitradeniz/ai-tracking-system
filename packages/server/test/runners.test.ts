@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProjectFileSchema, serializeProject } from "@aitrack/core";
 import { startServer, type RunningServer } from "../src/index.ts";
+import { parseCodexModels, parseCopilotModels } from "../src/runners/env.ts";
 import { normalizeHook } from "../src/runners/hooks.ts";
+import { normalizeRunner, RunnerStore } from "../src/runners/store.ts";
 import { buildInvocation, DEFAULT_RUNNER, OutputParser, splitArgs } from "../src/runners/providers.ts";
 
 process.env.AITRACK_NO_LOGIN_SHELL = "1";
@@ -263,6 +265,45 @@ describe("provider adapters", () => {
     const copilot = buildInvocation({ runner: { ...base, provider: "copilot", access: "edit", allowedTools: "shell(git:*)" }, prompt: "P", cwd: "/w", resume: "s", newSessionId: "u" });
     expect(copilot.args).toEqual(["-p", "P", "-s", "--no-color", "--no-ask-user", "--session-id", "s", "--allow-tool", "write", "--allow-tool", "shell(git:*)", "--model", "m1"]);
     expect(() => buildInvocation({ runner: { ...base, provider: "manual" }, prompt: "P", cwd: "/w", newSessionId: "u" })).toThrow();
+  });
+
+  it("passes the model and reasoning effort to each CLI", () => {
+    const base = { ...DEFAULT_RUNNER, effort: "xhigh" };
+    const codex = buildInvocation({ runner: { ...base, provider: "codex", model: "gpt-6-sol" }, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(codex.args).toEqual(expect.arrayContaining(["-m", "gpt-6-sol", "-c", 'model_reasoning_effort="xhigh"']));
+    const claude = buildInvocation({ runner: { ...base, provider: "claude", model: "opus" }, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(claude.args.join(" ")).toContain("--model opus --effort xhigh");
+    const copilot = buildInvocation({ runner: { ...base, provider: "copilot", model: "auto" }, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(copilot.args.join(" ")).toContain("--model auto --reasoning-effort xhigh");
+    const gemini = buildInvocation({ runner: { ...base, provider: "gemini", model: "pro" }, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(gemini.args.join(" ")).not.toContain("xhigh");
+  });
+
+  it("refuses model names the CLI would not understand, and keeps the runner when loading an old one", async () => {
+    expect(() => normalizeRunner({ provider: "claude", model: "Opus 5.5 Extra High" })).toThrow(/not a model name/);
+    expect(normalizeRunner({ provider: "claude", model: "claude-opus-5-5", effort: "max" })).toMatchObject({ model: "claude-opus-5-5", effort: "max" });
+    const dataDir = await mkdtemp(path.join(tmpdir(), "aitrack-store-"));
+    await writeFile(path.join(dataDir, "runners.json"), JSON.stringify({ projects: { k: { chats: { a: { provider: "claude", model: "Opus 5.5 Extra High" } } } } }));
+    const store = new RunnerStore(dataDir);
+    await store.load();
+    expect(store.chat("k", "a")).toMatchObject({ provider: "claude", model: undefined });
+  });
+
+  it("reads the model lists of Codex and Copilot", () => {
+    const codex = parseCodexModels(
+      JSON.stringify({
+        models: [
+          { slug: "b", display_name: "B", visibility: "list", priority: 2, supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }], default_reasoning_level: "low" },
+          { slug: "hidden", visibility: "hide", priority: 0 },
+          { slug: "a", display_name: "A", visibility: "list", priority: 1 },
+        ],
+      }),
+    );
+    expect(codex.map((m) => m.id)).toEqual(["a", "b"]);
+    expect(codex[1]).toMatchObject({ efforts: ["low", "high"], defaultEffort: "low" });
+    const help = 'Settings:\n  `model`: AI model to use; see /model.\n    - "claude-sonnet-5.5"\n    - "gpt-6-sol"\n\n  `other`: x\n';
+    expect(parseCopilotModels(help).map((m) => m.id)).toEqual(["claude-sonnet-5.5", "gpt-6-sol"]);
+    expect(parseCopilotModels("nothing here")).toEqual([]);
   });
 
   it("reads Gemini's streamed message and Claude's permission denials", () => {

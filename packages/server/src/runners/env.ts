@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { accessSync, constants, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { PROVIDER_INFO, PROVIDERS, type ProviderId } from "./providers.ts";
+import { PROVIDER_INFO, PROVIDERS, type ModelChoice, type ProviderId } from "./providers.ts";
 
 /**
  * Apps started from the Dock or Finder get a minimal PATH, so CLIs installed with Homebrew, npm
@@ -116,18 +116,67 @@ export interface DetectedProvider {
   name: string;
   path: string | null;
   version: string | null;
+  /** Models to offer: the CLI's own list when it has one, else aliases. */
+  models: ModelChoice[];
+  efforts: string[];
 }
 
 let detectCache: { at: number; value: Promise<DetectedProvider[]> } | null = null;
 
-function version(file: string, envPath: string): Promise<string | null> {
+function output(file: string, args: string[], envPath: string, timeout = 8000, maxBuffer = 4 * 1024 * 1024): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(file, ["--version"], { timeout: 8000, encoding: "utf8", env: { ...process.env, PATH: envPath, NO_COLOR: "1" } }, (err, stdout) => {
-      if (err) return resolve(null);
-      const line = (stdout ?? "").split("\n").find((l) => l.trim());
-      resolve(line ? line.trim().slice(0, 80) : null);
-    });
+    execFile(file, args, { timeout, maxBuffer, encoding: "utf8", env: { ...process.env, PATH: envPath, NO_COLOR: "1" } }, (err, stdout) =>
+      resolve(err ? null : (stdout ?? "")),
+    );
   });
+}
+
+async function version(file: string, envPath: string): Promise<string | null> {
+  const out = await output(file, ["--version"], envPath);
+  const line = out?.split("\n").find((l) => l.trim());
+  return line ? line.trim().slice(0, 80) : null;
+}
+
+/** `codex debug models`: the model catalog with each model's effort levels. */
+export function parseCodexModels(json: string): ModelChoice[] {
+  try {
+    const data = JSON.parse(json) as { models?: Record<string, unknown>[] };
+    return (data.models ?? [])
+      .filter((m) => m.visibility === "list" && typeof m.slug === "string")
+      .sort((a, b) => Number(a.priority ?? 99) - Number(b.priority ?? 99))
+      .map((m) => ({
+        id: String(m.slug),
+        label: typeof m.display_name === "string" ? m.display_name : String(m.slug),
+        efforts: Array.isArray(m.supported_reasoning_levels)
+          ? (m.supported_reasoning_levels as { effort?: string }[]).map((l) => String(l.effort ?? "")).filter(Boolean)
+          : undefined,
+        defaultEffort: typeof m.default_reasoning_level === "string" ? m.default_reasoning_level : undefined,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+/** `copilot help config`: the quoted values listed under `model`. */
+export function parseCopilotModels(text: string): ModelChoice[] {
+  const block = /`model`:[^\n]*\n((?:[ \t]+- "[^"]+"[^\n]*\n)+)/.exec(text)?.[1];
+  if (!block) return [];
+  return [...block.matchAll(/"([^"]+)"/g)].map((m) => ({ id: m[1]!, label: m[1]! }));
+}
+
+async function modelsOf(id: ProviderId, file: string, envPath: string): Promise<ModelChoice[]> {
+  const fallback = PROVIDER_INFO[id].models;
+  if (id === "codex") {
+    const out = await output(file, ["debug", "models"], envPath, 10_000);
+    const list = out ? parseCodexModels(out) : [];
+    return list.length ? list : fallback;
+  }
+  if (id === "copilot") {
+    const out = await output(file, ["help", "config"], envPath, 10_000);
+    const list = out ? parseCopilotModels(out) : [];
+    return list.length ? [...fallback, ...list.filter((m) => m.id !== "auto")] : fallback;
+  }
+  return fallback;
 }
 
 /** Which CLIs are installed. Cached for a minute. */
@@ -139,7 +188,12 @@ export function detectProviders(force = false): Promise<DetectedProvider[]> {
       PROVIDERS.filter((id) => PROVIDER_INFO[id].bin).map(async (id) => {
         const info = PROVIDER_INFO[id];
         const found = which(info.bin!, envPath);
-        return { id, name: info.name, path: found, version: found && process.platform !== "win32" ? await version(found, envPath) : null };
+        const canRun = Boolean(found) && process.platform !== "win32";
+        const [ver, models] = await Promise.all([
+          canRun ? version(found!, envPath) : Promise.resolve(null),
+          canRun ? modelsOf(id, found!, envPath) : Promise.resolve(info.models),
+        ]);
+        return { id, name: info.name, path: found, version: ver, models, efforts: info.efforts };
       }),
     );
   })();

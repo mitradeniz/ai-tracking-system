@@ -81,6 +81,7 @@ export function RunnerDialog({
         ...form,
         workdir: form.workdir ?? "",
         model: form.model ?? "",
+        effort: form.effort ?? "",
         sessionId: form.sessionId ?? "",
         allowedTools: form.allowedTools ?? "",
         extraArgs: form.extraArgs ?? "",
@@ -185,6 +186,7 @@ export function RunnerDialog({
               )}
             </div>
           )}
+          {p !== "custom" && <ModelPicker provider={found} fallback={p} form={form} set={set} />}
           <div className="field">
             <label>{t("run_session")}</label>
             <div className="segmented" role="radiogroup" aria-label={t("run_session")}>
@@ -231,10 +233,6 @@ export function RunnerDialog({
           </label>
           <details className="more">
             <summary>{t("details")}</summary>
-            <div className="field">
-              <label htmlFor="run-model">{t("run_model")}</label>
-              <input id="run-model" className="input mono" value={form.model ?? ""} onChange={(e) => set({ model: e.target.value })} />
-            </div>
             {(p === "claude" || p === "copilot") && (
               <div className="field">
                 <label htmlFor="run-tools">{t("run_allowedTools")}</label>
@@ -297,11 +295,105 @@ export function RunnerDialog({
         <button className="btn ghost" onClick={onClose}>
           {t("cancel")}
         </button>
-        <button className="btn primary" disabled={busy || hasToken === false || (p === "custom" && !form.command?.trim())} onClick={save}>
+        <button
+          className="btn primary"
+          disabled={busy || hasToken === false || (p === "custom" && !form.command?.trim()) || (Boolean(form.model) && !MODEL_ID.test(form.model!))}
+          onClick={save}
+        >
           {t("save")}
         </button>
       </div>
     </Dialog>
+  );
+}
+
+const MODEL_ID = /^[\w.:@/[\]-]+$/;
+const EFFORT_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+const OTHER = "__other__";
+
+/** Model and reasoning effort, from the CLI's own list when it has one. */
+function ModelPicker({
+  provider,
+  fallback,
+  form,
+  set,
+}: {
+  provider: DetectedProvider | undefined;
+  fallback: RunnerProvider;
+  form: ChatRunner;
+  set: (patch: Partial<ChatRunner>) => void;
+}) {
+  const { t } = useI18n();
+  const models = provider?.models ?? [];
+  const model = form.model ?? "";
+  const known = models.find((m) => m.id === model);
+  const [other, setOther] = useState(Boolean(model) && !known);
+  const efforts = (known?.efforts?.length ? known.efforts : (provider?.efforts ?? [])).slice().sort(
+    (a, b) => EFFORT_ORDER.indexOf(a) - EFFORT_ORDER.indexOf(b),
+  );
+  const invalid = Boolean(model) && !MODEL_ID.test(model);
+  const effortLabel = (e: string) => (EFFORT_ORDER.includes(e) ? t(`effort_${e}` as Key) : e);
+  const value = other ? OTHER : model;
+  return (
+    <div className="row wrap">
+      <div className="field grow">
+        <label htmlFor="run-model">{t("run_model")}</label>
+        <select
+          id="run-model"
+          className="input"
+          value={value}
+          onChange={(e) => {
+            if (e.target.value === OTHER) {
+              setOther(true);
+              return;
+            }
+            setOther(false);
+            const next = models.find((m) => m.id === e.target.value);
+            set({ model: e.target.value, effort: next?.efforts && form.effort && !next.efforts.includes(form.effort) ? "" : form.effort });
+          }}
+        >
+          <option value="">{t("run_modelDefault")}</option>
+          {models.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.label}
+              {m.label !== m.id ? ` (${m.id})` : ""}
+            </option>
+          ))}
+          <option value={OTHER}>{t("run_modelOther")}</option>
+        </select>
+        {other && (
+          <input
+            className="input mono"
+            value={model}
+            placeholder={fallback === "claude" ? "claude-opus-5-5" : fallback === "codex" ? "gpt-6-sol" : "model-id"}
+            aria-label={t("run_modelOther")}
+            autoFocus
+            onChange={(e) => set({ model: e.target.value.trim() })}
+          />
+        )}
+        {invalid ? (
+          <span className="error small">{t("run_modelInvalid")}</span>
+        ) : (
+          fallback === "claude" && !other && <span className="small muted">{t("run_modelAliasHint")}</span>
+        )}
+      </div>
+      {efforts.length > 0 && (
+        <div className="field">
+          <label htmlFor="run-effort">{t("run_effort")}</label>
+          <select id="run-effort" className="input" value={form.effort ?? ""} onChange={(e) => set({ effort: e.target.value })}>
+            <option value="">
+              {t("run_modelDefault")}
+              {known?.defaultEffort ? ` · ${effortLabel(known.defaultEffort)}` : ""}
+            </option>
+            {efforts.map((e) => (
+              <option key={e} value={e}>
+                {effortLabel(e)}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+    </div>
   );
 }
 

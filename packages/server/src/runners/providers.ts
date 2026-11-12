@@ -19,6 +19,8 @@ export interface ChatRunner {
   /** Folder the agent works in. Empty means the project's repository. */
   workdir?: string;
   model?: string;
+  /** Reasoning effort, for the CLIs that have one (Codex, Claude Code, Copilot). */
+  effort?: string;
   access: Access;
   session: SessionMode;
   /** Conversation that the next message continues. Filled automatically, can be pasted by hand. */
@@ -45,9 +47,21 @@ export const DEFAULT_RUNNER: ChatRunner = {
   network: false,
 };
 
+export interface ModelChoice {
+  id: string;
+  label: string;
+  /** Effort levels this model supports, when the CLI says so. */
+  efforts?: string[];
+  defaultEffort?: string;
+}
+
 export interface ProviderInfo {
   id: ProviderId;
   name: string;
+  /** Models offered when the CLI cannot list its own; aliases that follow the latest versions. */
+  models: ModelChoice[];
+  /** Effort levels the CLI accepts; empty when it has no such option. */
+  efforts: string[];
   /** Executable looked up on PATH. */
   bin: string | null;
   /** What each access level means for this CLI, shown in the settings dialog. */
@@ -61,6 +75,8 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     id: "codex",
     name: "Codex CLI",
     bin: "codex",
+    models: [],
+    efforts: ["low", "medium", "high", "xhigh", "max"],
     access: {
       readonly: "-s read-only",
       edit: "-s workspace-write",
@@ -72,6 +88,13 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     id: "claude",
     name: "Claude Code",
     bin: "claude",
+    models: [
+      { id: "fable", label: "Fable" },
+      { id: "opus", label: "Opus" },
+      { id: "sonnet", label: "Sonnet" },
+      { id: "haiku", label: "Haiku" },
+    ],
+    efforts: ["low", "medium", "high", "xhigh", "max"],
     access: {
       readonly: "--permission-mode plan",
       edit: "--permission-mode acceptEdits",
@@ -83,6 +106,8 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     id: "copilot",
     name: "GitHub Copilot CLI",
     bin: "copilot",
+    models: [{ id: "auto", label: "Auto" }],
+    efforts: ["none", "minimal", "low", "medium", "high", "xhigh", "max"],
     access: {
       readonly: "(no extra permissions)",
       edit: "--allow-tool write",
@@ -94,6 +119,13 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     id: "gemini",
     name: "Gemini CLI",
     bin: "gemini",
+    models: [
+      { id: "auto", label: "Auto" },
+      { id: "pro", label: "Pro" },
+      { id: "flash", label: "Flash" },
+      { id: "flash-lite", label: "Flash Lite" },
+    ],
+    efforts: [],
     access: {
       readonly: "--approval-mode plan",
       edit: "--approval-mode auto_edit",
@@ -105,6 +137,8 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     id: "custom",
     name: "Custom command",
     bin: null,
+    models: [],
+    efforts: [],
     access: { readonly: "", edit: "", full: "" },
     resumeHint: null,
   },
@@ -180,6 +214,7 @@ export function buildInvocation(input: BuildInput): Invocation {
   const { runner, prompt, cwd, resume, newSessionId } = input;
   const extra = runner.extraArgs ? splitArgs(runner.extraArgs) : [];
   const model = runner.model?.trim();
+  const effort = runner.effort?.trim();
   switch (runner.provider) {
     case "codex": {
       const args = ["exec", "--json", "--skip-git-repo-check", "-C", cwd];
@@ -189,6 +224,7 @@ export function buildInvocation(input: BuildInput): Invocation {
         if (runner.network) args.push("-c", "sandbox_workspace_write.network_access=true");
       } else args.push("--dangerously-bypass-approvals-and-sandbox");
       if (model) args.push("-m", model);
+      if (effort) args.push("-c", `model_reasoning_effort="${effort}"`);
       args.push(...extra);
       if (resume) args.push("resume", resume);
       args.push("-");
@@ -203,6 +239,7 @@ export function buildInvocation(input: BuildInput): Invocation {
         runner.access === "readonly" ? "plan" : runner.access === "edit" ? "acceptEdits" : "bypassPermissions",
       );
       if (model) args.push("--model", model);
+      if (effort) args.push("--effort", effort);
       args.push(...extra);
       const tools = splitTools(runner.allowedTools);
       if (tools.length) args.push("--allowedTools", ...tools);
@@ -215,6 +252,7 @@ export function buildInvocation(input: BuildInput): Invocation {
       if (runner.access === "full") args.push("--allow-all-tools");
       for (const tool of splitTools(runner.allowedTools)) args.push("--allow-tool", tool);
       if (model) args.push("--model", model);
+      if (effort) args.push("--reasoning-effort", effort);
       args.push(...extra);
       return { command: runner.binary || "copilot", args, sessionId: session, format: "text" };
     }

@@ -34,6 +34,10 @@ The custom command is plain text output: everything it prints is the final messa
 
 A headless run cannot ask for permission, so anything outside its access is refused and the refusal shows up in the output. With **Edit files**, Claude Code and Copilot cannot run shell commands unless you allow them under **Extra allowed tools**, for example `Bash(npm test:*)`, `Bash(git commit:*)` or `shell(npm:*)`, `shell(git:*)`. Use **Full access** only in a disposable worktree or a container.
 
+### Model and reasoning
+
+The run settings offer the models each CLI knows: Codex's own catalog (`codex debug models`) with the reasoning levels of each model, Copilot's model list (`copilot help config`), and for Claude Code and Gemini the aliases that always follow the latest version (`opus`, `sonnet`, `haiku`, `fable`; `pro`, `flash`, `flash-lite`, `auto`). **Other** takes any model id. Reasoning effort is passed as `-c model_reasoning_effort=…` (Codex), `--effort` (Claude Code) and `--reasoning-effort` (Copilot); Gemini has none. **Default** leaves both to the CLI's own settings.
+
 ### Sessions
 
 - **Continue the same session** (default): the first task starts a new session with the chat's session prompts, later tasks and replies continue it — like a chat you keep open. Its id is shown in the run settings; paste the id of an existing session to continue *that* conversation, or **Start fresh**.
@@ -122,10 +126,10 @@ The hook finds the chat by, in order: `AITRACK_CHAT` (start the session as `AITR
 
 | Endpoint | |
 | --- | --- |
-| `GET /api/providers` | installed CLIs, paths and versions |
+| `GET /api/providers` | installed CLIs, paths, versions, models and effort levels |
 | `GET /api/projects/:key/runners` | run settings, recent runs, hook snippets |
 | `POST /api/projects/:key/runners` 🔑 | `{autoDispatch, maxConcurrent}` |
-| `POST /api/projects/:key/runners/:chat` 🔑 | `{runner: {provider, workdir, access, session, sessionId, unattended, network, allowedTools, extraArgs, binary, command, model}}` |
+| `POST /api/projects/:key/runners/:chat` 🔑 | `{runner: {provider, workdir, access, session, sessionId, unattended, network, allowedTools, extraArgs, binary, command, model, effort}}` |
 | `POST /api/projects/:key/tasks/:task/run` 🔑 | `{agent?}` — send the task |
 | `POST /api/projects/:key/agents/:chat/reply` 🔑 | `{text, task?}` — continue the chat's session |
 | `POST /api/runs/:id/stop` 🔑 | stop a run |

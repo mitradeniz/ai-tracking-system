@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows [Kee
 - Auto-dispatch per project: free chats that run themselves get their most urgent ready task, up to a limit of runs at once.
 - Hooks for sessions opened by hand: `POST /api/hook` understands Claude Code hook payloads and Codex `notify`, marks tasks in progress / waiting for your reply / done, and learns the session id so Send continues that conversation. `aitrack-report hook` forwards a hook without curl.
 - A control token for the endpoints that start programs; the desktop app hands it to its windows and `aitrack serve` prints a link with it.
+- Model and reasoning effort per chat, picked from lists: Codex's model catalog with each model's reasoning levels, Copilot's model list, and the Claude Code and Gemini aliases that follow the latest versions; any other model id can be typed. Model names with spaces are refused instead of failing at run time.
 - Event sources `runner` and `hook`. Runs interrupted by quitting the app are marked blocked on the next start.
 
 ## [0.1.0] - 2026-11-12
