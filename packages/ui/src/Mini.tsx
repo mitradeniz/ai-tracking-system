@@ -4,7 +4,7 @@ import { desktop, dispatchTask, api } from "./api.ts";
 import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { useTracker } from "./hooks.ts";
 import { chosenLang, I18nContext, initialLang, translator, type Lang, type T } from "./i18n.ts";
-import { buildModel, cardNote, type Model } from "./model.ts";
+import { activeRun, agentName, buildModel, cardNote, localReason, PROVIDER_LABEL, runnerOf, type Model } from "./model.ts";
 import { readJson, usePref } from "./prefs.ts";
 
 type MiniView = "overview" | "compact" | "lanes";
@@ -50,6 +50,8 @@ interface ChatRow {
   focus?: string;
   /** The task one click can send to this chat. */
   next?: TaskSnapshot;
+  /** An agent run is going on now. */
+  running?: boolean;
 }
 
 function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
@@ -67,9 +69,18 @@ function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
       const working = holding.find((s) => s.status === "in_progress");
       const sent = holding.find((s) => s.status === "dispatched");
       const row: ChatRow = { id: a.id, name: a.name, state: "idle", text: t("idle"), next: sendable[0] };
-      if (blocked) {
+      const run = activeRun(model, a.id);
+      if (run) {
+        row.state = "working";
+        row.running = true;
+        row.text = `${run.task} · ${PROVIDER_LABEL[run.provider]}${run.lastActivity ? `: ${run.lastActivity}` : ""}`;
+        row.focus = run.task;
+      } else if (blocked) {
         row.state = "blocked";
-        row.text = `${t("chat_blocked", { task: blocked.id })}${blocked.reason ? `: ${blocked.reason}` : ""}`;
+        row.text =
+          blocked.reason === "Waiting for your reply."
+            ? t("chat_waiting", { task: blocked.id })
+            : `${t("chat_blocked", { task: blocked.id })}${blocked.reason ? `: ${localReason(blocked.reason, t)}` : ""}`;
         row.focus = blocked.id;
       } else if (working) {
         row.state = "working";
@@ -106,7 +117,7 @@ export function MiniApp() {
   const [busy, setBusy] = useState<string | null>(null);
 
   const selected = settings.project ?? mainSelected;
-  const { projects, loaded, detail, live } = useTracker(selected, undefined, (m) => setFlash(`⚠ ${m}`));
+  const { projects, loaded, detail, live, runners } = useTracker(selected, undefined, (m) => setFlash(`⚠ ${m}`));
   const project = projects.find((p) => p.key === selected) ? selected : (projects[0]?.key ?? null);
   // Follow the first project when the stored one is gone.
   useEffect(() => {
@@ -136,7 +147,10 @@ export function MiniApp() {
     return () => window.clearTimeout(id);
   }, [flash]);
 
-  const model = useMemo(() => (detail && detail.key === project ? buildModel(detail) : null), [detail, project]);
+  const model = useMemo(
+    () => (detail && detail.key === project ? buildModel(detail, runners && selected === project ? runners : null) : null),
+    [detail, project, runners, selected],
+  );
   const projectId = model?.detail.project?.project.id ?? "";
   const known = model?.detail.project?.agents.map((a) => a.id) ?? [];
   const chosen = (settings.agents[projectId] ?? []).filter((a) => known.includes(a));
@@ -163,8 +177,8 @@ export function MiniApp() {
     if (!model) return;
     setBusy(s.id);
     try {
-      await dispatchTask(model.detail.key, s.id, agentId);
-      setFlash(t("copiedSent", { task: s.id }));
+      const how = await dispatchTask(model.detail.key, s.id, agentId, model.runners);
+      setFlash(how === "run" ? t("run_sent", { task: s.id, agent: agentName(model, agentId) }) : t("copiedSent", { task: s.id }));
     } catch (e) {
       setFlash(`⚠ ${(e as Error).message}`);
     } finally {
@@ -199,7 +213,7 @@ export function MiniApp() {
       {rows.map((r) => (
         <div className={`mini-chat ${r.state}`} key={r.id}>
           <button type="button" className="mini-chat-main" onClick={() => open(r.focus)}>
-            <span className={`state-dot ${r.state}`} aria-hidden="true" />
+            <span className={`state-dot ${r.state} ${r.running ? "pulse" : ""}`} aria-hidden="true" />
             <span className="mini-chat-name">{r.name}</span>
             <span className="mini-chat-text ellipsis" title={r.text}>
               {r.text}
@@ -207,7 +221,7 @@ export function MiniApp() {
           </button>
           {r.next && r.state !== "working" && r.state !== "blocked" && r.state !== "sent" && (
             <button className="btn tiny primary" disabled={busy === r.next.id} onClick={() => send(r.next!, r.id)} title={r.next.id}>
-              {compact ? r.next.id : `${t("copyAndSendShort")} ${r.next.id}`}
+              {compact ? r.next.id : `${runnerOf(model!, r.id) ? "▶" : t("copyAndSendShort")} ${r.next.id}`}
             </button>
           )}
         </div>
@@ -377,7 +391,7 @@ export function MiniApp() {
                       s,
                       s.dispatchable && s.candidates[0] ? (
                         <button className="btn tiny primary" disabled={busy === s.id} onClick={() => send(s, s.candidates[0]!)}>
-                          {t("copyAndSendShort")}
+                          {runnerOf(model, s.candidates[0]) ? `▶ ${agentName(model, s.candidates[0])}` : t("copyAndSendShort")}
                         </button>
                       ) : s.status === "review" ? (
                         <button className="btn tiny" disabled={busy === s.id} onClick={() => approve(s)}>

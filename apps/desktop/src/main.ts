@@ -14,7 +14,7 @@ import {
   type MenuItemConstructorOptions,
   type Rectangle,
 } from "electron";
-import { defaultDataDir, startServer, type RunningServer } from "@aitrack/server";
+import { defaultDataDir, ensureControlToken, startServer, type RunningServer } from "@aitrack/server";
 
 const PREFERRED_PORT = Number(process.env.AITRACK_PORT ?? 4317);
 const REPO_URL = "https://github.com/mitradeniz/ai-tracking-system";
@@ -71,7 +71,7 @@ async function addProjectFile(filePath: string): Promise<void> {
 
 function isOwnFrame(event: IpcMainInvokeEvent): boolean {
   const url = event.senderFrame?.url ?? "";
-  return Boolean(baseUrl) && url.startsWith(baseUrl);
+  return Boolean(baseUrl) && (url === baseUrl || url.startsWith(`${baseUrl}/`));
 }
 
 /** Keeps a window inside the tracker: other links open in the default browser. */
@@ -193,6 +193,16 @@ function registerIpc(): void {
   ipcMain.handle("aitrack:set-theme", (event, theme: unknown) => {
     if (!isOwnFrame(event)) return;
     if (theme === "dark" || theme === "light" || theme === "system") nativeTheme.themeSource = theme;
+  });
+  // Starting agents needs the tracker's control token; only the app's own windows get it.
+  ipcMain.handle("aitrack:control-token", async (event) => {
+    if (!isOwnFrame(event)) return null;
+    if (running) return running.controlToken;
+    try {
+      return await ensureControlToken(defaultDataDir());
+    } catch {
+      return null;
+    }
   });
   ipcMain.handle("aitrack:mini-open", (event) => {
     if (isOwnFrame(event)) openMini();

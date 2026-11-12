@@ -8,7 +8,7 @@ Please report vulnerabilities privately through GitHub: **Security → Report a 
 
 ## Threat model
 
-Trusted: you, and programs running as your user (they can already read and write your files).
+Trusted: you, and programs running as your user (they can already read and write your files). AI agents you choose to run get the access level you give them.
 Not trusted: web pages open in any browser, and the content of reports and project files.
 
 What the tracker does about it:
@@ -19,10 +19,12 @@ What the tracker does about it:
 - **Content Security Policy** and `nosniff`, `same-origin` opener and resource policies on every page.
 - **Reports are data.** They are validated against a schema with length limits, stored as events, and rendered as text. Nothing in a report or project file is executed, and Markdown/HTML in them is not rendered.
 - **File writes** happen only where you point them: the data directory (`~/.aitrack` or `AITRACK_DATA_DIR`), export targets ending in `.aitrack` or `.json`, and moving processed inbox files into `processed/` or `rejected/` next to them.
-- **Desktop app.** The window runs with `contextIsolation`, `sandbox` and no Node integration. The preload bridge exposes only open/save dialogs and "show in folder"; IPC handlers check that the caller is the tracker's own page. Navigation away from the tracker opens in your default browser instead.
+- **Desktop app.** The window runs with `contextIsolation`, `sandbox` and no Node integration. The preload bridge exposes only open/save dialogs, "show in folder", the floating window and the control token; IPC handlers check that the caller is the tracker's own page. Navigation away from the tracker opens in your default browser instead.
+- **Agent runners.** Starting an agent runs a program as you, so: run settings (which CLI, folder, access, custom command) live only in `~/.aitrack/runners.json` (mode 600) and are never read from project files; the endpoints that start, reply to, stop or configure runs require the control token from `~/.aitrack/control-token` (mode 600) in the `X-Aitrack-Token` header, which other local users and web pages do not have. Hooks and reports can only change task status. Agents run with the access level you chose (by default Codex's workspace-write sandbox, Claude Code's `acceptEdits`); "full access" turns those protections off and is marked as dangerous in the app.
 
 ## What you should do
 
 - Do not put secrets, tokens or personal data in `.aitrack` files, prompts or reports. Project files are meant to be committed.
 - Keep `.aitrack/inbox/` in `.gitignore`.
 - Remember that the prompts you paste into AI chats leave your machine with those chats.
+- Prefer the default access levels for chats that run themselves, and a separate git worktree per chat. Use "full access" only in a disposable environment.

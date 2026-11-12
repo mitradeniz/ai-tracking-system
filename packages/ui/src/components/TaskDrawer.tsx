@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { api, copyText } from "../api.ts";
-import { useI18n } from "../i18n.ts";
-import { agentName, formatTime, reasonText, type Model } from "../model.ts";
+import { useI18n, type Key } from "../i18n.ts";
+import { agentName, formatTime, lastRunOf, localMessage, localReason, PROVIDER_LABEL, reasonText, runnerOf, type Model } from "../model.ts";
+import { RunLog } from "./Runners.tsx";
 
 interface Props {
   model: Model;
@@ -9,11 +10,14 @@ interface Props {
   onClose: () => void;
   onOpen: (id: string) => void;
   onError: (message: string) => void;
+  onInfo?: (message: string) => void;
+  /** Opens the run settings of a chat. */
+  onRunnerSettings?: (agentId: string) => void;
 }
 
 type Pending = { type: "blocked" | "failed" | "note" | "done"; text: string } | null;
 
-export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
+export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, onRunnerSettings }: Props) {
   const { t, lang } = useI18n();
   const task = model.task.get(taskId);
   const snap = model.snap.get(taskId);
@@ -24,11 +28,13 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
   const [busy, setBusy] = useState(false);
   const owner = task?.agent ?? "";
   const [agent, setAgent] = useState<string>(owner);
+  const [reply, setReply] = useState("");
 
   useEffect(() => {
     setAgent(snap?.candidates[0] ?? snap?.agent ?? owner);
     setPending(null);
     setCopied(false);
+    setReply("");
     // Only when the task changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
@@ -81,11 +87,49 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
     }
   };
 
+  const sendRun = async () => {
+    setBusy(true);
+    try {
+      await api.runTask(key, taskId, agent || undefined);
+      onInfo?.(t("run_sent", { task: taskId, agent: agentName(model, agent) }));
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendReply = async (text: string) => {
+    if (!snap.agent || !text.trim()) return;
+    setBusy(true);
+    try {
+      await api.reply(key, snap.agent, text.trim(), taskId);
+      setReply("");
+      onInfo?.(t("run_replySent", { agent: agentName(model, snap.agent) }));
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const stopRun = async (id: string) => {
+    try {
+      await api.stopRun(id);
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+
   const eligible = [task.agent, ...task.alsoAgents.filter((a) => a !== task.agent)];
   const events = [...(model.eventsByTask.get(taskId) ?? [])].reverse();
   const milestone = model.detail.project?.milestones.find((m) => m.id === task.milestone);
   const s = snap.status;
   const holding = s === "dispatched" || s === "in_progress" || s === "blocked";
+  const chosenRunner = runnerOf(model, agent);
+  const holderRunner = runnerOf(model, snap.agent);
+  const run = lastRunOf(model, taskId);
+  const running = run?.state === "running" ? run : undefined;
 
   return (
     <>
@@ -132,15 +176,35 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
             )}
             {snap.dispatchable && <span className="small">{t("canSendNow")}</span>}
             <div className="actions">
-              {(s === "ready" || s === "failed" || s === "waiting") && (
-                <>
-                  <button className={`btn ${snap.dispatchable ? "go" : ""}`} disabled={busy} onClick={copyAndSend}>
-                    {copied ? `✓ ${t("copied")}` : t("copyAndSend")}
-                  </button>
-                  <button className="btn" onClick={copy}>
-                    {t("copyPrompt")}
-                  </button>
-                </>
+              {(s === "ready" || s === "failed" || s === "waiting") &&
+                (chosenRunner ? (
+                  <>
+                    <button className={`btn ${snap.dispatchable ? "go" : ""}`} disabled={busy || s === "waiting"} onClick={sendRun}>
+                      {t("run_send", { agent: agentName(model, agent) })}
+                    </button>
+                    <button className="btn" onClick={copy}>
+                      {copied ? `✓ ${t("copied")}` : t("copyPrompt")}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className={`btn ${snap.dispatchable ? "go" : ""}`} disabled={busy} onClick={copyAndSend}>
+                      {copied ? `✓ ${t("copied")}` : t("copyAndSend")}
+                    </button>
+                    <button className="btn" onClick={copy}>
+                      {t("copyPrompt")}
+                    </button>
+                    {onRunnerSettings && agent && (
+                      <button className="btn ghost" title={t("run_setupHint")} onClick={() => onRunnerSettings(agent)}>
+                        ⚙ {t("run_setup")}
+                      </button>
+                    )}
+                  </>
+                ))}
+              {running && (
+                <button className="btn danger" onClick={() => void stopRun(running.id)}>
+                  ■ {t("run_stop")}
+                </button>
               )}
               {holding && (
                 <>
@@ -149,7 +213,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
                       {t("markStarted")}
                     </button>
                   )}
-                  {s === "blocked" && (
+                  {s === "blocked" && !holderRunner && (
                     <button className="btn" disabled={busy} onClick={() => act("started")}>
                       {t("resume")}
                     </button>
@@ -184,6 +248,44 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
                 {t("addNote")}
               </button>
             </div>
+            {running && (
+              <div className="run-strip">
+                <span className="pulse" aria-hidden="true" />
+                <span className="grow ellipsis">
+                  <b>{t("run_running", { agent: agentName(model, running.agent) })}</b>
+                  {running.lastActivity ? ` · ${running.lastActivity}` : ""}
+                </span>
+              </div>
+            )}
+            {s === "blocked" && holderRunner && !running && (
+              <div className="field reply-box">
+                {snap.lastMessage && (
+                  <div className="agent-says">
+                    <span className="label">{t("run_agentSays")}</span>
+                    <div className="pre-wrap">{localMessage(snap.lastMessage, t)}</div>
+                  </div>
+                )}
+                <textarea
+                  className="input"
+                  style={{ minHeight: 64 }}
+                  placeholder={t("run_replyPlaceholder")}
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void sendReply(reply);
+                  }}
+                />
+                <div className="row">
+                  <button className="btn ghost small" disabled={busy} onClick={() => void sendReply(t("run_approveText"))}>
+                    {t("run_approve")}
+                  </button>
+                  <span className="spacer" />
+                  <button className="btn primary" disabled={busy || !reply.trim()} onClick={() => void sendReply(reply)}>
+                    {t("run_reply")}
+                  </button>
+                </div>
+              </div>
+            )}
             {pending && (
               <div className="field">
                 <textarea
@@ -218,6 +320,26 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
               </div>
             )}
           </div>
+
+          {run && (
+            <section className="section">
+              <div className="row">
+                <h3 style={{ margin: 0 }}>{t("run_log")}</h3>
+                <span className={`pill run-${run.state}`}>{t(`run_state_${run.state}` as Key)}</span>
+                <span className="small muted ellipsis">
+                  {PROVIDER_LABEL[run.provider]} · {formatTime(run.startedAt, lang)}
+                </span>
+                <span className="spacer" />
+                {onRunnerSettings && (
+                  <button className="btn tiny ghost" onClick={() => onRunnerSettings(run.agent)}>
+                    ⚙
+                  </button>
+                )}
+              </div>
+              {run.error && <div className="error small">{run.error}</div>}
+              <RunLog run={run} />
+            </section>
+          )}
 
           {snap.reasons.length > 0 && (
             <section className="section">
@@ -254,7 +376,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
                 {snap.reason && (
                   <>
                     <dt>{t("reason")}</dt>
-                    <dd>{snap.reason}</dd>
+                    <dd>{localReason(snap.reason, t)}</dd>
                   </>
                 )}
                 {snap.pr && (
@@ -280,7 +402,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
                 {snap.lastMessage && snap.lastMessage !== snap.summary && (
                   <>
                     <dt>{t("message")}</dt>
-                    <dd>{snap.lastMessage}</dd>
+                    <dd className="pre-wrap">{localMessage(snap.lastMessage, t)}</dd>
                   </>
                 )}
                 <dt>{t("updated")}</dt>
@@ -388,7 +510,8 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError }: Props) {
                       {formatTime(e.ts, lang)} · {t(`type_${e.type}`)} · {e.source}
                       {e.agent ? ` · ${agentName(model, e.agent)}` : ""}
                     </div>
-                    {(e.message || e.reason) && <div>{e.reason ?? e.message}</div>}
+                    {e.reason && <div>{localReason(e.reason, t)}</div>}
+                    {e.message && e.message !== e.reason && <div className="pre-wrap clamp">{localMessage(e.message, t)}</div>}
                     {e.pr && <div className="small muted">PR: {e.pr}</div>}
                   </li>
                 ))}

@@ -26,10 +26,11 @@ interface Props {
   onError: (message: string) => void;
   onInfo: (message: string) => void;
   onEditAgent: (agentId?: string) => void;
+  onRunnerSettings: (agentId: string) => void;
 }
 
 /** A screen built from panels. In edit mode panels can be added, moved, resized, filtered and removed. */
-export function Workspace({ model, layout, editing, onChange, onOpen, onError, onInfo, onEditAgent }: Props) {
+export function Workspace({ model, layout, editing, onChange, onOpen, onError, onInfo, onEditAgent, onRunnerSettings }: Props) {
   const { t } = useI18n();
   const [dragging, setDragging] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
@@ -51,7 +52,7 @@ export function Workspace({ model, layout, editing, onChange, onOpen, onError, o
       case "ready":
         return <ReadyStrip {...common} />;
       case "lanes":
-        return <LanesView {...common} onEditAgent={onEditAgent} />;
+        return <LanesView {...common} onEditAgent={onEditAgent} onRunnerSettings={onRunnerSettings} />;
       case "flow":
         return <FlowView {...common} />;
       case "list":

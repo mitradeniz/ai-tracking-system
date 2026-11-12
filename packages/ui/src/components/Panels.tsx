@@ -2,7 +2,7 @@ import type { TaskSnapshot } from "@aitrack/core";
 import { useState } from "react";
 import { api, dispatchTask } from "../api.ts";
 import { useI18n } from "../i18n.ts";
-import { agentName, cardNote, formatTime, type Model } from "../model.ts";
+import { agentName, cardNote, formatTime, runnerOf, type Model } from "../model.ts";
 import { inChats } from "./Views.tsx";
 
 interface PanelProps {
@@ -82,9 +82,15 @@ export function InboxPanel({ model, onOpen, onError, onInfo, agents }: PanelProp
                 <button
                   className="btn small primary"
                   disabled={busy === s.id}
-                  onClick={() => run(s.id, () => dispatchTask(model.detail.key, s.id, s.candidates[0]!), t("copiedSent", { task: s.id }))}
+                  onClick={() =>
+                    run(s.id, async () => {
+                      const agent = s.candidates[0]!;
+                      const how = await dispatchTask(model.detail.key, s.id, agent, model.runners);
+                      onInfo?.(how === "run" ? t("run_sent", { task: s.id, agent: agentName(model, agent) }) : t("copiedSent", { task: s.id }));
+                    })
+                  }
                 >
-                  {t("copyAndSendShort")}
+                  {runnerOf(model, s.candidates[0]) ? `▶ ${t("sendable")}` : t("copyAndSendShort")}
                 </button>
               )}
               {g.key === "review" && (

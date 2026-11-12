@@ -22,12 +22,13 @@ Planı bir kez yaz, yeşil görevleri gönder, panonun kendi kendine ilerlemesin
 </div>
 
 > [!TIP]
-> **Bütün fikir tek satırda:** bir görev, bağlı olduğu her şey bitince ve sohbeti boştayken **yeşil** yanar. Tıkla, promptu kopyala, o sohbete yapıştır. Sohbet geri bildirir, pano ilerler, sıradaki görevler yeşile döner.
+> **Bütün fikir tek satırda:** bir görev, bağlı olduğu her şey bitince ve sohbeti boştayken **yeşil** yanar. Gönder: promptu o sohbete yapıştır ya da Codex / Claude Code / Copilot / Gemini sohbetinin **kendi kendine çalıştırmasına** bırak. Sohbet geri bildirir, pano ilerler, sıradaki görevler yeşile döner.
 
 <details>
 <summary><b>İçindekiler</b></summary>
 
 - [Hareket halinde](#-hareket-halinde)
+- [Kendi kendine çalışan sohbetler](#-kendi-kendine-çalışan-sohbetler)
 - [Kurulum](#-kurulum)
 - [Güncelleme](#-güncelleme)
 - [Otomatik güncelleme: nasıl ekleriz](#-otomatik-güncelleme-nasıl-ekleriz)
@@ -60,6 +61,12 @@ Planı bir kez yaz, yeşil görevleri gönder, panonun kendi kendine ilerlemesin
 
 </details>
 
+### Kendi kendine çalışan sohbetler
+
+Otomatik dağıtım açılıyor: boştaki sohbetler hazır görevlerini alıyor, çıktıları canlı akıyor, Claude bir soru soruyor ve görev panelinden yanıtını alıyor, biten işler sıradaki görevleri açıyor — onlar da kendiliğinden başlıyor.
+
+<img src="docs/images/runners.gif" alt="Otomatik dağıtımı açmak: Codex ve Claude Code sohbetleri görevlerine başlıyor, Claude yanıt bekliyor, yanıt görev panelinden gönderiliyor, biten görevler sıradakileri açıyor" width="100%">
+
 ### Kayan pencere
 
 <table>
@@ -86,6 +93,26 @@ Kenar çubuğundan ya da <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd> ile açılır.
 Ekranlar **panellerden** oluşur. Ekle, sürükle, boyutlandır, sohbete göre süz, birden çok düzen kaydet; temayı ve vurgu rengini seç.
 
 <img src="docs/images/customize.gif" alt="Genel bakış düzenini özelleştirme: iki sohbete süzülmüş şerit paneli ekleniyor, sonra vurgu rengi ve tema değişiyor" width="100%">
+
+## 🤖 Kendi kendine çalışan sohbetler
+
+Bir sohbeti bir kez ayarla (şeridindeki **⚙ elle** rozeti); artık **Gönder** görevi doğrudan ona verir — kopyala-yapıştır yok.
+
+| | |
+| --- | --- |
+| **Çalıştıran** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · herhangi bir komut (Cursor CLI, Aider, betikler) |
+| **Nerede** | projenin deposunda ya da sohbete özel bir klasörde (birden fazla sohbet kod değiştiriyorsa git worktree) |
+| **Erişim** | salt okunur · dosya düzenleme (varsayılan) · tam erişim |
+| **Sohbet** | açık tuttuğun bir sohbet gibi aynı oturumda devam eder — ya da her görevde yeni oturum. Var olan bir oturumun kimliğini yapıştırırsan tam *o* sohbet devam eder. |
+| **Durum** | ilk çıktıda *başladı*, sondaki rapordan *bitti*, ajan bir şey sorunca **yanıtını bekliyor** — **Yanıtla** ile cevap ver |
+| **Canlı** | komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur** |
+| **Otomatik dağıtım** | başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* tane |
+| **Kendi açtığın oturumlar** | Claude Code ve Codex için tek satırlık bir kanca, sen çalışırken görevleri *çalışıyor* ve *yanıtını bekliyor* olarak işaretler |
+
+> [!IMPORTANT]
+> CLI'lar senin bilgisayarında, **kendi girişin ve planınla** çalışır. Çalıştırma ayarları `~/.aitrack/runners.json` dosyasında kalır, proje dosyasına asla yazılmaz; ajan başlatmak uygulamanın denetim anahtarını ister — paylaşılan bir `.aitrack` dosyası ya da bir web sayfası hiçbir şey başlatamaz. İnsan gerektiren görevleri (ödeme, kimlik doğrulama, yasal onay) elle çalıştırdığın bir sohbette tut.
+
+Her şey — CLI başına komutlar, erişim düzeyleri, oturumlar, kancalar, API: **[docs/agent-runners.md](docs/agent-runners.md)** (İngilizce).
 
 ## 📦 Kurulum
 
@@ -191,13 +218,14 @@ flowchart LR
     end
     T --> UI["🖥️ Masaüstü uygulaması<br/>paneller · kayan pencere"]
     UI -- "promptu kopyala, gönderildi işaretle" --> C["🤖 Yapay zekâ sohbetleri<br/>Claude · Codex · Cursor · sen"]
-    C -- "started / blocked / done<br/>HTTP · CLI · gelen kutusu · yapıştır" --> L
+    T -- "Gönder ▶ CLI'ı çalıştırır<br/>codex · claude · copilot · gemini" --> C
+    C -- "started / blocked / done<br/>HTTP · CLI · gelen kutusu · yapıştır · çalıştırma çıktısı · kancalar" --> L
 ```
 
 1. **Planla.** `.aitrack` dosyası sohbetleri, görevleri gerçek bağımlılıklarıyla ve promptları içerir. Elle yaz ya da planından bir yapay zekâya yazdır: [Yapay zekâyla proje dosyası hazırlama](docs/authoring-with-ai.md).
 2. **Aç.** Uygulama dosyayı doğrular (bilinmeyen kimlikler, döngüler, eksik promptlar) ve grafiğe döker.
 3. **Oturumları başlat.** Her sohbetin şeridinde **Oturum promptu**'nu bir kez kopyala.
-4. **Dağıt.** Yeşil görevleri gönder.
+4. **Dağıt.** Yeşil görevleri gönder — elle, kendi kendine çalışan sohbetler için **Gönder ▶** ile ya da **otomatik dağıtıma** bırakarak.
 5. **İzle.** Sohbetler çalıştıkça bildirir; bağlı görevler açılır; engelli görevler nedenini söyler.
 6. **Paylaş.** **Dışa aktar** planı, istersen durum anlık görüntüsüyle birlikte commit'leyebileceğin bir dosyaya yazar.
 
@@ -217,10 +245,10 @@ stateDiagram-v2
     state "Başarısız" as Basarisiz
     [*] --> Bekliyor
     Bekliyor --> Hazir: bağımlılıklar bitti
-    Hazir --> Gonderildi: kopyala, gönderildi işaretle
+    Hazir --> Gonderildi: gönder
     Gonderildi --> Calisiyor: started
-    Calisiyor --> Engelli: blocked (neden)
-    Engelli --> Calisiyor: devam
+    Calisiyor --> Engelli: blocked (neden) / yanıtını bekliyor
+    Engelli --> Calisiyor: devam / sen yanıtlarsın
     Calisiyor --> Incelemede: done (onay açık)
     Calisiyor --> Bitti: done
     Incelemede --> Bitti: sen onaylarsın
@@ -234,9 +262,9 @@ stateDiagram-v2
 | Bekliyor | Bağımlılıklardan bazıları henüz bitmedi. |
 | Hazır / **Şimdi gönder** | Bağımlılıklar bitti ve uygun bir sohbette yer var. Yeşil. |
 | Hazır, sohbet meşgul | Bağımlılıklar bitti ama uygun her sohbet `maxParallel` sınırında. |
-| Gönderildi | Promptu bir sohbete kopyaladın; henüz bildirmedi. |
+| Gönderildi | Görevi bir sohbete verdin (kopyaladın ya da çalıştırmasını başlattın); henüz başlamadı. |
 | Çalışıyor | Sohbet `started` ya da `progress` bildirdi. |
-| Engelli | Sohbet nedeniyle birlikte `blocked` bildirdi. Sohbeti meşgul tutar. |
+| Engelli | Sohbet nedeniyle birlikte `blocked` bildirdi ya da sana bir şey sormak için durdu (*yanıtını bekliyor*). Sohbeti meşgul tutar. |
 | İncelemede | Onayını bekliyor (`requireApproval` açık ya da sohbet `review` bildirdi). |
 | Bitti | `done` bildirildi (onay gerekiyorsa onaylandı). Bağlı görevleri açar. |
 | Başarısız | Sohbet nedeniyle birlikte vazgeçti. Yeniden açıp tekrar gönderebilirsin. |
@@ -247,7 +275,7 @@ Her durumu görev panelinden elle de değiştirebilirsin.
 
 ## 📡 Sohbetten bildirim
 
-Her promptun sonunda kısa bir **REPORTING** bölümü vardır; sohbetler ek kurulum olmadan nasıl bildireceğini bilir. Dört kanal, tercih sırasıyla:
+Her promptun sonunda kısa bir **REPORTING** bölümü vardır; sohbetler ek kurulum olmadan nasıl bildireceğini bilir. Kanallar, tercih sırasıyla:
 
 | Kanal | Ne zaman |
 | --- | --- |
@@ -255,6 +283,8 @@ Her promptun sonunda kısa bir **REPORTING** bölümü vardır; sohbetler ek kur
 | **CLI** `aitrack-report --task T-03 --status done` | Aynısı, ulaşamazsa gelen kutusuna kendisi düşer. |
 | **Gelen kutusu dosyası** `.aitrack/inbox/<görev>-<durum>-<ms>.json` | Sohbet localhost'a ulaşamayan bir sanal ortamda çalışıyorsa. Git worktree'leri de taranır. |
 | ` ```aitrack-report ` bloğunu **yapıştır** | Diskine ulaşamayan bulut sohbetleri için. |
+| **Çalıştırma çıktısı** | [Kendi kendine çalışan](docs/agent-runners.md) sohbetler: son mesajın sonundaki blok kendiliğinden okunur. |
+| **Kancalar** | Kendi açtığın Claude Code ve Codex oturumları: tur başı ve sonu. |
 
 Ayrıntılar ve rapor şeması: [docs/agent-reporting.md](docs/agent-reporting.md).
 
@@ -306,7 +336,7 @@ Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`schem
 | Komut | Ne yapar |
 | --- | --- |
 | `npm run desktop` | Her şeyi derler ve masaüstü uygulamasını başlatır. |
-| `npm run serve -- [dosyalar…]` | Takip sunucusu ve web arayüzü `127.0.0.1:4317`'de (`--port`, `--data-dir`). |
+| `npm run serve -- [dosyalar…]` | Takip sunucusu ve web arayüzü `127.0.0.1:4317`'de (`--port`, `--data-dir`). Tarayıcıdan sohbet çalıştırmak için denetim anahtarlı bir bağlantı yazar. |
 | `npm run dev:web` | Geliştirme: yeniden yüklenen sunucu + Vite geliştirme sunucusu. |
 | `npm run dist` | electron-builder ile kurulum dosyaları üretir. |
 | `npm run install:mac` / `npm run update:mac` | Kurulum / güncelleme dosyasına çift tıklamakla aynı. |
@@ -321,7 +351,7 @@ Ortam değişkenleri: `AITRACK_PORT` (varsayılan `4317`), `AITRACK_DATA_DIR` (v
 
 ```text
 packages/core       dosya biçimi (zod), görev grafiği, pano mantığı, prompt üretimi, dosya düzenleme — G/Ç yok
-packages/server     yerel takip sunucusu: kayıt, olay günlüğü, gelen kutusu izleyici, HTTP API, SSE
+packages/server     yerel takip sunucusu: kayıt, olay günlüğü, gelen kutusu izleyici, ajan çalıştırıcıları ve kancalar, HTTP API, SSE
 packages/ui         React arayüzü: paneller, düzenler, kayan pencere, görünüm; Türkçe ve İngilizce
 packages/reporter   ajanlar için aitrack-report CLI, bağımlılıksız
 apps/desktop        Electron kabuğu: sunucu, yarı saydam pencereler, kayan pencere, .aitrack ilişkilendirmesi
@@ -335,7 +365,8 @@ docs/               dosya biçimi, bildirim, yapay zekâyla hazırlama, görsell
 ## 🔒 Güvenlik
 
 - Sunucu **yalnızca 127.0.0.1**'i dinler, yabancı `Host` başlıklarını (DNS rebinding) ve başka kaynaklardan gelen yazma isteklerini reddeder, yazmalarda `application/json` ister.
-- Pencereler context isolation ve sandbox ile çalışır; yerel köprü dosya pencereleri ve kayan pencereyle sınırlıdır, her çağrı ana süreçte denetlenir.
+- Pencereler context isolation ve sandbox ile çalışır; yerel köprü dosya pencereleri, kayan pencere ve denetim anahtarıyla sınırlıdır, her çağrı ana süreçte denetlenir.
+- Ajan başlatmak bir **denetim anahtarı** ister (`~/.aitrack/control-token`); çalıştırma ayarları yalnızca senin bilgisayarında durur, proje dosyalarına yazılmaz.
 - Raporlar veridir: görev durumunu değiştirir ve metin olarak gösterilir, asla çalıştırılmaz.
 - `.aitrack` dosyalarına ve raporlara sır yazma; dosya commit'lenmek için var.
 
@@ -346,14 +377,14 @@ Daha fazlası: [SECURITY.md](SECURITY.md).
 <details>
 <summary><b>Claude ya da Codex'le benim yerime konuşuyor mu?</b></summary>
 
-Henüz değil. Promptları sohbetlerine sen yapıştırırsın, sohbetler geri bildirir. Oturumları açmak ve görevleri ajanların SDK'larıyla otomatik göndermek olası bir sonraki adım.
+İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmî CLI'ıyla — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle çalıştırdığın sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
 
 </details>
 
 <details>
 <summary><b>Verilerim nerede?</b></summary>
 
-Plan senin `.aitrack` dosyandır. Durum olayları bilgisayarında `~/.aitrack/events/` altındadır. Düzenler ve görünüm uygulamada saklanır. Hiçbir şey bilgisayarından çıkmaz.
+Plan senin `.aitrack` dosyandır. Durum olayları bilgisayarında `~/.aitrack/events/`, çalıştırma ayarları `~/.aitrack/runners.json`, çalıştırma çıktıları `~/.aitrack/runs/` altındadır. Düzenler ve görünüm uygulamada saklanır. Takip sunucusu kendisi hiçbir yere bir şey göndermez; yapay zekâ sohbetlerine verdiğin promptlar o sohbetlerle birlikte bilgisayarından çıkar.
 
 </details>
 

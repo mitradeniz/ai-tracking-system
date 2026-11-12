@@ -104,7 +104,7 @@ export const EVENT_TYPES = [
   "note",
 ] as const;
 
-export const EVENT_SOURCES = ["ui", "http", "file", "paste", "import"] as const;
+export const EVENT_SOURCES = ["ui", "http", "file", "paste", "import", "runner", "hook"] as const;
 
 export const EventSchema = z.object({
   id: z.string().min(1),

@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Chats that run themselves: a chat can be set to run with Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or a custom command. **Send** starts or continues the chat's session in its folder with the task prompt; the output streams into the task drawer; the task goes *in progress* on the first output, *done* from the report in the final message, or *waiting for your reply* when the agent asks something. **Reply** continues the same session, **Stop** ends a run.
+- Per-chat run settings stored only on this computer (`~/.aitrack/runners.json`): CLI, working folder, access level (read only, edit files, full access), same session or a new one per task, session id (paste one to continue an existing chat), "don't wait for plan approval", network for the Codex sandbox, extra allowed tools, model, extra arguments, program path. CLIs are found on the login shell's `PATH` and the usual install folders.
+- Auto-dispatch per project: free chats that run themselves get their most urgent ready task, up to a limit of runs at once.
+- Hooks for sessions opened by hand: `POST /api/hook` understands Claude Code hook payloads and Codex `notify`, marks tasks in progress / waiting for your reply / done, and learns the session id so Send continues that conversation. `aitrack-report hook` forwards a hook without curl.
+- A control token for the endpoints that start programs; the desktop app hands it to its windows and `aitrack serve` prints a link with it.
+- Event sources `runner` and `hook`. Runs interrupted by quitting the app are marked blocked on the next start.
+
 ## [0.1.0] - 2026-11-12
 
 ### Added

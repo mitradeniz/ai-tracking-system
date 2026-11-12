@@ -4,7 +4,7 @@ import { api, desktop } from "../api.ts";
 import { useI18n } from "../i18n.ts";
 import { agentIdFromName, helpedChats, sharedBootstrapPrompts } from "../model.ts";
 
-function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+export function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>

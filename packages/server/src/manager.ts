@@ -21,6 +21,7 @@ import {
   serializeBoard,
   serializeProject,
   type AgentChange,
+  type Board,
   type BoardSnapshot,
   type EventSource,
   type Issue,
@@ -221,6 +222,18 @@ export class ProjectManager extends EventEmitter {
   private requireProject(h: ProjectHandle): ProjectFile {
     if (!h.project) throw new HttpError(409, `Project file has errors: ${h.issues[0]?.message ?? "unknown"}`);
     return h.project;
+  }
+
+  /** Keys of the open projects. */
+  keys(): string[] {
+    return [...this.handles.keys()];
+  }
+
+  /** The parsed project and its live board, for the agent runners. */
+  context(key: string): { key: string; filePath: string; project: ProjectFile; board: Board } {
+    const h = this.get(key);
+    const project = this.requireProject(h);
+    return { key, filePath: h.filePath, project, board: computeBoard(project, h.events) };
   }
 
   detail(key: string): ProjectDetail {

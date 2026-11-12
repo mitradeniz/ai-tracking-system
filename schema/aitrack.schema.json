@@ -377,7 +377,9 @@
                   "http",
                   "file",
                   "paste",
-                  "import"
+                  "import",
+                  "runner",
+                  "hook"
                 ]
               }
             },

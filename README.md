@@ -22,12 +22,13 @@ Plan once, send the green tasks, watch the board move.
 </div>
 
 > [!TIP]
-> **The whole idea in one line:** a task turns **green** when everything it depends on is done and its chat is free. Click it, copy the prompt, paste it into that chat. The chat reports back, the board moves, the next tasks turn green.
+> **The whole idea in one line:** a task turns **green** when everything it depends on is done and its chat is free. Send it — paste the prompt into that chat, or let a Codex / Claude Code / Copilot / Gemini chat **run it by itself**. The chat reports back, the board moves, the next tasks turn green.
 
 <details>
 <summary><b>Contents</b></summary>
 
 - [See it move](#-see-it-move)
+- [Chats that run themselves](#-chats-that-run-themselves)
 - [Install](#-install)
 - [Update](#-update)
 - [Automatic updates: how we add them](#-automatic-updates-how-we-add-them)
@@ -60,6 +61,12 @@ Two chats get their first tasks, they report back, and the next tasks light up �
 
 </details>
 
+### Chats that run themselves
+
+Auto-dispatch is switched on: free chats get their ready tasks, their output streams in, Claude asks a question and gets a reply from the drawer, and finished work unlocks the next tasks — which start on their own.
+
+<img src="docs/images/runners.gif" alt="Turning on auto-dispatch: Codex and Claude Code chats start their tasks, Claude waits for a reply, the reply is sent from the task drawer, finished tasks unlock the next ones" width="100%">
+
 ### Floating window
 
 <table>
@@ -86,6 +93,26 @@ Open it from the sidebar, or <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd>.
 Screens are built from **panels**. Add, drag, resize, filter them by chat, keep several layouts, and pick your theme and accent.
 
 <img src="docs/images/customize.gif" alt="Customizing the Overview layout: adding a chat lanes panel filtered to two chats, then changing accent and theme" width="100%">
+
+## 🤖 Chats that run themselves
+
+Set a chat up once (the **⚙ by hand** badge on its lane) and **Send** gives it the task directly — no copy and paste.
+
+| | |
+| --- | --- |
+| **Runs with** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · any command (Cursor CLI, Aider, scripts) |
+| **Where** | the project's repository, or a folder per chat (a git worktree when several chats edit code) |
+| **Access** | read only · edit files (default) · full access |
+| **Conversation** | continues the same session, like a chat you keep open — or a new session per task. Paste an existing session id to continue *that* chat. |
+| **Status** | *started* on the first output, *done* from the report at the end, **waiting for your reply** when the agent asks — answer with **Reply** |
+| **Live** | commands, edits and messages stream into the task drawer; **Stop** at any time |
+| **Auto-dispatch** | the switch in the header: free chats get their most urgent ready task, up to *N* at once |
+| **Your own sessions** | a one-line hook for Claude Code and Codex marks tasks *in progress* and *waiting for your reply* as you work |
+
+> [!IMPORTANT]
+> The CLIs run on your computer with **your own sign-in and plan**. Run settings stay in `~/.aitrack/runners.json`, never in the project file, and starting an agent needs the app's control token — a shared `.aitrack` file or a web page cannot start anything. Keep tasks that need a person (payments, identity checks, legal acceptance) with a chat you run by hand.
+
+Everything — commands per CLI, access levels, sessions, hooks, API: **[docs/agent-runners.md](docs/agent-runners.md)**.
 
 ## 📦 Install
 
@@ -191,13 +218,14 @@ flowchart LR
     end
     T --> UI["🖥️ Desktop app<br/>panels · floating window"]
     UI -- "copy prompt & mark sent" --> C["🤖 AI chats<br/>Claude · Codex · Cursor · you"]
-    C -- "started / blocked / done<br/>HTTP · CLI · inbox file · paste" --> L
+    T -- "Send ▶ runs the CLI<br/>codex · claude · copilot · gemini" --> C
+    C -- "started / blocked / done<br/>HTTP · CLI · inbox · paste · run output · hooks" --> L
 ```
 
 1. **Plan.** A `.aitrack` file lists the chats, the tasks with their real dependencies, and the prompts. Write it by hand or let an AI write it from your plan — see [Authoring a project with AI](docs/authoring-with-ai.md).
 2. **Open.** The app validates it (unknown ids, cycles, missing prompts) and lays it out as a graph.
 3. **Start sessions.** In each chat's lane, copy the **Session prompt** once.
-4. **Dispatch.** Send the green tasks.
+4. **Dispatch.** Send the green tasks — by hand, with **Send ▶** for chats that run themselves, or let **auto-dispatch** do it.
 5. **Track.** Chats report as they work; dependents unlock; blocked tasks say why.
 6. **Share.** **Export** writes the plan, optionally with a status snapshot, back to a file you can commit.
 
@@ -209,10 +237,10 @@ stateDiagram-v2
     direction LR
     [*] --> Waiting
     Waiting --> Ready: dependencies done
-    Ready --> Sent: copy & mark sent
+    Ready --> Sent: send
     Sent --> InProgress: started
-    InProgress --> Blocked: blocked (reason)
-    Blocked --> InProgress: resumed
+    InProgress --> Blocked: blocked (reason) / waiting for your reply
+    Blocked --> InProgress: resumed / you reply
     InProgress --> Review: done (approval on)
     InProgress --> Done: done
     Review --> Done: you approve
@@ -226,9 +254,9 @@ stateDiagram-v2
 | Waiting | Some dependencies are not done yet. |
 | Ready / **Send now** | Dependencies done and an eligible chat has room. Green. |
 | Ready, chat busy | Dependencies done, but every eligible chat is at its `maxParallel` limit. |
-| Sent | You copied the prompt to a chat; it has not reported yet. |
+| Sent | You gave the task to a chat (copied, or started its run); it has not started yet. |
 | In progress | The chat reported `started` or `progress`. |
-| Blocked | The chat reported `blocked`, with a reason. Still holds the chat. |
+| Blocked | The chat reported `blocked` with a reason, or stopped to ask you something (*waiting for your reply*). Still holds the chat. |
 | In review | Waiting for your approval (`requireApproval`, or the chat reported `review`). |
 | Done | Reported `done` (and approved, if approval is required). Unblocks dependents. |
 | Failed | The chat gave up, with a reason. Reopen it to send it again. |
@@ -247,6 +275,8 @@ Every prompt ends with a short **REPORTING** section, so chats know how to repor
 | **CLI** `aitrack-report --task T-03 --status done` | Same, with automatic fallback to the inbox. |
 | **Inbox file** `.aitrack/inbox/<task>-<status>-<ms>.json` | The chat runs in a sandbox that cannot reach localhost. Git worktrees are scanned too. |
 | **Paste** an ` ```aitrack-report ` block | Cloud chats that cannot reach your disk. |
+| **Run output** | Chats that [run themselves](docs/agent-runners.md): the block at the end of the final message is read automatically. |
+| **Hooks** | Claude Code and Codex sessions you open yourself: turn start and end. |
 
 Details and the report schema: [docs/agent-reporting.md](docs/agent-reporting.md).
 
@@ -298,7 +328,7 @@ Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`sch
 | Command | What it does |
 | --- | --- |
 | `npm run desktop` | Build everything and start the desktop app. |
-| `npm run serve -- [files…]` | Tracker and web UI on `127.0.0.1:4317` (`--port`, `--data-dir`). |
+| `npm run serve -- [files…]` | Tracker and web UI on `127.0.0.1:4317` (`--port`, `--data-dir`). Prints a link with the control token for running chats from a browser. |
 | `npm run dev:web` | Development: tracker with reload plus the Vite dev server. |
 | `npm run dist` | Build installers with electron-builder. |
 | `npm run install:mac` / `npm run update:mac` | Same as double-clicking the installer / updater. |
@@ -313,7 +343,7 @@ Environment: `AITRACK_PORT` (default `4317`), `AITRACK_DATA_DIR` (default `~/.ai
 
 ```text
 packages/core       file format (zod), task graph, board logic, prompt rendering, file edits — no I/O
-packages/server     local tracker: registry, event log, inbox watcher, HTTP API, SSE
+packages/server     local tracker: registry, event log, inbox watcher, agent runners and hooks, HTTP API, SSE
 packages/ui         React UI: panels, layouts, floating window, appearance; English and Turkish
 packages/reporter   aitrack-report CLI for agents, zero dependencies
 apps/desktop        Electron shell: tracker, translucent windows, floating window, .aitrack association
@@ -327,7 +357,8 @@ docs/               file format, reporting, authoring with AI, images
 ## 🔒 Security
 
 - The tracker listens on **127.0.0.1 only**, refuses foreign `Host` headers (DNS rebinding) and cross-origin writes, and requires `application/json` for writes.
-- Windows run with context isolation and the sandbox; the native bridge is limited to file dialogs and the floating window, and every call is checked in the main process.
+- Windows run with context isolation and the sandbox; the native bridge is limited to file dialogs, the floating window and the control token, and every call is checked in the main process.
+- Starting agents needs a **control token** (`~/.aitrack/control-token`); run settings live only on your computer, never in project files.
 - Reports are data: they change task status and are shown as text, never executed.
 - Do not put secrets in `.aitrack` files or reports — the file is meant to be committed.
 
@@ -338,14 +369,14 @@ More in [SECURITY.md](SECURITY.md).
 <details>
 <summary><b>Does it talk to Claude or Codex for me?</b></summary>
 
-Not yet. You paste prompts into your chats, and the chats report back. Opening sessions and sending tasks automatically through the agents' SDKs is a possible next step.
+Yes, if you want. A chat set to run by itself is started through its official CLI — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or your own command — with your sign-in; the session continues across tasks and you can reply from the app. Chats you run by hand keep working with copy and paste, and can report through hooks. See [docs/agent-runners.md](docs/agent-runners.md).
 
 </details>
 
 <details>
 <summary><b>Where is my data?</b></summary>
 
-The plan is your `.aitrack` file. Status events are in `~/.aitrack/events/` on your machine. Layouts and appearance are stored in the app. Nothing leaves your computer.
+The plan is your `.aitrack` file. Status events are in `~/.aitrack/events/` on your machine, run settings in `~/.aitrack/runners.json` and run output in `~/.aitrack/runs/`. Layouts and appearance are stored in the app. The tracker itself sends nothing anywhere; the prompts you give to AI chats leave your computer with those chats.
 
 </details>
 

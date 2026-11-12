@@ -2,7 +2,11 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import path from "node:path";
 import { ReportSchema } from "@aitrack/core";
+import { tokenMatches } from "./control.ts";
 import { HttpError, type ProjectManager } from "./manager.ts";
+import { detectProviders } from "./runners/env.ts";
+import { normalizeHook } from "./runners/hooks.ts";
+import type { RunManager } from "./runners/runs.ts";
 
 export const VERSION = "0.1.0";
 const MAX_BODY = 1024 * 1024;
@@ -32,6 +36,10 @@ const CSP =
 
 export interface HttpOptions {
   uiDir?: string;
+  /** Agent runners; without them the run endpoints answer 404. */
+  runs?: RunManager;
+  /** Required in the X-Aitrack-Token header by the endpoints that start programs. */
+  controlToken?: string;
 }
 
 interface Ctx {
@@ -113,7 +121,7 @@ function serveStatic(ctx: Ctx, uiDir: string): void {
   createReadStream(file).pipe(ctx.res);
 }
 
-function stream(ctx: Ctx, manager: ProjectManager): void {
+function stream(ctx: Ctx, manager: ProjectManager, runs?: RunManager): void {
   ctx.res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-store",
@@ -123,13 +131,22 @@ function stream(ctx: Ctx, manager: ProjectManager): void {
   ctx.res.write(`event: hello\ndata: {}\n\n`);
   const onChanged = (payload: { key: string }) => ctx.res.write(`event: changed\ndata: ${JSON.stringify(payload)}\n\n`);
   const onActivity = (payload: unknown) => ctx.res.write(`event: activity\ndata: ${JSON.stringify(payload)}\n\n`);
+  const onRun = (payload: unknown) => ctx.res.write(`event: run\ndata: ${JSON.stringify(payload)}\n\n`);
+  const onRunLog = (payload: unknown) => ctx.res.write(`event: runlog\ndata: ${JSON.stringify(payload)}\n\n`);
+  const onRunners = (payload: unknown) => ctx.res.write(`event: runners\ndata: ${JSON.stringify(payload)}\n\n`);
   manager.on("changed", onChanged);
   manager.on("activity", onActivity);
+  runs?.on("run", onRun);
+  runs?.on("runlog", onRunLog);
+  runs?.on("runners", onRunners);
   const ping = setInterval(() => ctx.res.write(`: ping\n\n`), 25_000);
   ctx.req.on("close", () => {
     clearInterval(ping);
     manager.off("changed", onChanged);
     manager.off("activity", onActivity);
+    runs?.off("run", onRun);
+    runs?.off("runlog", onRunLog);
+    runs?.off("runners", onRunners);
   });
 }
 
@@ -236,7 +253,81 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     }
     send(ctx.res, 201, { ok: true, ...(await manager.recordReport(parsed.data, "http")) });
   });
-  route("GET", "/api/stream", (ctx) => stream(ctx, manager));
+  route("GET", "/api/stream", (ctx) => stream(ctx, manager, options.runs));
+
+  // ---- agent runners ----
+  const runs = (): RunManager => {
+    if (!options.runs) throw new HttpError(404, "Agent runners are not available in this server.");
+    return options.runs;
+  };
+  /** Endpoints that start programs need the control token. */
+  const control = (ctx: Ctx): void => {
+    const given = ctx.req.headers["x-aitrack-token"];
+    if (!options.controlToken || !tokenMatches(options.controlToken, typeof given === "string" ? given : undefined)) {
+      throw new HttpError(401, "This action needs the app's control token. Open the tracker from the desktop app or from the link printed by `aitrack serve`.");
+    }
+  };
+  route("GET", "/api/control", (ctx) => {
+    control(ctx);
+    send(ctx.res, 200, { ok: true });
+  });
+  route("GET", "/api/providers", async (ctx) => send(ctx.res, 200, { providers: await detectProviders(ctx.url.searchParams.get("refresh") === "1") }));
+  route("GET", "/api/projects/:key/runners", (ctx, [key]) => send(ctx.res, 200, runs().state(key!)));
+  route("POST", "/api/projects/:key/runners", async (ctx, [key]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    send(
+      ctx.res,
+      200,
+      await runs().saveProject(key!, {
+        autoDispatch: typeof body.autoDispatch === "boolean" ? body.autoDispatch : undefined,
+        maxConcurrent: typeof body.maxConcurrent === "number" ? body.maxConcurrent : undefined,
+      }),
+    );
+  });
+  route("POST", "/api/projects/:key/runners/:agent", async (ctx, [key, agent]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    send(ctx.res, 200, await runs().saveChat(key!, decodeURIComponent(agent!), body.runner ?? body));
+  });
+  route("POST", "/api/projects/:key/tasks/:task/run", async (ctx, [key, task]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    const agent = typeof body.agent === "string" && body.agent ? body.agent : undefined;
+    send(ctx.res, 201, await runs().start(key!, decodeURIComponent(task!), agent));
+  });
+  route("POST", "/api/projects/:key/agents/:agent/reply", async (ctx, [key, agent]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    const task = typeof body.task === "string" && body.task ? body.task : undefined;
+    send(ctx.res, 201, await runs().reply(key!, decodeURIComponent(agent!), String(body.text ?? ""), task));
+  });
+  route("POST", "/api/runs/:id/stop", async (ctx, [id]) => {
+    control(ctx);
+    send(ctx.res, 200, runs().stop(decodeURIComponent(id!)));
+  });
+  route("GET", "/api/runs/:id/log", (ctx, [id]) =>
+    send(ctx.res, 200, runs().log(decodeURIComponent(id!), Number(ctx.url.searchParams.get("after") ?? 0) || 0)),
+  );
+  // Hooks from sessions opened by hand. They only move a task's status, like a report does.
+  route("POST", "/api/hook", async (ctx) => {
+    const body = await readJson(ctx.req);
+    const header = (name: string) => {
+      const v = ctx.req.headers[name];
+      return typeof v === "string" && v.trim() ? v.trim() : undefined;
+    };
+    const signal = normalizeHook(body, {
+      tool: ctx.url.searchParams.get("tool") ?? undefined,
+      chat: header("x-aitrack-chat"),
+      project: header("x-aitrack-project"),
+      runId: header("x-aitrack-run"),
+    });
+    if (!signal || !options.runs) {
+      send(ctx.res, 200, { handled: false, detail: "Ignored." });
+      return;
+    }
+    send(ctx.res, 200, await options.runs.hook(signal));
+  });
 
   const server = createServer((req, res) => {
     const address = server.address();

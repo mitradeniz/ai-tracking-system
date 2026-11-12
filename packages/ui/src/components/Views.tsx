@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import type { TaskSnapshot } from "@aitrack/core";
 import { api, copyText } from "../api.ts";
 import { useI18n } from "../i18n.ts";
-import { agentName, cardNote, formatTime, helpedChats, type Model } from "../model.ts";
+import { activeRun, agentName, cardNote, formatTime, helpedChats, type Model } from "../model.ts";
+import { RunnerBadge } from "./Runners.tsx";
 import { TaskCard } from "./TaskCard.tsx";
 
 interface ViewProps {
@@ -52,7 +53,14 @@ export function ReadyStrip({ model, onOpen, agents }: Omit<ViewProps, "onError">
   );
 }
 
-export function LanesView({ model, onOpen, onError, onEditAgent, agents }: ViewProps & { onEditAgent: (agentId?: string) => void }) {
+export function LanesView({
+  model,
+  onOpen,
+  onError,
+  onEditAgent,
+  onRunnerSettings,
+  agents,
+}: ViewProps & { onEditAgent: (agentId?: string) => void; onRunnerSettings?: (agentId: string) => void }) {
   const { t } = useI18n();
   const [showDone, setShowDone] = useState<Record<string, boolean>>({});
   const [copiedFor, setCopiedFor] = useState<string | null>(null);
@@ -111,7 +119,8 @@ export function LanesView({ model, onOpen, onError, onEditAgent, agents }: ViewP
               <div className="lane-title">
                 {agent.color && <span className="agent-dot" style={{ background: agent.color }} aria-hidden="true" />}
                 <strong>{agent.name}</strong>
-                {agent.tool && <span className="badge">{agent.tool}</span>}
+                {agent.tool && !model.runners && <span className="badge">{agent.tool}</span>}
+                {onRunnerSettings && <RunnerBadge model={model} agentId={agent.id} onClick={() => onRunnerSettings(agent.id)} />}
                 <span className="spacer" />
                 <span className={`badge ${isIdle ? "idle" : "busy"}`}>{isIdle ? t("idle") : t("busy")}</span>
                 <button
@@ -137,6 +146,16 @@ export function LanesView({ model, onOpen, onError, onEditAgent, agents }: ViewP
                 </button>
               </div>
               {agent.role && <div className="small muted">{agent.role}</div>}
+              {(() => {
+                const run = activeRun(model, agent.id);
+                return run ? (
+                  <button className="run-line" onClick={() => onOpen(run.task)} title={run.lastActivity}>
+                    <span className="pulse" aria-hidden="true" />
+                    <span className="mono">{run.task}</span>
+                    <span className="ellipsis">{run.lastActivity ?? t("run_state_running")}</span>
+                  </button>
+                ) : null;
+              })()}
               {helped.length > 0 && (
                 <div className="small muted">{t("helpsWith", { names: helped.map((h) => agentName(model, h)).join(", ") })}</div>
               )}

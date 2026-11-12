@@ -50,6 +50,7 @@ async function main(): Promise<void> {
     process.stdout.write(`[${new Date().toLocaleTimeString()}] ${projectName ?? ""} ${event.task}: ${event.type}\n`),
   );
   process.stdout.write(`AI Tracking System is running at ${running.url}\n`);
+  process.stdout.write(`Open this link to use the agent runners from a browser: ${running.controlUrl}\n`);
   const stop = () => void running.close().then(() => process.exit(0));
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);

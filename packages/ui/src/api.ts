@@ -29,6 +29,67 @@ export interface AgentPayload {
   bootstrapPrompts?: string[];
 }
 
+export type ProviderId = "codex" | "claude" | "copilot" | "gemini" | "custom";
+export type RunnerProvider = ProviderId | "manual";
+
+/** How a chat is run on this computer. Kept by the local tracker, never in the project file. */
+export interface ChatRunner {
+  provider: RunnerProvider;
+  workdir?: string;
+  model?: string;
+  access: "readonly" | "edit" | "full";
+  session: "keep" | "perTask";
+  sessionId?: string;
+  unattended: boolean;
+  network: boolean;
+  allowedTools?: string;
+  extraArgs?: string;
+  binary?: string;
+  command?: string;
+}
+
+export interface RunSummary {
+  id: string;
+  key: string;
+  task: string;
+  agent: string;
+  provider: ProviderId;
+  kind: "task" | "reply";
+  auto: boolean;
+  state: "running" | "waiting" | "finished" | "failed" | "stopped";
+  startedAt: string;
+  endedAt?: string;
+  workdir: string;
+  sessionId?: string;
+  lastActivity?: string;
+  lastMessage?: string;
+  error?: string;
+  lines: number;
+}
+
+export interface RunnerState {
+  settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner> };
+  defaultWorkdir: string;
+  runs: RunSummary[];
+  errors: Record<string, string>;
+  hooks: { claude: string; codex: string; generic: string };
+}
+
+export interface DetectedProvider {
+  id: ProviderId;
+  name: string;
+  path: string | null;
+  version: string | null;
+}
+
+export interface RunLogEvent {
+  key: string;
+  runId: string;
+  from: number;
+  lines: string[];
+  lastActivity?: string;
+}
+
 export interface Activity {
   key: string;
   projectName?: string;
@@ -55,6 +116,8 @@ export interface DesktopBridge {
   setMini?(options: { pinned?: boolean; opacity?: number }): Promise<void>;
   /** Brings the main window forward, optionally on a project and task. */
   focusMain?(projectKey?: string, taskId?: string): Promise<void>;
+  /** The tracker's control token, needed to start agents. */
+  controlToken?(): Promise<string | null>;
   /** Main window: called when the floating window asks to show a task. Returns an unsubscribe function. */
   onOpenTask?(callback: (projectKey: string | undefined, taskId: string | undefined) => void): () => void;
 }
@@ -67,10 +130,48 @@ declare global {
 
 export const desktop: DesktopBridge | undefined = typeof window !== "undefined" ? window.aitrackDesktop : undefined;
 
+let tokenPromise: Promise<string | null> | null = null;
+
+/**
+ * The control token lets this window start agents. The desktop app hands it over; in a browser it
+ * comes from the link printed by `aitrack serve` (#token=...) and is remembered on this computer.
+ */
+export function controlToken(): Promise<string | null> {
+  tokenPromise ??= (async () => {
+    const fromHash = typeof location !== "undefined" ? /(?:^|[#&])token=([A-Za-z0-9]{16,128})/.exec(location.hash)?.[1] : undefined;
+    if (fromHash) {
+      try {
+        localStorage.setItem("aitrack.token", fromHash);
+      } catch {
+        // Kept for this page only.
+      }
+      history.replaceState(null, "", location.pathname + location.search);
+      return fromHash;
+    }
+    if (desktop?.controlToken) {
+      try {
+        const token = await desktop.controlToken();
+        if (token) return token;
+      } catch {
+        // Fall through.
+      }
+    }
+    try {
+      return localStorage.getItem("aitrack.token");
+    } catch {
+      return null;
+    }
+  })();
+  return tokenPromise;
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const token = await controlToken();
+  const headers: Record<string, string> = body === undefined ? {} : { "content-type": "application/json" };
+  if (token) headers["x-aitrack-token"] = token;
   const res = await fetch(url, {
     method,
-    headers: body === undefined ? {} : { "content-type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();
@@ -116,6 +217,22 @@ export const api = {
   removeAgent: (key: string, agent: string, reassignTo?: string) =>
     request<ProjectSummary>("POST", `/api/projects/${enc(key)}/agents/${enc(agent)}/remove`, { reassignTo }),
   exportUrl: (key: string, includeState: boolean) => `/api/projects/${enc(key)}/export${includeState ? "?state=1" : ""}`,
+  // Agent runners
+  control: () => request<{ ok: true }>("GET", "/api/control").then(() => true, () => false),
+  providers: (refresh = false) =>
+    request<{ providers: DetectedProvider[] }>("GET", `/api/providers${refresh ? "?refresh=1" : ""}`).then((r) => r.providers),
+  runners: (key: string) => request<RunnerState>("GET", `/api/projects/${enc(key)}/runners`),
+  saveRunnerProject: (key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number }) =>
+    request<RunnerState["settings"]>("POST", `/api/projects/${enc(key)}/runners`, patch),
+  saveRunner: (key: string, agent: string, runner: Partial<ChatRunner>) =>
+    request<ChatRunner>("POST", `/api/projects/${enc(key)}/runners/${enc(agent)}`, { runner }),
+  runTask: (key: string, task: string, agent?: string) =>
+    request<RunSummary>("POST", `/api/projects/${enc(key)}/tasks/${enc(task)}/run`, { agent }),
+  reply: (key: string, agent: string, text: string, task?: string) =>
+    request<RunSummary>("POST", `/api/projects/${enc(key)}/agents/${enc(agent)}/reply`, { text, task }),
+  stopRun: (id: string) => request<RunSummary>("POST", `/api/runs/${enc(id)}/stop`, {}),
+  runLog: (id: string, after = 0) =>
+    request<{ lines: string[]; next: number; run: RunSummary }>("GET", `/api/runs/${enc(id)}/log?after=${after}`),
 };
 
 export async function copyText(text: string): Promise<void> {
@@ -136,8 +253,27 @@ export async function copyText(text: string): Promise<void> {
   area.remove();
 }
 
-/** Copies a task's prompt for a chat and records that it was sent to that chat. */
-export async function dispatchTask(projectKey: string, taskId: string, agentId: string): Promise<void> {
+/** True when the chat is set up to run on its own (not copy and paste). */
+export function canRun(runners: RunnerState | null | undefined, agentId: string): boolean {
+  const provider = runners?.settings.chats[agentId]?.provider;
+  return Boolean(provider && provider !== "manual");
+}
+
+/**
+ * Gives a task to a chat. A chat with a runner gets it right away (its session starts or
+ * continues); otherwise the prompt is copied for pasting and the task is marked as sent.
+ */
+export async function dispatchTask(
+  projectKey: string,
+  taskId: string,
+  agentId: string,
+  runners?: RunnerState | null,
+): Promise<"run" | "copied"> {
+  if (canRun(runners, agentId)) {
+    await api.runTask(projectKey, taskId, agentId);
+    return "run";
+  }
   await copyText(await api.taskPrompt(projectKey, taskId, agentId));
   await api.addEvent(projectKey, { task: taskId, type: "dispatched", agent: agentId });
+  return "copied";
 }

@@ -9,6 +9,11 @@ import path from "node:path";
 
 const HELP = `Usage:
   aitrack-report --task <id> --status <started|progress|blocked|review|done|failed> [options]
+  aitrack-report hook [--tool claude|codex|<name>] [--server <url>] [json]
+
+The "hook" form forwards a Claude Code hook (JSON on stdin) or a Codex notify payload (JSON as the
+last argument) to the tracker, so sessions opened by hand update their task's status. It never fails
+the calling tool: it always exits 0.
 
 Options:
   --project <id>       project id (needed when several open projects share task ids)
@@ -49,7 +54,41 @@ function repoRoot() {
   }
 }
 
+async function readStdin() {
+  if (process.stdin.isTTY) return "";
+  const chunks = [];
+  for await (const c of process.stdin) chunks.push(c);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+async function hook(argv) {
+  let tool;
+  let server = process.env.AITRACK_SERVER ?? "http://127.0.0.1:4317";
+  let payload;
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === "--tool") tool = argv[++i];
+    else if (argv[i] === "--server") server = argv[++i] ?? server;
+    else if (argv[i].trim().startsWith("{")) payload = argv[i];
+  }
+  try {
+    payload ??= await readStdin();
+    if (!payload.trim()) return;
+    const headers = { "content-type": "application/json" };
+    if (process.env.AITRACK_CHAT) headers["x-aitrack-chat"] = process.env.AITRACK_CHAT;
+    if (process.env.AITRACK_RUN) headers["x-aitrack-run"] = process.env.AITRACK_RUN;
+    if (process.env.AITRACK_PROJECT) headers["x-aitrack-project"] = process.env.AITRACK_PROJECT;
+    const url = `${server.replace(/\/+$/, "")}/api/hook${tool ? `?tool=${encodeURIComponent(tool)}` : ""}`;
+    await fetch(url, { method: "POST", headers, body: payload, signal: AbortSignal.timeout(3000) });
+  } catch {
+    // The tracker may be closed; a hook must never get in the way of the agent.
+  }
+}
+
 async function main() {
+  if (process.argv[2] === "hook") {
+    await hook(process.argv.slice(3));
+    return;
+  }
   let args;
   try {
     args = parseArgs(process.argv.slice(2));

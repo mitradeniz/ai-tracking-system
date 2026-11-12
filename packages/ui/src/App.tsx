@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, desktop, type Activity } from "./api.ts";
 import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { AddProjectDialog, AgentDialog, ExportDialog, PasteDialog } from "./components/Dialogs.tsx";
+import { AutoDispatch, RunnerDialog } from "./components/Runners.tsx";
 import { SettingsDialog } from "./components/Settings.tsx";
 import { TaskDrawer } from "./components/TaskDrawer.tsx";
 import { Workspace } from "./components/Workspace.tsx";
@@ -33,8 +34,9 @@ export function App() {
   useApplyAppearance(appearance);
   const [selected, setSelected] = usePref<string | null>("selectedProject", null);
   const [openTask, setOpenTask] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"add" | "paste" | "export" | "agent" | "settings" | null>(null);
+  const [dialog, setDialog] = useState<"add" | "paste" | "export" | "agent" | "settings" | "runner" | null>(null);
   const [agentToEdit, setAgentToEdit] = useState<string | undefined>(undefined);
+  const [runnerAgent, setRunnerAgent] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -56,7 +58,7 @@ export function App() {
     [t, toast],
   );
 
-  const { projects, loaded, detail, live, refresh } = useTracker(selected, onActivity, (m) => toast(m, "failed"));
+  const { projects, loaded, detail, live, refresh, runners } = useTracker(selected, onActivity, (m) => toast(m, "failed"));
 
   // Keep a valid project selected.
   useEffect(() => {
@@ -103,7 +105,10 @@ export function App() {
   const layoutName = (l: Layout) => l.name || (["lanes", "overview", "flow", "list"].includes(l.id) ? t(`layout_${l.id}` as Key) : l.id);
   const saveLayout = (next: Layout) => setLayouts((all) => all.map((l) => (l.id === next.id ? next : l)));
 
-  const model = useMemo(() => (detail ? buildModel(detail) : null), [detail]);
+  const model = useMemo(
+    () => (detail ? buildModel(detail, runners && detail.key === selected ? runners : null) : null),
+    [detail, runners, selected],
+  );
   const counts = detail?.board?.counts;
   const readyCount = detail?.board?.tasks.filter((x) => x.dispatchable).length ?? 0;
   const errors = detail?.issues.filter((i) => i.level === "error") ?? [];
@@ -111,6 +116,12 @@ export function App() {
   const editAgent = (agentId?: string) => {
     setAgentToEdit(agentId);
     setDialog("agent");
+  };
+  const runnerSettings = (agentId?: string) => {
+    const first = agentId ?? detail?.project?.agents[0]?.id;
+    if (!first) return;
+    setRunnerAgent(first);
+    setDialog("runner");
   };
 
   return (
@@ -215,6 +226,7 @@ export function App() {
                   )}
                   <span className="spacer" />
                   <div className="header-actions">
+                    {model && <AutoDispatch model={model} onSetup={() => runnerSettings()} onError={(m) => toast(m, "failed")} />}
                     <button className="btn small" onClick={() => setDialog("paste")}>
                       {t("pasteReport")}
                     </button>
@@ -344,6 +356,7 @@ export function App() {
                     onError={(m) => toast(m, "failed")}
                     onInfo={(m) => toast(m, "done")}
                     onEditAgent={editAgent}
+                    onRunnerSettings={runnerSettings}
                   />
                 )}
               </div>
@@ -359,6 +372,21 @@ export function App() {
           onClose={() => setOpenTask(null)}
           onOpen={setOpenTask}
           onError={(m) => toast(m, "failed")}
+          onInfo={(m) => toast(m, "done")}
+          onRunnerSettings={runnerSettings}
+        />
+      )}
+      {dialog === "runner" && model && runnerAgent && model.agent.has(runnerAgent) && (
+        <RunnerDialog
+          key={runnerAgent}
+          model={model}
+          agentId={runnerAgent}
+          onSwitch={setRunnerAgent}
+          onClose={() => setDialog(null)}
+          onSaved={(message) => {
+            toast(message, "done");
+            refresh();
+          }}
         />
       )}
       {dialog === "add" && (

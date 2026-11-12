@@ -94,6 +94,10 @@ Every prompt asks the chat to end its final message with a fenced block:
 
 Copy the chat's last message (or just the block) into **Paste report** in the app. Several blocks in one paste are fine.
 
+### 5. Run output and hooks
+
+A chat that [runs by itself](agent-runners.md) does not need any of the above: the tracker starts it and reads the `aitrack-report` block from its final message (`source: "runner"`). Sessions you open by hand in Claude Code or Codex can send their turn starts and ends through a [hook](agent-runners.md#hooks-for-sessions-you-open-yourself) (`source: "hook"`).
+
 ## Marking by hand
 
 Every state can also be set from the task drawer: mark sent, started, done, blocked (with a reason), failed, approve, reopen, or add a note. Manual changes are events too, with `source: "ui"`.
