@@ -2,7 +2,19 @@ import { useMemo, useState } from "react";
 import type { TaskSnapshot } from "@aitrack/core";
 import { api, copyText } from "../api.ts";
 import { useI18n } from "../i18n.ts";
-import { activeRun, agentName, cardNote, formatTime, helpedChats, type Model } from "../model.ts";
+import {
+  activeRun,
+  agentName,
+  cardNote,
+  contextPercent,
+  formatDuration,
+  formatTime,
+  helpedChats,
+  lastContextRun,
+  problemsOf,
+  type Model,
+} from "../model.ts";
+import { Bang, InfoTip, useNow } from "./Info.tsx";
 import { RunnerBadge } from "./Runners.tsx";
 import { TaskCard } from "./TaskCard.tsx";
 
@@ -37,7 +49,10 @@ export function ReadyStrip({ model, onOpen, agents }: Omit<ViewProps, "onError">
   const groups = (model.detail.board?.agents ?? []).filter((a) => a.dispatchable.length > 0 && (!agents || agents.has(a.id)));
   return (
     <div className="ready-strip" aria-live="polite">
-      <span className="label">{t("readyNow")}</span>
+      <span className="label">
+        {t("readyNow")}
+        <InfoTip text={t("info_ready")} />
+      </span>
       {groups.length === 0 && <span className="muted small">{t("nothingReady")}</span>}
       {groups.map((g) => (
         <div className="ready-group" key={g.id}>
@@ -70,6 +85,8 @@ export function LanesView({
   const urgency = byUrgency(model);
   const step = byStep(model);
   const shown = project.agents.filter((a) => !agents || agents.has(a.id));
+  const anyRunning = Boolean(model.runners?.runs.some((r) => r.state === "running"));
+  const now = useNow(anyRunning);
 
   const copyPrompt = async (label: string, load: () => Promise<string>) => {
     try {
@@ -92,11 +109,13 @@ export function LanesView({
         const waiting = own.filter((s) => s.status === "waiting").sort(step);
         const review = own.filter((s) => s.status === "review");
         const failed = own.filter((s) => s.status === "failed");
-        const done = own.filter((s) => s.status === "done");
+        const doneAll = own.filter((s) => s.status === "done");
+        const doneWithProblems = doneAll.filter((s) => problemsOf(model, s, t).length > 0);
+        const done = doneAll.filter((s) => !doneWithProblems.includes(s));
         const isIdle = av?.hasRoom ?? true;
         const helped = helpedChats(model.tasks, agent.id);
         const empty =
-          holding.length + sendable.length + failed.length + review.length + readyBusy.length + waiting.length + done.length === 0;
+          holding.length + sendable.length + failed.length + review.length + readyBusy.length + waiting.length + doneAll.length === 0;
 
         const section = (title: string, items: TaskSnapshot[], extra?: React.ReactNode) =>
           items.length > 0 && (
@@ -118,9 +137,9 @@ export function LanesView({
             <div className="lane-head">
               <div className="lane-title">
                 {agent.color && <span className="agent-dot" style={{ background: agent.color }} aria-hidden="true" />}
-                <strong>{agent.name}</strong>
-                {agent.tool && !model.runners && <span className="badge">{agent.tool}</span>}
-                {onRunnerSettings && <RunnerBadge model={model} agentId={agent.id} onClick={() => onRunnerSettings(agent.id)} />}
+                <strong className="ellipsis" title={agent.name}>
+                  {agent.name}
+                </strong>
                 <span className="spacer" />
                 <span className={`badge ${isIdle ? "idle" : "busy"}`}>{isIdle ? t("idle") : t("busy")}</span>
                 <button
@@ -145,13 +164,37 @@ export function LanesView({
                   </svg>
                 </button>
               </div>
-              {agent.role && <div className="small muted">{agent.role}</div>}
+              <div className="lane-meta">
+                {onRunnerSettings ? (
+                  <RunnerBadge model={model} agentId={agent.id} onClick={() => onRunnerSettings(agent.id)} />
+                ) : (
+                  agent.tool && <span className="badge">{agent.tool}</span>
+                )}
+                {(() => {
+                  const ctxRun = lastContextRun(model, agent.id);
+                  const pct = contextPercent(ctxRun);
+                  return pct !== null ? (
+                    <span className="ctx" title={t("m_contextHint")}>
+                      {t("m_context")} <b>{pct}%</b>
+                      <span className={`meter ${pct >= 80 ? "hot" : pct >= 60 ? "warm" : ""}`}>
+                        <span style={{ width: `${Math.max(3, pct)}%` }} />
+                      </span>
+                    </span>
+                  ) : null;
+                })()}
+                {(() => {
+                  const n = [...holding, ...failed, ...review, ...doneWithProblems].reduce((sum, x) => sum + problemsOf(model, x, t).length, 0);
+                  return n > 0 ? <Bang n={n} title={t("problemsN", { n })} /> : null;
+                })()}
+              </div>
+              {agent.role && <div className="small muted clamp-2">{agent.role}</div>}
               {(() => {
                 const run = activeRun(model, agent.id);
                 return run ? (
                   <button className="run-line" onClick={() => onOpen(run.task)} title={run.lastActivity}>
                     <span className="pulse" aria-hidden="true" />
                     <span className="mono">{run.task}</span>
+                    <span className="mono muted">{formatDuration(now - Date.parse(run.startedAt))}</span>
                     <span className="ellipsis">{run.lastActivity ?? t("run_state_running")}</span>
                   </button>
                 ) : null;
@@ -184,6 +227,7 @@ export function LanesView({
             {section(t("now"), holding)}
             {section(t("sendable"), sendable)}
             {section(t("failed"), failed)}
+            {section(t("problems"), doneWithProblems)}
             {section(t("inReview"), review)}
             {section(t("readyBusy"), readyBusy)}
             {section(t("upcoming"), waiting)}

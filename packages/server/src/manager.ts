@@ -364,6 +364,7 @@ export class ProjectManager extends EventEmitter {
       reason: input.reason ? String(input.reason) : undefined,
       pr: input.pr ? String(input.pr) : undefined,
       verify: input.verify ? String(input.verify) : undefined,
+      issues: Array.isArray(input.issues) ? input.issues : undefined,
       source,
     });
     if (!parsed.success) throw new HttpError(400, parsed.error.issues.map((i) => i.message).join("; "));

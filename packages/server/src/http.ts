@@ -294,7 +294,8 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     control(ctx);
     const body = await readJson(ctx.req);
     const agent = typeof body.agent === "string" && body.agent ? body.agent : undefined;
-    send(ctx.res, 201, await runs().start(key!, decodeURIComponent(task!), agent));
+    const extra = typeof body.extra === "string" ? body.extra.slice(0, 20000) : undefined;
+    send(ctx.res, 201, await runs().start(key!, decodeURIComponent(task!), agent, { extra }));
   });
   route("POST", "/api/projects/:key/agents/:agent/reply", async (ctx, [key, agent]) => {
     control(ctx);

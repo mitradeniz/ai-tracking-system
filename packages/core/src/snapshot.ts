@@ -1,4 +1,5 @@
 import type { Board, BoardStatus, Reason } from "./board.ts";
+import type { TaskIssue } from "./schema.ts";
 
 /** JSON-friendly view of a board, sent to the UI. Task definitions come from the project itself. */
 export interface TaskSnapshot {
@@ -9,6 +10,7 @@ export interface TaskSnapshot {
   reason: string | null;
   pr: string | null;
   verify: string | null;
+  issues: TaskIssue[];
   lastMessage: string | null;
   updatedAt: string | null;
   startedAt: string | null;
@@ -48,6 +50,7 @@ export function serializeBoard(board: Board): BoardSnapshot {
     reason: v.runtime.reason ?? null,
     pr: v.runtime.pr ?? null,
     verify: v.runtime.verify ?? null,
+    issues: v.runtime.issues,
     lastMessage: v.runtime.lastMessage ?? null,
     updatedAt: v.runtime.updatedAt ?? null,
     startedAt: v.runtime.startedAt ?? null,

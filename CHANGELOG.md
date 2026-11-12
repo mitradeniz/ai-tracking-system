@@ -12,6 +12,11 @@ All notable changes to this project are documented here. The format follows [Kee
 - Hooks for sessions opened by hand: `POST /api/hook` understands Claude Code hook payloads and Codex `notify`, marks tasks in progress / waiting for your reply / done, and learns the session id so Send continues that conversation. `aitrack-report hook` forwards a hook without curl.
 - A control token for the endpoints that start programs; the desktop app hands it to its windows and `aitrack serve` prints a link with it.
 - Model and reasoning effort per chat, picked from lists: Codex's model catalog with each model's reasoning levels, Copilot's model list, and the Claude Code and Gemini aliases that follow the latest versions; any other model id can be typed. Model names with spaces are refused instead of failing at run time.
+- Problems in reports: `issues` with a plain-language title, details, kind and a fix prompt. Prompts ask for them in the project's language; tasks with problems get a red **!** on cards, lanes, the Needs-you panel and the floating window, and the task drawer lists them with the fix prompt ready to edit, copy or send to the chat. Failures, decisions the chat waits for and tools a CLI refused show up there too.
+- Your own prompts: add instructions to a task when sending it, write to a chat's session at any time, and keep a list of saved prompts to insert.
+- Run details for chats that run themselves: live elapsed time, tool calls, tokens, turns, list price and how full the session's context is (Claude Code), on lanes, cards, the task drawer and the floating window.
+- Info tips (ⓘ) next to auto-dispatch, the run limit, the run settings and the new panels; the sidebar folds into a rail (⌘B).
+- Dark theme on a black ground with black-and-white components; status colours unchanged. Smaller corner radii. Clearer lane headers and floating-window rows.
 - Event sources `runner` and `hook`. Runs interrupted by quitting the app are marked blocked on the next start.
 
 ## [0.1.0] - 2026-11-12

@@ -2,7 +2,7 @@ import type { TaskSnapshot } from "@aitrack/core";
 import { useState } from "react";
 import { api, dispatchTask } from "../api.ts";
 import { useI18n } from "../i18n.ts";
-import { agentName, cardNote, formatTime, runnerOf, type Model } from "../model.ts";
+import { agentName, cardNote, formatTime, problemsOf, runnerOf, type Model } from "../model.ts";
 import { inChats } from "./Views.tsx";
 
 interface PanelProps {
@@ -31,6 +31,7 @@ function TaskRow({
     <div className={`task-row ${snap.dispatchable ? "sendable" : snap.status}`}>
       <button type="button" className="task-row-main" onClick={() => onOpen(snap.id)} title={task?.title}>
         <span className="mono id">{snap.id}</span>
+        {problemsOf(model, snap, t).length > 0 && <span className="bang">!</span>}
         <span className="ellipsis">{task?.title}</span>
         <span className="small muted ellipsis">
           {agentName(model, snap.agent ?? task?.agent)}
@@ -54,6 +55,11 @@ export function InboxPanel({ model, onOpen, onError, onInfo, agents }: PanelProp
     { key: "review", title: t("inbox_review"), items: mine.filter((s) => s.status === "review") },
     { key: "blocked", title: t("inbox_blocked"), items: mine.filter((s) => s.status === "blocked") },
     { key: "failed", title: t("inbox_failed"), items: mine.filter((s) => s.status === "failed") },
+    {
+      key: "problems",
+      title: t("problems"),
+      items: mine.filter((s) => !["blocked", "failed"].includes(s.status) && problemsOf(model, s, t).length > 0),
+    },
   ].filter((g) => g.items.length > 0);
 
   const run = async (id: string, fn: () => Promise<unknown>, message?: string) => {

@@ -180,6 +180,27 @@ describe("agent runners", () => {
     expect(second.stdin).toBe("Yes, go ahead.");
   });
 
+  it("keeps run metrics and turns refused tools into problems with a fix prompt", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_DENY = "1";
+    try {
+      await setRunner("b", { provider: "claude" });
+      await call("POST", `/api/projects/${key}/tasks/T3/run`, { extra: "Use tabs, not spaces." });
+      await waitFor("T3", "done");
+    } finally {
+      delete process.env.FAKE_DENY;
+    }
+    expect((await invocations())[0]!.stdin).toContain("ADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\nUse tabs, not spaces.");
+    const run = (await call("GET", `/api/projects/${key}/runners`)).json.runs[0];
+    expect(run.tools).toBe(1);
+    expect(run.usage).toMatchObject({ context: 32100, contextWindow: 1000000, costUsd: 0.05, turns: 2, input: 62020, cached: 60000, output: 150 });
+    expect(run.denials).toEqual(["Bash npm test"]);
+    const t3 = (await call("GET", `/api/projects/${key}`)).json.board.tasks.find((t: { id: string }) => t.id === "T3");
+    expect(t3.issues).toHaveLength(1);
+    expect(t3.issues[0]).toMatchObject({ title: "Permission denied: Bash npm test", kind: "needs-you" });
+    expect(t3.issues[0].fix).toContain("npm test");
+  });
+
   it("marks the task failed when the CLI fails", async () => {
     process.env.FAKE_SCENARIO = "fail";
     await setRunner("a", { provider: "codex" });
@@ -316,7 +337,11 @@ describe("provider adapters", () => {
     expect(g.finalMessage()).toBe("Hello");
     const c = new OutputParser("claude");
     const events = c.feed(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "ok", permission_denials: [{ tool_name: "Bash", tool_input: { command: "rm -rf x" } }] }));
-    expect(events[0]).toEqual({ kind: "activity", text: "⛔ permission denied: Bash rm -rf x" });
+    expect(events.slice(0, 2)).toEqual([
+      { kind: "denied", tool: "Bash rm -rf x" },
+      { kind: "activity", text: "⛔ permission denied: Bash rm -rf x" },
+    ]);
+    expect(c.denials).toEqual(["Bash rm -rf x"]);
     expect(c.result?.ok).toBe(true);
   });
 

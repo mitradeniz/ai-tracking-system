@@ -32,7 +32,11 @@ curl -s -X POST {{serverUrl}}/api/report -H "Content-Type: application/json" -d 
 3) Always end your final message with the same JSON in a fenced block, so it can be pasted into the tracker:
 \`\`\`aitrack-report
 {"project":"{{project.id}}","task":"{{task.id}}","agent":"{{agent.id}}","status":"done","summary":"...","pr":"...","verify":"..."}
-\`\`\``;
+\`\`\`
+
+PROBLEMS: if anything failed, was skipped, is missing or needs a person, also add "issues" to the report, one entry each:
+"issues":[{"title":"<one plain line>","detail":"<what happened and what is needed>","kind":"error|missing|needs-you|warning","fix":"<a prompt that would fix it>"}]
+Write "title" and "detail" in {{language}}, for the project owner, without jargon. Never hide a problem inside "summary".`;
 
 export const DEFAULT_DISPATCH_TEMPLATE = `TASK {{task.id}} — {{task.title}}
 Chat: {{agent.name}} ({{agent.id}}){{milestoneLine}}
@@ -70,6 +74,7 @@ export function taskVariables(project: ProjectFile, task: Task, ctx: RenderConte
     "task.allowedPaths": task.allowedPaths.join(", "),
     "agent.id": agent?.id ?? agentId,
     "agent.name": agent?.name ?? agentId,
+    language: project.settings.language === "tr" ? "Turkish" : "English",
     milestone: milestone ? `${milestone.name}${milestone.date ? ` (${milestone.date})` : ""}` : "",
     milestoneLine: milestone ? ` · Milestone: ${milestone.name}${milestone.date ? ` (${milestone.date})` : ""}` : "",
     scopeLine: line("Scope for this chat", task.scope, false),

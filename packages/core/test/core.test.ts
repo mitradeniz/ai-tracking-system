@@ -170,6 +170,24 @@ describe("reports", () => {
     expect(parseReports('[{"task":"T1","status":"started"},{"task":"T2","status":"x"}]').errors).toHaveLength(1);
   });
 
+  it("keeps the problems of the latest report until the task is sent again, done or reopened", () => {
+    const issue = { title: "Secret missing", kind: "needs-you" as const, fix: "Ask for the key." };
+    const parsed = parseReports('```aitrack-report\n{"task":"T1","status":"blocked","reason":"no key","issues":[{"title":"Secret missing","kind":"needs-you","fix":"Ask for the key."}]}\n```');
+    expect(parsed.reports[0]!.issues).toEqual([issue]);
+    const p = project();
+    const withIssue = [ev("T1", "dispatched", { agent: "a" }), ev("T1", "blocked", { reason: "no key", issues: [issue] }), ev("T1", "started")];
+    expect(computeBoard(p, withIssue).byId.get("T1")!.runtime.issues).toEqual([issue]);
+    expect(computeBoard(p, [...withIssue, ev("T1", "done")]).byId.get("T1")!.runtime.issues).toEqual([]);
+    const doneWithGap = [...withIssue, ev("T1", "done", { issues: [{ title: "Tests skipped", kind: "missing" }] })];
+    expect(computeBoard(p, doneWithGap).byId.get("T1")!.runtime.issues).toEqual([{ title: "Tests skipped", kind: "missing" }]);
+  });
+
+  it("asks for problems in the project's language", () => {
+    const tr = renderTaskPrompt(project({ settings: { requireApproval: false, inboxDir: ".aitrack/inbox", language: "tr" } }), "T1", { serverUrl: "http://x" });
+    expect(tr).toContain('"issues":[{"title"');
+    expect(tr).toContain("in Turkish");
+  });
+
   it("turns reports into events", () => {
     const e = reportToEvent({ task: "T1", status: "blocked", reason: "why" }, "http", new Date("2026-01-01T00:00:00Z"));
     expect(e).toMatchObject({ task: "T1", type: "blocked", reason: "why", source: "http", ts: "2026-01-01T00:00:00.000Z" });

@@ -120,6 +120,7 @@ export function reportToEvent(report: Report, source: EventSource, now: Date = n
     reason: report.reason,
     pr: report.pr,
     verify: report.verify,
+    issues: report.issues,
     source,
   });
 }

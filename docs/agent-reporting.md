@@ -26,8 +26,26 @@ Every task prompt copied from the app ends with a **REPORTING** section, so you 
 | `reason` | for `blocked` / `failed` | Why. Shown on the board. |
 | `pr` | no | Pull request URL or branch. |
 | `verify` | no | How a human can check the result. |
+| `issues` | no | Problems: what failed, was skipped, is missing or needs a person. See below. |
 
 Text fields are limited to 20 000 characters (`pr`: 2 000). Inbox files and pasted text may also hold a JSON array of reports.
+
+### Problems (`issues`)
+
+A report can list what did not go as planned, so it is not buried in the summary:
+
+```json
+"issues": [
+  {
+    "title": "Stripe test key missing, payment step not tried",
+    "detail": "STRIPE_SECRET_KEY is not set; the flow is written but not tested end to end.",
+    "kind": "needs-you",
+    "fix": "STRIPE_SECRET_KEY is now set in .env.local. Run the payment flow end to end, fix what fails and report again."
+  }
+]
+```
+
+`kind` is `error` (default), `missing`, `needs-you` or `warning`; `fix` is a prompt that would solve it. The task prompt asks chats to write `title` and `detail` in the project's language (`settings.language`), in plain words. The app marks such tasks with a red **!**, lists the problems in the task drawer and keeps each fix prompt ready to copy or send to the chat. Problems stay until the task is sent again, reported `done` without problems, approved or reopened; a report with `"issues": []` clears them. With the CLI: `--issues '[{"title":"…","fix":"…"}]'`.
 
 | Status | Effect on the board |
 | --- | --- |
@@ -68,7 +86,7 @@ node /path/to/ai-tracking-system/packages/reporter/bin/aitrack-report.mjs \
   --task T-03 --status blocked --reason "Needs the colour palette from T-01"
 ```
 
-Options: `--project`, `--agent`, `--summary`, `--reason`, `--pr`, `--verify`, `--server` (default `$AITRACK_SERVER` or `http://127.0.0.1:4317`), `--inbox` (default `<repo root>/.aitrack/inbox`), `--no-http`.
+Options: `--project`, `--agent`, `--summary`, `--reason`, `--pr`, `--verify`, `--issues <json>`, `--server` (default `$AITRACK_SERVER` or `http://127.0.0.1:4317`), `--inbox` (default `<repo root>/.aitrack/inbox`), `--no-http`.
 
 ### 3. Inbox file
 

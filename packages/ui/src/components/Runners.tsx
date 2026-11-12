@@ -4,6 +4,7 @@ import { RUNLOG_EVENT } from "../hooks.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import { activeRun, agentName, PROVIDER_LABEL, runnerOf, type Model } from "../model.ts";
 import { Dialog } from "./Dialogs.tsx";
+import { InfoTip } from "./Info.tsx";
 
 const PROVIDERS: RunnerProvider[] = ["manual", "codex", "claude", "copilot", "gemini", "custom"];
 const RESUME: Record<string, string> = {
@@ -114,7 +115,9 @@ export function RunnerDialog({
         </div>
       )}
       <div className="field">
-        <label>{t("run_provider")}</label>
+        <label>
+          {t("run_provider")} <InfoTip text={t("info_provider")} />
+        </label>
         <div className="segmented" role="radiogroup" aria-label={t("run_provider")}>
           {PROVIDERS.map((id) => (
             <button key={id} role="radio" aria-checked={p === id} onClick={() => set({ provider: id })}>
@@ -157,7 +160,9 @@ export function RunnerDialog({
             </div>
           )}
           <div className="field">
-            <label htmlFor="run-workdir">{t("run_workdir")}</label>
+            <label htmlFor="run-workdir">
+              {t("run_workdir")} <InfoTip text={t("info_workdir")} />
+            </label>
             <input
               id="run-workdir"
               className="input mono"
@@ -169,7 +174,9 @@ export function RunnerDialog({
           </div>
           {p !== "custom" && (
             <div className="field">
-              <label>{t("run_access")}</label>
+              <label>
+                {t("run_access")} <InfoTip text={t("info_access")} />
+              </label>
               <div className="segmented" role="radiogroup" aria-label={t("run_access")}>
                 {(["readonly", "edit", "full"] as const).map((a) => (
                   <button key={a} role="radio" aria-checked={form.access === a} onClick={() => set({ access: a })}>
@@ -188,7 +195,9 @@ export function RunnerDialog({
           )}
           {p !== "custom" && <ModelPicker provider={found} fallback={p} form={form} set={set} />}
           <div className="field">
-            <label>{t("run_session")}</label>
+            <label>
+              {t("run_session")} <InfoTip text={t("info_session")} />
+            </label>
             <div className="segmented" role="radiogroup" aria-label={t("run_session")}>
               {(["keep", "perTask"] as const).map((m) => (
                 <button key={m} role="radio" aria-checked={form.session === m} onClick={() => set({ session: m })}>
@@ -379,7 +388,9 @@ function ModelPicker({
       </div>
       {efforts.length > 0 && (
         <div className="field">
-          <label htmlFor="run-effort">{t("run_effort")}</label>
+          <label htmlFor="run-effort">
+            {t("run_effort")} <InfoTip text={t("info_effort")} align="end" />
+          </label>
           <select id="run-effort" className="input" value={form.effort ?? ""} onChange={(e) => set({ effort: e.target.value })}>
             <option value="">
               {t("run_modelDefault")}
@@ -476,9 +487,11 @@ export function AutoDispatch({ model, onSetup, onError }: { model: Model; onSetu
         <span className="knob" aria-hidden="true" />
         <span>{t("run_auto")}</span>
       </button>
+      <InfoTip text={runnable.length ? t("run_autoHint") : `${t("run_autoHint")} ${t("run_autoNone")}`} align="end" />
       {settings.autoDispatch && (
         <label className="small muted">
           {t("run_maxConcurrent")}
+          <InfoTip text={t("info_maxConcurrent")} align="end" />
           <select
             className="input tiny"
             value={settings.maxConcurrent}

@@ -1,4 +1,4 @@
-import type { Agent, Reason, Task, TaskSnapshot, TrackEvent } from "@aitrack/core";
+import type { Agent, Reason, Task, TaskIssue, TaskSnapshot, TrackEvent } from "@aitrack/core";
 import type { ChatRunner, ProjectDetail, RunnerState, RunSummary } from "./api.ts";
 import type { T } from "./i18n.ts";
 
@@ -156,4 +156,91 @@ export function sharedBootstrapPrompts(agents: Agent[]): string[] {
   const [first, ...rest] = agents;
   if (!first) return [];
   return first.bootstrapPrompts.filter((p) => rest.every((a) => a.bootstrapPrompts.includes(p)));
+}
+
+/** Something the person should look at, with a prompt that would fix it. */
+export interface Problem {
+  kind: "error" | "missing" | "needs-you" | "warning";
+  title: string;
+  detail?: string;
+  /** Prompt to give the chat, ready to send. */
+  fix: string;
+  /** The problem is in how the chat runs (permissions, CLI), not in the work. */
+  settings?: boolean;
+}
+
+function issueFix(taskId: string, title: string, issue: TaskIssue): string {
+  if (issue.fix?.trim()) return issue.fix.trim();
+  return [
+    `Task ${taskId} (${title}) has an open problem: ${issue.title}.`,
+    issue.detail ? `Details: ${issue.detail}` : "",
+    "Resolve it within the task's allowed paths, verify the result, and report again with the aitrack-report block. If you cannot resolve it, explain in plain words what is needed from me.",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** Problems of a task: what the chat reported, plus failures and blocks the tracker knows about. */
+export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
+  const task = model.task.get(s.id);
+  const title = task?.title ?? s.id;
+  const out: Problem[] = (s.issues ?? []).map((i) => {
+    const permission = i.title.startsWith("Permission denied: ");
+    const tool = permission ? i.title.slice(19) : "";
+    return {
+      kind: i.kind ?? "error",
+      title: permission ? t("issue_permission", { tool }) : i.title,
+      detail: permission ? t("issue_permissionDetail", { tool }) : i.detail,
+      fix: issueFix(s.id, title, i),
+      settings: permission,
+    };
+  });
+  const lastRun = lastRunOf(model, s.id);
+  if (s.status === "failed" && s.reason && !out.some((p) => p.detail === s.reason)) {
+    const runFailed = lastRun?.state === "failed" && lastRun.error === s.reason;
+    out.unshift({
+      kind: "error",
+      title: runFailed ? t("issue_runFailed") : t("issue_failed"),
+      detail: s.reason,
+      fix: `Task ${s.id} (${title}) failed: ${s.reason}\nFind the cause, fix it, verify the result, and report again with the aitrack-report block. If you need something from me, say exactly what.`,
+      settings: runFailed,
+    });
+  }
+  if (s.status === "blocked" && s.reason && s.reason !== "Waiting for your reply." && !s.reason.startsWith("Stopped from") && !s.reason.startsWith("The run stopped")) {
+    out.unshift({
+      kind: "needs-you",
+      title: t("issue_blocked"),
+      detail: localReason(s.reason, t),
+      fix: `About task ${s.id} (${title}), which is blocked: ${s.reason}\n<your answer or decision>\nContinue with this, verify, and report again.`,
+    });
+  }
+  return out;
+}
+
+export function formatDuration(ms: number): string {
+  const sec = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+export function formatTokens(n: number | undefined): string {
+  if (n === undefined) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1)}M`;
+  if (n >= 1000) return `${Math.round(n / 1000)}k`;
+  return String(n);
+}
+
+/** How full the session's context is, 0–100, when the CLI tells. */
+export function contextPercent(run: RunSummary | undefined): number | null {
+  const u = run?.usage;
+  if (!u?.context || !u.contextWindow) return null;
+  return Math.min(100, Math.round((u.context / u.contextWindow) * 100));
+}
+
+/** The chat's latest run that reported context usage. */
+export function lastContextRun(model: Model, agentId: string): RunSummary | undefined {
+  return model.runners?.runs.find((r) => r.agent === agentId && r.usage?.context);
 }

@@ -369,6 +369,45 @@
                 "type": "string",
                 "maxLength": 20000
               },
+              "issues": {
+                "description": "Problems the chat reported; an empty list clears them.",
+                "maxItems": 30,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 300,
+                      "description": "One line in plain language."
+                    },
+                    "detail": {
+                      "description": "What happened and what is needed.",
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "kind": {
+                      "description": "error (default), missing, needs-you or warning.",
+                      "type": "string",
+                      "enum": [
+                        "error",
+                        "missing",
+                        "needs-you",
+                        "warning"
+                      ]
+                    },
+                    "fix": {
+                      "description": "A prompt that would fix it, ready to send to a chat.",
+                      "type": "string",
+                      "maxLength": 8000
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ]
+                }
+              },
               "source": {
                 "default": "ui",
                 "type": "string",

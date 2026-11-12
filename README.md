@@ -106,8 +106,26 @@ Set a chat up once (the **⚙ by hand** badge on its lane) and **Send** gives it
 | **Conversation** | continues the same session, like a chat you keep open — or a new session per task. Paste an existing session id to continue *that* chat. |
 | **Status** | *started* on the first output, *done* from the report at the end, **waiting for your reply** when the agent asks — answer with **Reply** |
 | **Live** | commands, edits and messages stream into the task drawer; **Stop** at any time |
+| **Run details** | elapsed time, tool calls, tokens and how full the session's context is (Claude Code reports it) |
+| **Problems** | what the chat could not do, skipped or needs from you is marked with a red **!**, in plain words, with a fix prompt ready to send |
+| **Your prompts** | add your own instructions when sending, write to a chat at any time, keep saved prompts to insert |
 | **Auto-dispatch** | the switch in the header: free chats get their most urgent ready task, up to *N* at once |
 | **Your own sessions** | a one-line hook for Claude Code and Codex marks tasks *in progress* and *waiting for your reply* as you work |
+
+<table>
+<tr>
+<td width="380"><img src="docs/images/problems.png" alt="Task drawer: two problems the chat reported in plain words, each with a fix prompt, and the run's time, tool calls, context and tokens" width="380"></td>
+<td>
+
+**Problems, in plain words.** When a chat could not do something, skipped it or needs you, it lists it in its report — in the project's language. The task gets a red **!** everywhere (cards, lanes, *Needs you*, floating window), and the drawer shows each problem with a **fix prompt**: open it to edit, copy it, or send it to the chat in one click. Tools a CLI refused show up here too, with a shortcut to the run settings.
+
+**Run details.** Time, tool calls, tokens, turns and how full the session's context is, live.
+
+**Your own prompts.** Add your instructions when sending a task, write to a chat's session at any time, and keep the prompts you reuse under **My prompts**.
+
+</td>
+</tr>
+</table>
 
 > [!IMPORTANT]
 > The CLIs run on your computer with **your own sign-in and plan**. Run settings stay in `~/.aitrack/runners.json`, never in the project file, and starting an agent needs the app's control token — a shared `.aitrack` file or a web page cannot start anything. Keep tasks that need a person (payments, identity checks, legal acceptance) with a chat you run by hand.
@@ -321,7 +339,9 @@ Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`sch
 | **Layouts** | As many as you like — *Morning*, *Only Claude*, *Review time*. Built-in: Chats, Overview, Flow, List. |
 | **Chats** | **+ Add chat** at the end of the lanes, ✏️ on a lane to edit or remove one. A new chat can take over tasks of busy chats. |
 | **Appearance** | Theme (dark, light, system), accent colour, density, text size, glass strength, language (English, Türkçe). |
-| **Glass** | On macOS the window is translucent and takes the tone of whatever is behind it; the floating window too. |
+| **Glass** | On macOS the sidebar is translucent and takes the tone of whatever is behind it; the board sits on black. |
+| **Sidebar** | Folds into a narrow rail of project badges (⌘B). |
+| **Info tips** | ⓘ next to settings and switches explains what they do. |
 
 ## 🧰 Commands
 

@@ -104,6 +104,19 @@ export const EVENT_TYPES = [
   "note",
 ] as const;
 
+/**
+ * Something that failed, was skipped, is missing or needs a person, written so the project owner
+ * understands it, with a prompt that would fix it.
+ */
+export const ISSUE_KINDS = ["error", "missing", "needs-you", "warning"] as const;
+
+export const TaskIssueSchema = z.object({
+  title: z.string().min(1).max(300).describe("One line in plain language."),
+  detail: z.string().max(4000).optional().describe("What happened and what is needed."),
+  kind: z.enum(ISSUE_KINDS).optional().describe("error (default), missing, needs-you or warning."),
+  fix: z.string().max(8000).optional().describe("A prompt that would fix it, ready to send to a chat."),
+});
+
 export const EVENT_SOURCES = ["ui", "http", "file", "paste", "import", "runner", "hook"] as const;
 
 export const EventSchema = z.object({
@@ -116,6 +129,7 @@ export const EventSchema = z.object({
   reason: z.string().max(20000).optional(),
   pr: z.string().max(2000).optional(),
   verify: z.string().max(20000).optional(),
+  issues: z.array(TaskIssueSchema).max(30).optional().describe("Problems the chat reported; an empty list clears them."),
   source: z.enum(EVENT_SOURCES).default("ui"),
 });
 
@@ -156,6 +170,7 @@ export const ReportSchema = z.object({
   reason: z.string().max(20000).optional(),
   pr: z.string().max(2000).optional(),
   verify: z.string().max(20000).optional(),
+  issues: z.array(TaskIssueSchema).max(30).optional(),
 });
 
 export type Agent = z.infer<typeof AgentSchema>;
@@ -165,6 +180,8 @@ export type Milestone = z.infer<typeof MilestoneSchema>;
 export type Settings = z.infer<typeof SettingsSchema>;
 export type Templates = z.infer<typeof TemplatesSchema>;
 export type TrackEvent = z.infer<typeof EventSchema>;
+export type TaskIssue = z.infer<typeof TaskIssueSchema>;
+export type IssueKind = (typeof ISSUE_KINDS)[number];
 export type EventType = (typeof EVENT_TYPES)[number];
 export type EventSource = (typeof EVENT_SOURCES)[number];
 export type ProjectFile = z.infer<typeof ProjectFileSchema>;

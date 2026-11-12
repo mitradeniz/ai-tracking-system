@@ -38,6 +38,19 @@ export function App() {
   const [agentToEdit, setAgentToEdit] = useState<string | undefined>(undefined);
   const [runnerAgent, setRunnerAgent] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [collapsed, setCollapsed] = usePref<boolean>("sidebarCollapsed", false);
+
+  // ⌘B / Ctrl+B hides or shows the sidebar.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        setCollapsed((c) => !c);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [setCollapsed]);
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const toast = useCallback((text: string, kind = "info") => {
@@ -126,49 +139,81 @@ export function App() {
 
   return (
     <I18nContext.Provider value={{ t, lang }}>
-      <div className="app">
+      <div className={`app ${collapsed ? "collapsed" : ""}`}>
         <nav className="sidebar" aria-label={t("projects")}>
           <div className="brand">
             <img src="/favicon.svg" alt="" />
-            {t("appName")}
+            {!collapsed && <span className="brand-name">{t("appName")}</span>}
+            <button
+              className="icon-btn side-toggle"
+              onClick={() => setCollapsed(!collapsed)}
+              aria-label={collapsed ? t("sidebar_show") : t("sidebar_hide")}
+              title={`${collapsed ? t("sidebar_show") : t("sidebar_hide")} (⌘B)`}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                <rect x="3" y="4" width="18" height="16" rx="2.5" />
+                <path d="M9 4v16" />
+                {collapsed ? <path d="M13 10l2 2-2 2" /> : <path d="M15 10l-2 2 2 2" />}
+              </svg>
+            </button>
           </div>
-          <h2>{t("projects")}</h2>
+          {!collapsed && <h2>{t("projects")}</h2>}
           <ul className="project-list">
             {projects.map((p) => {
               const done = p.counts ? p.counts.done : 0;
               const total = p.counts ? p.counts.total : 0;
+              const pct = total ? (done / total) * 100 : 0;
               return (
                 <li key={p.key}>
-                  <button aria-current={p.key === selected} onClick={() => setSelected(p.key)} title={p.filePath}>
-                    <span>{p.name}</span>
-                    <span className="small muted">
-                      {p.ok ? `${done}/${total}` : `⚠ ${p.errors}`}
-                      {p.counts && p.counts.ready > 0 ? ` · ${p.counts.ready} ${t("count_ready").toLowerCase()}` : ""}
-                    </span>
-                    <span className="progress-line">
-                      <span style={{ width: total ? `${(done / total) * 100}%` : "0%" }} />
-                    </span>
+                  <button
+                    aria-current={p.key === selected}
+                    onClick={() => setSelected(p.key)}
+                    title={collapsed ? `${p.name} · ${done}/${total}` : p.filePath}
+                    aria-label={collapsed ? p.name : undefined}
+                  >
+                    {collapsed ? (
+                      <span className="avatar" style={{ ["--pct" as string]: `${pct}%` }}>
+                        {p.name
+                          .split(/\s+/)
+                          .filter((w) => /\w/.test(w))
+                          .slice(0, 2)
+                          .map((w) => w[0]!.toUpperCase())
+                          .join("")}
+                        {p.counts && p.counts.ready > 0 && <span className="avatar-dot" aria-hidden="true" />}
+                      </span>
+                    ) : (
+                      <>
+                        <span className="ellipsis">{p.name}</span>
+                        <span className="small muted">
+                          {p.ok ? `${done}/${total}` : `⚠ ${p.errors}`}
+                          {p.counts && p.counts.ready > 0 ? ` · ${p.counts.ready} ${t("count_ready").toLowerCase()}` : ""}
+                        </span>
+                        <span className="progress-line">
+                          <span style={{ width: `${pct}%` }} />
+                        </span>
+                      </>
+                    )}
                   </button>
                 </li>
               );
             })}
           </ul>
           <div className="sidebar-footer">
-            <button className="btn primary" onClick={() => setDialog("add")}>
-              + {t("addProject")}
+            <button className="btn primary" onClick={() => setDialog("add")} title={t("addProject")} aria-label={t("addProject")}>
+              +{collapsed ? "" : ` ${t("addProject")}`}
             </button>
-            <button className="btn" onClick={openFloating} title={t("floatingHint")}>
+            <button className="btn" onClick={openFloating} title={t("floatingHint")} aria-label={t("floating")}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <rect x="3" y="4" width="18" height="16" rx="3" />
                 <rect x="12" y="11" width="7" height="7" rx="1.5" fill="currentColor" stroke="none" />
               </svg>
-              {t("floating")}
+              {!collapsed && t("floating")}
             </button>
-            <div className="row">
-              <button className="btn small ghost" onClick={() => chooseLang(lang === "tr" ? "en" : "tr")}>
-                {t("language")}
+            <div className={collapsed ? "stack-tight" : "row"}>
+              <button className="btn small ghost" onClick={() => chooseLang(lang === "tr" ? "en" : "tr")} title={t("language")}>
+                {collapsed ? (lang === "tr" ? "EN" : "TR") : t("language")}
               </button>
-              <span className="spacer" />
+              {!collapsed && <span className="spacer" />}
               <button
                 className="btn small ghost"
                 onClick={() => setDialog("settings")}

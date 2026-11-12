@@ -66,6 +66,18 @@ export interface RunSummary {
   lastMessage?: string;
   error?: string;
   lines: number;
+  tools: number;
+  usage?: {
+    input?: number;
+    cached?: number;
+    output?: number;
+    context?: number;
+    contextWindow?: number;
+    costUsd?: number;
+    turns?: number;
+    model?: string;
+  };
+  denials?: string[];
 }
 
 export interface RunnerState {
@@ -236,8 +248,8 @@ export const api = {
     request<RunnerState["settings"]>("POST", `/api/projects/${enc(key)}/runners`, patch),
   saveRunner: (key: string, agent: string, runner: Partial<ChatRunner>) =>
     request<ChatRunner>("POST", `/api/projects/${enc(key)}/runners/${enc(agent)}`, { runner }),
-  runTask: (key: string, task: string, agent?: string) =>
-    request<RunSummary>("POST", `/api/projects/${enc(key)}/tasks/${enc(task)}/run`, { agent }),
+  runTask: (key: string, task: string, agent?: string, extra?: string) =>
+    request<RunSummary>("POST", `/api/projects/${enc(key)}/tasks/${enc(task)}/run`, { agent, extra }),
   reply: (key: string, agent: string, text: string, task?: string) =>
     request<RunSummary>("POST", `/api/projects/${enc(key)}/agents/${enc(agent)}/reply`, { text, task }),
   stopRun: (id: string) => request<RunSummary>("POST", `/api/runs/${enc(id)}/stop`, {}),
@@ -278,12 +290,15 @@ export async function dispatchTask(
   taskId: string,
   agentId: string,
   runners?: RunnerState | null,
+  extra?: string,
 ): Promise<"run" | "copied"> {
+  const note = extra?.trim();
   if (canRun(runners, agentId)) {
-    await api.runTask(projectKey, taskId, agentId);
+    await api.runTask(projectKey, taskId, agentId, note || undefined);
     return "run";
   }
-  await copyText(await api.taskPrompt(projectKey, taskId, agentId));
+  const prompt = await api.taskPrompt(projectKey, taskId, agentId);
+  await copyText(note ? `${prompt.trimEnd()}\n\nADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\n${note}\n` : prompt);
   await api.addEvent(projectKey, { task: taskId, type: "dispatched", agent: agentId });
   return "copied";
 }

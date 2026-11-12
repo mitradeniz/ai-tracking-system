@@ -4,7 +4,21 @@ import { desktop, dispatchTask, api } from "./api.ts";
 import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { useTracker } from "./hooks.ts";
 import { chosenLang, I18nContext, initialLang, translator, type Lang, type T } from "./i18n.ts";
-import { activeRun, agentName, buildModel, cardNote, localReason, PROVIDER_LABEL, runnerOf, type Model } from "./model.ts";
+import {
+  activeRun,
+  agentName,
+  buildModel,
+  cardNote,
+  contextPercent,
+  formatDuration,
+  lastContextRun,
+  localReason,
+  problemsOf,
+  PROVIDER_LABEL,
+  runnerOf,
+  type Model,
+} from "./model.ts";
+import { Bang, useNow } from "./components/Info.tsx";
 import { readJson, usePref } from "./prefs.ts";
 
 type MiniView = "overview" | "compact" | "lanes";
@@ -52,6 +66,11 @@ interface ChatRow {
   next?: TaskSnapshot;
   /** An agent run is going on now. */
   running?: boolean;
+  /** Short state label shown on the right. */
+  label: string;
+  startedAt?: string;
+  problems: number;
+  context: number | null;
 }
 
 function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
@@ -68,34 +87,55 @@ function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
       const blocked = holding.find((s) => s.status === "blocked");
       const working = holding.find((s) => s.status === "in_progress");
       const sent = holding.find((s) => s.status === "dispatched");
-      const row: ChatRow = { id: a.id, name: a.name, state: "idle", text: t("idle"), next: sendable[0] };
+      const mineAll = board.tasks.filter((s) => (s.agent ?? model.task.get(s.id)?.agent) === a.id);
+      const withProblems = mineAll.map((s) => ({ s, list: problemsOf(model, s, t) })).filter((x) => x.list.length > 0);
+      const problems = withProblems.reduce((n, x) => n + x.list.length, 0);
+      const firstProblem = withProblems[0];
+      const row: ChatRow = {
+        id: a.id,
+        name: a.name,
+        state: "idle",
+        text: firstProblem ? `${firstProblem.s.id} · ${firstProblem.list[0]!.title}` : "",
+        focus: firstProblem?.s.id,
+        label: t("idle"),
+        next: sendable[0],
+        problems,
+        context: contextPercent(lastContextRun(model, a.id)),
+      };
       const run = activeRun(model, a.id);
       if (run) {
         row.state = "working";
         row.running = true;
-        row.text = `${run.task} · ${PROVIDER_LABEL[run.provider]}${run.lastActivity ? `: ${run.lastActivity}` : ""}`;
+        row.label = PROVIDER_LABEL[run.provider] ?? t("run_state_running");
+        row.startedAt = run.startedAt;
+        row.text = `${run.task} · ${run.lastActivity ?? model.task.get(run.task)?.title ?? ""}`;
         row.focus = run.task;
       } else if (blocked) {
         row.state = "blocked";
-        row.text =
-          blocked.reason === "Waiting for your reply."
-            ? t("chat_waiting", { task: blocked.id })
-            : `${t("chat_blocked", { task: blocked.id })}${blocked.reason ? `: ${localReason(blocked.reason, t)}` : ""}`;
+        const waiting = blocked.reason === "Waiting for your reply.";
+        row.label = waiting ? t("run_state_waiting") : t("status_blocked");
+        row.text = waiting
+          ? `${blocked.id} · ${model.task.get(blocked.id)?.title ?? ""}`
+          : `${blocked.id}${blocked.reason ? ` · ${localReason(blocked.reason, t)}` : ""}`;
         row.focus = blocked.id;
       } else if (working) {
         row.state = "working";
-        row.text = `${t("chat_working", { task: working.id })} · ${model.task.get(working.id)?.title ?? ""}`;
+        row.label = t("status_in_progress");
+        row.text = `${working.id} · ${model.task.get(working.id)?.title ?? ""}`;
         row.focus = working.id;
       } else if (sent) {
         row.state = "sent";
-        row.text = t("chat_sent", { task: sent.id });
+        row.label = t("status_dispatched");
+        row.text = `${sent.id} · ${model.task.get(sent.id)?.title ?? ""}`;
         row.focus = sent.id;
       } else if (sendable.length > 0) {
         row.state = "ready";
+        row.label = t("sendable");
         row.text = t("chat_idle_ready", { n: sendable.length });
         row.focus = sendable[0]!.id;
       } else if (review.length > 0) {
         row.state = "review";
+        row.label = t("status_review");
         row.text = t("chat_review", { n: review.length });
         row.focus = review[0]!.id;
       }
@@ -156,6 +196,7 @@ export function MiniApp() {
   const chosen = (settings.agents[projectId] ?? []).filter((a) => known.includes(a));
   const only = chosen.length > 0 ? new Set(chosen) : null;
   const rows = model ? chatRows(model, t, only) : [];
+  const now = useNow(rows.some((r) => r.running));
   const inScope = (s: TaskSnapshot) => {
     if (!only || !model) return true;
     const owner = model.task.get(s.id)?.agent;
@@ -214,10 +255,25 @@ export function MiniApp() {
         <div className={`mini-chat ${r.state}`} key={r.id}>
           <button type="button" className="mini-chat-main" onClick={() => open(r.focus)}>
             <span className={`state-dot ${r.state} ${r.running ? "pulse" : ""}`} aria-hidden="true" />
-            <span className="mini-chat-name">{r.name}</span>
-            <span className="mini-chat-text ellipsis" title={r.text}>
-              {r.text}
+            <span className="mini-chat-name ellipsis">{r.name}</span>
+            <span className="mini-chat-state">
+              {r.problems > 0 && <Bang n={r.problems} title={t("problemsN", { n: r.problems })} />}
+              {r.startedAt && <span className="mono">{formatDuration(now - Date.parse(r.startedAt))}</span>}
+              <span>{r.label}</span>
             </span>
+            {!compact && r.text && (
+              <span className="mini-chat-text ellipsis" title={r.text}>
+                {r.text}
+              </span>
+            )}
+            {!compact && r.context !== null && (
+              <span className="mini-ctx" title={t("m_contextHint")}>
+                <span className={`meter ${r.context >= 80 ? "hot" : r.context >= 60 ? "warm" : ""}`}>
+                  <span style={{ width: `${Math.max(3, r.context)}%` }} />
+                </span>
+                {t("m_context")} {r.context}%
+              </span>
+            )}
           </button>
           {r.next && r.state !== "working" && r.state !== "blocked" && r.state !== "sent" && (
             <button className="btn tiny primary" disabled={busy === r.next.id} onClick={() => send(r.next!, r.id)} title={r.next.id}>
@@ -240,7 +296,10 @@ export function MiniApp() {
     );
 
   const needsYou = tasks
-    .filter((s) => s.dispatchable || s.status === "review" || s.status === "blocked" || s.status === "failed")
+    .filter(
+      (s) =>
+        s.dispatchable || s.status === "review" || s.status === "blocked" || s.status === "failed" || (model ? problemsOf(model, s, t).length > 0 : false),
+    )
     .sort((a, b) => Number(b.dispatchable) - Number(a.dispatchable) || b.chain - a.chain);
   const active = tasks.filter((s) => s.status === "in_progress" || s.status === "dispatched");
   const done = tasks
@@ -389,7 +448,11 @@ export function MiniApp() {
                   section(t("sec_needsYou"), needsYou, (s) =>
                     taskLine(
                       s,
-                      s.dispatchable && s.candidates[0] ? (
+                      problemsOf(model, s, t).length > 0 && !s.dispatchable && s.status !== "review" ? (
+                        <span className="bang" title={problemsOf(model, s, t).map((p) => p.title).join("\n")}>
+                          !
+                        </span>
+                      ) : s.dispatchable && s.candidates[0] ? (
                         <button className="btn tiny primary" disabled={busy === s.id} onClick={() => send(s, s.candidates[0]!)}>
                           {runnerOf(model, s.candidates[0]) ? `▶ ${agentName(model, s.candidates[0])}` : t("copyAndSendShort")}
                         </button>

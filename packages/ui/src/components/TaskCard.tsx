@@ -1,6 +1,7 @@
 import type { TaskSnapshot } from "@aitrack/core";
 import { useI18n } from "../i18n.ts";
-import { agentName, cardNote, type Model } from "../model.ts";
+import { agentName, cardNote, formatDuration, problemsOf, type Model } from "../model.ts";
+import { Bang, useNow } from "./Info.tsx";
 
 interface Props {
   model: Model;
@@ -16,10 +17,14 @@ export function TaskCard({ model, snap, onOpen, showAgent, highlight, onHover }:
   const task = model.task.get(snap.id);
   if (!task) return null;
   const note = cardNote(model, snap, t);
+  const problems = problemsOf(model, snap, t);
+  const run = model.runners?.runs.find((r) => r.task === snap.id && r.state === "running");
+  const now = useNow(Boolean(run));
   const classes = [
     "card",
     snap.status,
     snap.dispatchable ? "dispatchable" : "",
+    problems.length > 0 ? "has-problems" : "",
     highlight === "self" ? "highlight" : highlight === "related" ? "related" : "",
   ]
     .filter(Boolean)
@@ -42,7 +47,14 @@ export function TaskCard({ model, snap, onOpen, showAgent, highlight, onHover }:
             ●
           </span>
         )}
+        {problems.length > 0 && <Bang n={problems.length} title={problems.map((p) => p.title).join("\n")} />}
         <span className="spacer" />
+        {run && (
+          <span className="run-time mono" title={run.lastActivity}>
+            <span className="pulse" aria-hidden="true" />
+            {formatDuration(now - Date.parse(run.startedAt))}
+          </span>
+        )}
         {showAgent && <span className="agent-chip">{agentName(model, who)}</span>}
         <span className={`pill ${snap.dispatchable ? "sendable" : snap.status}`}>
           {snap.dispatchable ? t("sendable") : t(`status_${snap.status}`)}

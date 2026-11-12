@@ -1,5 +1,5 @@
 import { buildGraph, type TaskGraph } from "./graph.ts";
-import type { Agent, ProjectFile, Task, TrackEvent } from "./schema.ts";
+import type { Agent, ProjectFile, Task, TaskIssue, TrackEvent } from "./schema.ts";
 
 /**
  * Runtime status of a task, derived from its events:
@@ -32,6 +32,8 @@ export interface TaskRuntime {
   reason?: string;
   pr?: string;
   verify?: string;
+  /** Problems from the latest report that listed any; cleared when the task is sent, done without problems, approved or reopened. */
+  issues: TaskIssue[];
   lastMessage?: string;
   updatedAt?: string;
   startedAt?: string;
@@ -77,7 +79,7 @@ export interface Board {
 const HOLDING: RuntimeStatus[] = ["dispatched", "in_progress", "blocked"];
 
 export function reduceEvents(tasks: Task[], events: TrackEvent[], requireApproval: boolean): Map<string, TaskRuntime> {
-  const runtime = new Map<string, TaskRuntime>(tasks.map((t) => [t.id, { status: "idle", history: [] }]));
+  const runtime = new Map<string, TaskRuntime>(tasks.map((t) => [t.id, { status: "idle", history: [], issues: [] }]));
   const sorted = [...events].sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
 
   for (const e of sorted) {
@@ -134,6 +136,8 @@ export function reduceEvents(tasks: Task[], events: TrackEvent[], requireApprova
     }
     if (e.pr) r.pr = e.pr;
     if (e.verify) r.verify = e.verify;
+    if (e.issues) r.issues = e.issues;
+    else if (e.type === "dispatched" || e.type === "done" || e.type === "approved" || e.type === "reopened") r.issues = [];
   }
   return runtime;
 }
@@ -162,7 +166,7 @@ export function computeBoard(project: ProjectFile, events: TrackEvent[]): Board 
   };
 
   const views: TaskView[] = project.tasks.map((task) => {
-    const r = runtime.get(task.id) ?? { status: "idle" as const, history: [] };
+    const r = runtime.get(task.id) ?? { status: "idle" as const, history: [], issues: [] };
     const deps = task.dependsOn.filter((d) => graph.byId.has(d));
     const depsDone = deps.every((d) => runtime.get(d)?.status === "done");
     const reasons: Reason[] = [];

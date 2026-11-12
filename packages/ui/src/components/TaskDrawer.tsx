@@ -1,7 +1,23 @@
 import { useEffect, useState } from "react";
-import { api, copyText } from "../api.ts";
+import { api, copyText, type RunSummary } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
-import { agentName, formatTime, lastRunOf, localMessage, localReason, PROVIDER_LABEL, reasonText, runnerOf, type Model } from "../model.ts";
+import {
+  agentName,
+  contextPercent,
+  formatDuration,
+  formatTime,
+  formatTokens,
+  lastRunOf,
+  localMessage,
+  localReason,
+  problemsOf,
+  PROVIDER_LABEL,
+  reasonText,
+  runnerOf,
+  type Model,
+  type Problem,
+} from "../model.ts";
+import { InfoTip, PromptPicker, useNow } from "./Info.tsx";
 import { RunLog } from "./Runners.tsx";
 
 interface Props {
@@ -29,12 +45,16 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
   const owner = task?.agent ?? "";
   const [agent, setAgent] = useState<string>(owner);
   const [reply, setReply] = useState("");
+  const [extra, setExtra] = useState("");
+  const [showExtra, setShowExtra] = useState(false);
 
   useEffect(() => {
     setAgent(snap?.candidates[0] ?? snap?.agent ?? owner);
     setPending(null);
     setCopied(false);
     setReply("");
+    setExtra("");
+    setShowExtra(false);
     // Only when the task changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
@@ -72,7 +92,9 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
   };
 
   const copy = async () => {
-    const text = prompt ?? (await api.taskPrompt(key, taskId, agent || undefined));
+    const base = prompt ?? (await api.taskPrompt(key, taskId, agent || undefined));
+    const note = extra.trim();
+    const text = note ? `${base.trimEnd()}\n\nADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\n${note}\n` : base;
     await copyText(text);
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1500);
@@ -90,7 +112,9 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
   const sendRun = async () => {
     setBusy(true);
     try {
-      await api.runTask(key, taskId, agent || undefined);
+      await api.runTask(key, taskId, agent || undefined, extra.trim() || undefined);
+      setExtra("");
+      setShowExtra(false);
       onInfo?.(t("run_sent", { task: taskId, agent: agentName(model, agent) }));
     } catch (e) {
       onError((e as Error).message);
@@ -99,13 +123,23 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
     }
   };
 
-  const sendReply = async (text: string) => {
-    if (!snap.agent || !text.trim()) return;
+  /** Gives text to the chat: continues its session, or starts the task with it, or copies it for pasting. */
+  const sendMessage = async (text: string) => {
+    const body = text.trim();
+    if (!body) return;
     setBusy(true);
     try {
-      await api.reply(key, snap.agent, text.trim(), taskId);
+      if (msgAgent && msgRunner && hasSession) {
+        await api.reply(key, msgAgent, body, taskId);
+        onInfo?.(t("run_replySent", { agent: agentName(model, msgAgent) }));
+      } else if (canRunFix) {
+        await api.runTask(key, taskId, agent || undefined, body);
+        onInfo?.(t("run_sent", { task: taskId, agent: agentName(model, agent) }));
+      } else {
+        await copyText(body);
+        onInfo?.(t("copied"));
+      }
       setReply("");
-      onInfo?.(t("run_replySent", { agent: agentName(model, snap.agent) }));
     } catch (e) {
       onError((e as Error).message);
     } finally {
@@ -126,10 +160,19 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
   const milestone = model.detail.project?.milestones.find((m) => m.id === task.milestone);
   const s = snap.status;
   const holding = s === "dispatched" || s === "in_progress" || s === "blocked";
+  const assigned = (holding || s === "done" || s === "review") && Boolean(snap.agent);
   const chosenRunner = runnerOf(model, agent);
   const holderRunner = runnerOf(model, snap.agent);
   const run = lastRunOf(model, taskId);
   const running = run?.state === "running" ? run : undefined;
+  const now = useNow(Boolean(running));
+  const sendable = s === "ready" || s === "failed" || s === "waiting";
+  const msgAgent = snap.agent ?? run?.agent ?? null;
+  const msgRunner = runnerOf(model, msgAgent);
+  const hasSession = Boolean(run?.sessionId || msgRunner?.sessionId);
+  const canMessage = Boolean(msgRunner) && hasSession && !running && !sendable;
+  const canRunFix = Boolean(chosenRunner) && (s === "ready" || s === "failed");
+  const problems = problemsOf(model, snap, t);
 
   return (
     <>
@@ -151,10 +194,16 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
 
         <div className="drawer-body">
           <div className={`give-to ${snap.dispatchable ? "go" : ""}`}>
-            <span className="label">{holding ? t("sentTo") : t("giveTo")}</span>
+            <span className="label">
+              {assigned ? t("sentTo") : t("giveTo")}
+              {!assigned && <InfoTip text={t("info_giveTo")} />}
+            </span>
             <div className="row">
-              <span className="who">{agentName(model, holding ? snap.agent : agent || owner)}</span>
-              {!holding && eligible.length > 1 && (
+              <span className="who">{agentName(model, assigned ? snap.agent : agent || owner)}</span>
+              {(assigned ? holderRunner : chosenRunner) && (
+                <span className="badge">{PROVIDER_LABEL[(assigned ? holderRunner : chosenRunner)!.provider]}</span>
+              )}
+              {!assigned && eligible.length > 1 && (
                 <select className="input" value={agent} onChange={(e) => setAgent(e.target.value)} aria-label={t("chat")}>
                   {eligible.map((a) => (
                     <option key={a} value={a}>
@@ -165,7 +214,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                 </select>
               )}
             </div>
-            {!holding && eligible.length > 1 && (
+            {!assigned && eligible.length > 1 && (
               <span className="small muted">
                 {t("orAlso")}:{" "}
                 {eligible
@@ -175,79 +224,52 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
               </span>
             )}
             {snap.dispatchable && <span className="small">{t("canSendNow")}</span>}
-            <div className="actions">
-              {(s === "ready" || s === "failed" || s === "waiting") &&
-                (chosenRunner ? (
-                  <>
-                    <button className={`btn ${snap.dispatchable ? "go" : ""}`} disabled={busy || s === "waiting"} onClick={sendRun}>
-                      {t("run_send", { agent: agentName(model, agent) })}
-                    </button>
-                    <button className="btn" onClick={copy}>
-                      {copied ? `✓ ${t("copied")}` : t("copyPrompt")}
-                    </button>
-                  </>
+
+            {sendable && (
+              <div className="actions">
+                {chosenRunner ? (
+                  <button className={`btn ${snap.dispatchable ? "go" : ""}`} disabled={busy || s === "waiting"} onClick={sendRun}>
+                    {t("run_send", { agent: agentName(model, agent) })}
+                  </button>
                 ) : (
-                  <>
-                    <button className={`btn ${snap.dispatchable ? "go" : ""}`} disabled={busy} onClick={copyAndSend}>
-                      {copied ? `✓ ${t("copied")}` : t("copyAndSend")}
-                    </button>
-                    <button className="btn" onClick={copy}>
-                      {t("copyPrompt")}
-                    </button>
-                    {onRunnerSettings && agent && (
-                      <button className="btn ghost" title={t("run_setupHint")} onClick={() => onRunnerSettings(agent)}>
-                        ⚙ {t("run_setup")}
-                      </button>
-                    )}
-                  </>
-                ))}
-              {running && (
-                <button className="btn danger" onClick={() => void stopRun(running.id)}>
-                  ■ {t("run_stop")}
-                </button>
-              )}
-              {holding && (
-                <>
-                  {s === "dispatched" && (
-                    <button className="btn" disabled={busy} onClick={() => act("started")}>
-                      {t("markStarted")}
-                    </button>
-                  )}
-                  {s === "blocked" && !holderRunner && (
-                    <button className="btn" disabled={busy} onClick={() => act("started")}>
-                      {t("resume")}
-                    </button>
-                  )}
-                  <button className="btn go" disabled={busy} onClick={() => setPending({ type: "done", text: "" })}>
-                    {t("markDone")}
+                  <button className={`btn ${snap.dispatchable ? "go" : ""}`} disabled={busy} onClick={copyAndSend}>
+                    {copied ? `✓ ${t("copied")}` : t("copyAndSend")}
                   </button>
-                  {s !== "blocked" && (
-                    <button className="btn" disabled={busy} onClick={() => setPending({ type: "blocked", text: "" })}>
-                      {t("markBlocked")}
-                    </button>
-                  )}
-                  <button className="btn danger" disabled={busy} onClick={() => setPending({ type: "failed", text: "" })}>
-                    {t("markFailed")}
-                  </button>
-                  <button className="btn" onClick={copy}>
-                    {copied ? `✓ ${t("copied")}` : t("copyPrompt")}
-                  </button>
-                </>
-              )}
-              {s === "review" && (
-                <button className="btn go" disabled={busy} onClick={() => act("approved")}>
-                  {t("approve")}
+                )}
+                <button className="btn" onClick={copy}>
+                  {copied && chosenRunner ? `✓ ${t("copied")}` : t("copyPrompt")}
                 </button>
-              )}
-              {s !== "ready" && s !== "waiting" && (
-                <button className="btn ghost" disabled={busy} onClick={() => act("reopened")}>
-                  {t("reopen")}
-                </button>
-              )}
-              <button className="btn ghost" onClick={() => setPending({ type: "note", text: "" })}>
-                {t("addNote")}
-              </button>
-            </div>
+                {!showExtra && (
+                  <button className="btn ghost" onClick={() => setShowExtra(true)}>
+                    + {t("extra_add")}
+                  </button>
+                )}
+                {!chosenRunner && onRunnerSettings && agent && (
+                  <button className="btn ghost" title={t("run_setupHint")} onClick={() => onRunnerSettings(agent)}>
+                    ⚙ {t("run_setup")}
+                  </button>
+                )}
+              </div>
+            )}
+            {sendable && showExtra && (
+              <div className="field compose">
+                <div className="row">
+                  <label htmlFor="extra">{t("extra_label")}</label>
+                  <InfoTip text={t("extra_hint")} />
+                  <span className="spacer" />
+                  <PromptPicker value={extra} onInsert={(text) => setExtra((v) => (v.trim() ? `${v.trim()}\n\n${text}` : text))} />
+                </div>
+                <textarea
+                  id="extra"
+                  className="input"
+                  style={{ minHeight: 70 }}
+                  placeholder={t("extra_placeholder")}
+                  value={extra}
+                  onChange={(e) => setExtra(e.target.value)}
+                />
+              </div>
+            )}
+
             {running && (
               <div className="run-strip">
                 <span className="pulse" aria-hidden="true" />
@@ -255,35 +277,98 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                   <b>{t("run_running", { agent: agentName(model, running.agent) })}</b>
                   {running.lastActivity ? ` · ${running.lastActivity}` : ""}
                 </span>
+                <span className="mono small">{formatDuration(now - Date.parse(running.startedAt))}</span>
+                <button className="btn small danger" onClick={() => void stopRun(running.id)}>
+                  ■ {t("run_stop")}
+                </button>
               </div>
             )}
-            {s === "blocked" && holderRunner && !running && (
-              <div className="field reply-box">
-                {snap.lastMessage && (
+
+            {canMessage && (
+              <div className="field compose reply-box">
+                {s === "blocked" && snap.lastMessage && (
                   <div className="agent-says">
                     <span className="label">{t("run_agentSays")}</span>
                     <div className="pre-wrap">{localMessage(snap.lastMessage, t)}</div>
                   </div>
                 )}
+                <div className="row">
+                  <label htmlFor="reply">{s === "blocked" ? t("run_reply") : t("msg_title")}</label>
+                  <InfoTip text={t("msg_hint")} />
+                  <span className="spacer" />
+                  <PromptPicker value={reply} onInsert={(text) => setReply((v) => (v.trim() ? `${v.trim()}\n\n${text}` : text))} />
+                </div>
                 <textarea
+                  id="reply"
                   className="input"
                   style={{ minHeight: 64 }}
-                  placeholder={t("run_replyPlaceholder")}
+                  placeholder={s === "blocked" ? t("run_replyPlaceholder") : t("msg_placeholder")}
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void sendReply(reply);
+                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void sendMessage(reply);
                   }}
                 />
                 <div className="row">
-                  <button className="btn ghost small" disabled={busy} onClick={() => void sendReply(t("run_approveText"))}>
-                    {t("run_approve")}
-                  </button>
+                  {s === "blocked" && (
+                    <button className="btn ghost small" disabled={busy} onClick={() => void sendMessage(t("run_approveText"))}>
+                      {t("run_approve")}
+                    </button>
+                  )}
+                  <span className="kbd-hint small muted">⌘↵</span>
                   <span className="spacer" />
-                  <button className="btn primary" disabled={busy || !reply.trim()} onClick={() => void sendReply(reply)}>
-                    {t("run_reply")}
+                  <button className="btn primary" disabled={busy || !reply.trim()} onClick={() => void sendMessage(reply)}>
+                    {s === "blocked" ? t("run_reply") : t("msg_send")}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {(holding || s === "review" || s === "failed" || s === "done") && (
+              <div className="actions secondary">
+                {s === "review" && (
+                  <button className="btn go" disabled={busy} onClick={() => act("approved")}>
+                    {t("approve")}
+                  </button>
+                )}
+                {holding && !running && (
+                  <button className="btn" disabled={busy} onClick={() => setPending({ type: "done", text: "" })}>
+                    {t("markDone")}
+                  </button>
+                )}
+                {s === "dispatched" && !running && (
+                  <button className="btn ghost" disabled={busy} onClick={() => act("started")}>
+                    {t("markStarted")}
+                  </button>
+                )}
+                {s === "blocked" && !holderRunner && (
+                  <button className="btn ghost" disabled={busy} onClick={() => act("started")}>
+                    {t("resume")}
+                  </button>
+                )}
+                {holding && s !== "blocked" && !running && (
+                  <button className="btn ghost" disabled={busy} onClick={() => setPending({ type: "blocked", text: "" })}>
+                    {t("markBlocked")}
+                  </button>
+                )}
+                {holding && !running && (
+                  <button className="btn ghost danger" disabled={busy} onClick={() => setPending({ type: "failed", text: "" })}>
+                    {t("markFailed")}
+                  </button>
+                )}
+                {holding && (
+                  <button className="btn ghost" onClick={copy}>
+                    {copied ? `✓ ${t("copied")}` : t("copyPrompt")}
+                  </button>
+                )}
+                {!running && (
+                  <button className="btn ghost" disabled={busy} onClick={() => act("reopened")}>
+                    {t("reopen")}
+                  </button>
+                )}
+                <button className="btn ghost" onClick={() => setPending({ type: "note", text: "" })}>
+                  {t("addNote")}
+                </button>
               </div>
             )}
             {pending && (
@@ -321,21 +406,47 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
             )}
           </div>
 
+          {problems.length > 0 && (
+            <section className="section problems">
+              <div className="row">
+                <h3 style={{ margin: 0 }}>
+                  <span className="bang" aria-hidden="true">
+                    !
+                  </span>{" "}
+                  {t("problems")} · {problems.length}
+                </h3>
+                <InfoTip text={t("problemsHint")} />
+              </div>
+              {problems.map((p, i) => (
+                <ProblemCard
+                  key={`${p.title}-${i}`}
+                  problem={p}
+                  canSend={Boolean(msgRunner) || canRunFix}
+                  busy={busy}
+                  onSend={(text) => void sendMessage(text)}
+                  onSettings={p.settings && onRunnerSettings && msgAgent ? () => onRunnerSettings(msgAgent) : undefined}
+                />
+              ))}
+            </section>
+          )}
+
           {run && (
             <section className="section">
               <div className="row">
                 <h3 style={{ margin: 0 }}>{t("run_log")}</h3>
+                <InfoTip text={t("info_runLog")} />
                 <span className={`pill run-${run.state}`}>{t(`run_state_${run.state}` as Key)}</span>
                 <span className="small muted ellipsis">
                   {PROVIDER_LABEL[run.provider]} · {formatTime(run.startedAt, lang)}
                 </span>
                 <span className="spacer" />
                 {onRunnerSettings && (
-                  <button className="btn tiny ghost" onClick={() => onRunnerSettings(run.agent)}>
+                  <button className="btn tiny ghost" title={t("run_setup")} onClick={() => onRunnerSettings(run.agent)}>
                     ⚙
                   </button>
                 )}
               </div>
+              <RunStats run={run} now={now} />
               {run.error && <div className="error small">{run.error}</div>}
               <RunLog run={run} />
             </section>
@@ -521,5 +632,118 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
         </div>
       </aside>
     </>
+  );
+}
+
+/** One problem: what happened in plain words, and a prompt that would fix it. */
+function ProblemCard({
+  problem,
+  canSend,
+  busy,
+  onSend,
+  onSettings,
+}: {
+  problem: Problem;
+  canSend: boolean;
+  busy: boolean;
+  onSend: (text: string) => void;
+  onSettings?: () => void;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(problem.fix);
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={`problem ${problem.kind}`}>
+      <div className="problem-head">
+        <span className="bang" aria-hidden="true">
+          !
+        </span>
+        <div className="grow">
+          <div className="problem-title">{problem.title}</div>
+          {problem.detail && <div className="small muted pre-wrap">{problem.detail}</div>}
+        </div>
+        <span className={`pill kind-${problem.kind}`}>{t(`problem_kind_${problem.kind}` as Key)}</span>
+      </div>
+      <div className="row wrap">
+        <button className="btn small" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? "▾" : "▸"} {t("fixPrompt")}
+        </button>
+        {canSend && (
+          <button className="btn small primary" disabled={busy} onClick={() => onSend(text)}>
+            {t("fixSend")}
+          </button>
+        )}
+        <button
+          className="btn small ghost"
+          onClick={async () => {
+            await copyText(text);
+            setCopied(true);
+            window.setTimeout(() => setCopied(false), 1500);
+          }}
+        >
+          {copied ? `✓ ${t("copied")}` : t("copy")}
+        </button>
+        {onSettings && (
+          <button className="btn small ghost" onClick={onSettings}>
+            ⚙ {t("run_setup")}
+          </button>
+        )}
+      </div>
+      {open && <textarea className="input mono small" style={{ minHeight: 110 }} value={text} onChange={(e) => setText(e.target.value)} />}
+    </div>
+  );
+}
+
+/** Time, tool calls, context and tokens of a run, as far as the CLI reports them. */
+export function RunStats({ run, now }: { run: RunSummary; now: number }) {
+  const { t } = useI18n();
+  const end = run.endedAt ? Date.parse(run.endedAt) : now;
+  const pct = contextPercent(run);
+  const u = run.usage;
+  return (
+    <div className="run-stats">
+      <div className="stat">
+        <span className="label">{t("m_elapsed")}</span>
+        <b className="mono">{formatDuration(end - Date.parse(run.startedAt))}</b>
+      </div>
+      <div className="stat">
+        <span className="label">{t("m_tools")}</span>
+        <b className="mono">{run.tools ?? 0}</b>
+      </div>
+      {pct !== null && (
+        <div className="stat wide">
+          <span className="label">
+            {t("m_context")} <InfoTip text={t("m_contextHint")} />
+          </span>
+          <b className="mono">
+            {pct}% · {formatTokens(u?.context)} / {formatTokens(u?.contextWindow)}
+          </b>
+          <span className={`meter ${pct >= 80 ? "hot" : pct >= 60 ? "warm" : ""}`}>
+            <span style={{ width: `${Math.max(2, pct)}%` }} />
+          </span>
+        </div>
+      )}
+      {(u?.input !== undefined || u?.output !== undefined) && (
+        <div className="stat">
+          <span className="label">{t("m_tokens")}</span>
+          <b className="mono">
+            {formatTokens(u?.input)} / {formatTokens(u?.output)}
+          </b>
+        </div>
+      )}
+      {u?.turns !== undefined && (
+        <div className="stat">
+          <span className="label">{t("m_turns")}</span>
+          <b className="mono">{u.turns}</b>
+        </div>
+      )}
+      {u?.costUsd !== undefined && (
+        <div className="stat" title={t("m_costHint")}>
+          <span className="label">{t("m_cost")}</span>
+          <b className="mono">${u.costUsd.toFixed(2)}</b>
+        </div>
+      )}
+    </div>
   );
 }

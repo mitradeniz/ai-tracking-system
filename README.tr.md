@@ -106,8 +106,26 @@ Bir sohbeti bir kez ayarla (şeridindeki **⚙ elle** rozeti); artık **Gönder*
 | **Sohbet** | açık tuttuğun bir sohbet gibi aynı oturumda devam eder — ya da her görevde yeni oturum. Var olan bir oturumun kimliğini yapıştırırsan tam *o* sohbet devam eder. |
 | **Durum** | ilk çıktıda *başladı*, sondaki rapordan *bitti*, ajan bir şey sorunca **yanıtını bekliyor** — **Yanıtla** ile cevap ver |
 | **Canlı** | komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur** |
+| **Çalıştırma bilgileri** | süre, araç çağrısı, token ve oturumun bağlamının ne kadar dolu olduğu (Claude Code bildirir) |
+| **Sorunlar** | sohbetin yapamadığı, atladığı ya da senden beklediği şeyler kırmızı **!** ile, sade bir dille ve gönderilmeye hazır bir çözüm promptuyla gösterilir |
+| **Kendi promptların** | gönderirken kendi talimatını ekle, sohbete istediğin an yaz, kayıtlı promptlarını ekle |
 | **Otomatik dağıtım** | başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* tane |
 | **Kendi açtığın oturumlar** | Claude Code ve Codex için tek satırlık bir kanca, sen çalışırken görevleri *çalışıyor* ve *yanıtını bekliyor* olarak işaretler |
+
+<table>
+<tr>
+<td width="380"><img src="docs/images/problems.png" alt="Görev paneli: sohbetin sade bir dille bildirdiği iki sorun, her birinin çözüm promptu, ve çalıştırmanın süresi, araç çağrıları, bağlamı ve tokenları" width="380"></td>
+<td>
+
+**Sorunlar, sade bir dille.** Sohbet bir şeyi yapamadığında, atladığında ya da senden bir şey beklediğinde bunu raporunda — projenin dilinde — listeler. Görev her yerde kırmızı **!** ile işaretlenir (kartlar, şeritler, *Senden bekleyen*, kayan pencere); görev panelinde her sorun bir **çözüm promptuyla** görünür: aç, düzenle, kopyala ya da tek tıkla sohbete gönder. CLI'ın reddettiği araçlar da burada, çalıştırma ayarlarına kısayoluyla birlikte çıkar.
+
+**Çalıştırma bilgileri.** Süre, araç çağrısı, token, tur ve oturumun bağlamının ne kadar dolu olduğu, canlı.
+
+**Kendi promptların.** Görevi gönderirken kendi talimatını ekle, sohbetin oturumuna istediğin an yaz, tekrar kullandığın promptları **Promptlarım**'da tut.
+
+</td>
+</tr>
+</table>
 
 > [!IMPORTANT]
 > CLI'lar senin bilgisayarında, **kendi girişin ve planınla** çalışır. Çalıştırma ayarları `~/.aitrack/runners.json` dosyasında kalır, proje dosyasına asla yazılmaz; ajan başlatmak uygulamanın denetim anahtarını ister — paylaşılan bir `.aitrack` dosyası ya da bir web sayfası hiçbir şey başlatamaz. İnsan gerektiren görevleri (ödeme, kimlik doğrulama, yasal onay) elle çalıştırdığın bir sohbette tut.
@@ -329,7 +347,9 @@ Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`schem
 | **Düzenler** | İstediğin kadar: *Sabah*, *Sadece Claude*, *İnceleme saati*. Hazır gelenler: Sohbetler, Genel bakış, Akış, Liste. |
 | **Sohbetler** | Şeritlerin sonunda **+ Sohbet ekle**, şeritteki ✏️ ile düzenle ya da kaldır. Yeni sohbet meşgul sohbetlerin görevlerini devralabilir. |
 | **Görünüm** | Tema (koyu, açık, sistem), vurgu rengi, yoğunluk, yazı boyutu, cam yoğunluğu, dil (Türkçe, English). |
-| **Cam** | macOS'ta pencere yarı saydamdır ve arkasında ne varsa onun tonunu alır; kayan pencere de öyle. |
+| **Cam** | macOS'ta yan menü yarı saydamdır ve arkasında ne varsa onun tonunu alır; pano siyah zemindedir. |
+| **Yan menü** | Proje rozetlerinden oluşan dar bir şeride katlanır (⌘B). |
+| **Bilgi kutucukları** | Ayarların ve anahtarların yanındaki ⓘ ne işe yaradıklarını açıklar. |
 
 ## 🧰 Komutlar
 

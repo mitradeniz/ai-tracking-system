@@ -5,11 +5,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { parseReports, renderBootstrapPrompt, renderTaskPrompt, type Report } from "@aitrack/core";
+import { parseReports, renderBootstrapPrompt, renderTaskPrompt, type Report, type TaskIssue } from "@aitrack/core";
 import { HttpError, type ProjectManager } from "../manager.ts";
 import { agentPath, which } from "./env.ts";
 import { hookSnippets, type HookSignal } from "./hooks.ts";
-import { buildInvocation, OutputParser, PROVIDER_INFO, type ChatRunner, type ProviderId } from "./providers.ts";
+import { buildInvocation, OutputParser, PROVIDER_INFO, type ChatRunner, type ProviderId, type RunUsage } from "./providers.ts";
 import { normalizeRunner, type ProjectRunners, type RunnerStore } from "./store.ts";
 
 export type RunState = "running" | "waiting" | "finished" | "failed" | "stopped";
@@ -32,6 +32,11 @@ export interface RunSummary {
   lastMessage?: string;
   error?: string;
   lines: number;
+  /** Tool calls so far (commands, edits, searches). */
+  tools: number;
+  usage?: RunUsage;
+  /** Tools the CLI refused because of the chat's access level. */
+  denials?: string[];
 }
 
 interface Run extends RunSummary {
@@ -42,6 +47,7 @@ interface Run extends RunSummary {
   stopRequested: boolean;
   stopNote?: string;
   lastProgressAt: number;
+  lastUsageEmit: number;
 }
 
 export interface RunnerState {
@@ -90,11 +96,12 @@ function inside(child: string, parent: string): boolean {
 }
 
 /** Short note added to every prompt the tracker sends on its own. */
-export function runnerPreamble(taskId: string, runner: ChatRunner): string {
+export function runnerPreamble(taskId: string, runner: ChatRunner, language = "English"): string {
   const lines = [
     `You were started by AI Tracking System for task ${taskId}. Nobody watches this session live: a person reads your final message in the tracker and can reply to it.`,
     `- Reporting: skip the HTTP call and the report files described below. Just end your final message with the aitrack-report block; the tracker reads it from your output.`,
     `- If you need a decision, an approval or anything only a person can do, stop, ask clearly in your final message and report status "blocked" with the question as the reason.`,
+    `- List anything that failed, was skipped or is missing under "issues" in the report, with a plain ${language} title, what is needed, and a prompt that would fix it.`,
   ];
   if (runner.unattended) {
     lines.push(
@@ -173,7 +180,7 @@ export class RunManager extends EventEmitter {
   }
 
   private summary(r: Run): RunSummary {
-    const { child: _c, log: _l, logBase: _b, file: _f, stopRequested: _s, stopNote: _n, lastProgressAt: _p, ...rest } = r;
+    const { child: _c, log: _l, logBase: _b, file: _f, stopRequested: _s, stopNote: _n, lastProgressAt: _p, lastUsageEmit: _u, ...rest } = r;
     return { ...rest, lines: r.logBase + r.log.length };
   }
 
@@ -222,7 +229,7 @@ export class RunManager extends EventEmitter {
   }
 
   /** Sends a task to a chat: starts or continues the chat's session with the task prompt. */
-  async start(key: string, taskId: string, agentId?: string, options: { auto?: boolean } = {}): Promise<RunSummary> {
+  async start(key: string, taskId: string, agentId?: string, options: { auto?: boolean; extra?: string } = {}): Promise<RunSummary> {
     const { project, board } = this.manager.context(key);
     const view = board.byId.get(taskId);
     if (!view) throw new HttpError(404, `Unknown task "${taskId}"`);
@@ -254,8 +261,10 @@ export class RunManager extends EventEmitter {
       const bootstrap = renderBootstrapPrompt(project, agent).trim();
       if (bootstrap) parts.push(bootstrap);
     }
-    parts.push(runnerPreamble(taskId, runner));
+    parts.push(runnerPreamble(taskId, runner, project.settings.language === "tr" ? "Turkish" : "English"));
     parts.push(renderTaskPrompt(project, taskId, { serverUrl: this.manager.serverUrl, agentId: agent }));
+    const extra = options.extra?.trim();
+    if (extra) parts.push(`ADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\n${extra}`);
     return this.launch({ key, task: taskId, agent, runner, prompt: parts.join("\n\n---\n\n"), resume, kind: "task", auto: options.auto === true });
   }
 
@@ -321,12 +330,14 @@ export class RunManager extends EventEmitter {
       workdir,
       sessionId: invocation.sessionId ?? resume,
       lines: 0,
+      tools: 0,
       child: null,
       log: [],
       logBase: 0,
       file: null,
       stopRequested: false,
       lastProgressAt: Date.now(),
+      lastUsageEmit: 0,
     };
     this.runs.set(id, run);
     this.trimRuns();
@@ -424,6 +435,13 @@ export class RunManager extends EventEmitter {
             }
           } else if (ev.kind === "error") {
             this.append(run, `! ${ev.text}`);
+          } else if (ev.kind === "usage" || ev.kind === "tool") {
+            run.tools = parser.tools;
+            run.usage = { ...parser.usage };
+            if (Date.now() - run.lastUsageEmit > 3000) {
+              run.lastUsageEmit = Date.now();
+              this.emit("run", { key, run: this.summary(run) });
+            }
           }
         }
       });
@@ -449,6 +467,9 @@ export class RunManager extends EventEmitter {
         parser.errors[parser.errors.length - 1] ??
         stderrTail.slice(-3).join(" ").trim() ??
         "";
+      run.tools = parser.tools;
+      run.usage = { ...parser.usage };
+      if (parser.denials.length) run.denials = [...parser.denials];
       void this.finish(run, {
         ok,
         error: ok ? undefined : clip(reason || `${name} exited with code ${code}`, 2000),
@@ -480,6 +501,13 @@ export class RunManager extends EventEmitter {
     }
     const stillOpen = status !== undefined && (status === "dispatched" || status === "in_progress" || status === "blocked");
     const name = PROVIDER_INFO[run.provider].name;
+    const denied: TaskIssue[] = (run.denials ?? []).map((tool) => ({
+      title: `Permission denied: ${tool}`,
+      kind: "needs-you",
+      detail: `The chat's access level did not allow "${tool}", so that step was not done.`,
+      fix: `The command "${tool}" was not allowed in your environment. Finish the task without it if you can; otherwise stop and tell me exactly which command you need and why.`,
+    }));
+    const withDenied = (issues: TaskIssue[] | undefined) => (denied.length ? [...(issues ?? []), ...denied] : issues);
     try {
       if (run.stopRequested) {
         run.state = "stopped";
@@ -491,18 +519,18 @@ export class RunManager extends EventEmitter {
         run.error = outcome.error;
         this.append(run, `✗ ${outcome.error ?? "failed"}`);
         if (status !== "done" && status !== "review") {
-          await this.manager.addEvent(key, { type: "failed", task, agent, reason: outcome.error ?? `${name} failed.` }, "runner");
+          await this.manager.addEvent(key, { type: "failed", task, agent, reason: outcome.error ?? `${name} failed.`, issues: withDenied(undefined) }, "runner");
         }
       } else {
         const report = this.reportFrom(outcome.final, task);
         run.lastMessage = clip(outcome.final, 2000) || run.lastMessage;
         if (report) {
           this.append(run, `✓ report: ${report.status}`);
-          await this.manager.recordReport({ ...report, agent: report.agent ?? agent, project: undefined }, "runner", key);
+          await this.manager.recordReport({ ...report, agent: report.agent ?? agent, project: undefined, issues: withDenied(report.issues) }, "runner", key);
         } else if (status === "dispatched" || status === "in_progress") {
           await this.manager.addEvent(
             key,
-            { type: "blocked", task, agent, reason: "Waiting for your reply.", message: clip(outcome.final || "(no message)", 4000) },
+            { type: "blocked", task, agent, reason: "Waiting for your reply.", message: clip(outcome.final || "(no message)", 4000), issues: withDenied(undefined) },
             "runner",
           );
         }

@@ -22,6 +22,7 @@ Options:
   --reason <text>      why it is blocked or failed
   --pr <url|branch>    pull request or branch
   --verify <text>      how to verify the result
+  --issues <json>      problems: '[{"title":"…","detail":"…","kind":"missing","fix":"<prompt>"}]'
   --server <url>       default: $AITRACK_SERVER or http://127.0.0.1:4317
   --inbox <dir>        fallback directory, default: <repo root>/.aitrack/inbox
   --no-http            skip the HTTP call and write the inbox file directly
@@ -108,6 +109,16 @@ async function main() {
   const report = {};
   for (const key of ["project", "task", "agent", "status", "summary", "reason", "pr", "verify"]) {
     if (args[key]) report[key] = args[key];
+  }
+  if (args.issues) {
+    try {
+      const issues = JSON.parse(args.issues);
+      if (!Array.isArray(issues)) throw new Error("not a list");
+      report.issues = issues;
+    } catch (e) {
+      process.stderr.write(`--issues must be a JSON list: ${e.message}\n`);
+      process.exit(2);
+    }
   }
   const server = (args.server ?? process.env.AITRACK_SERVER ?? "http://127.0.0.1:4317").replace(/\/+$/, "");
 

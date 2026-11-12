@@ -290,9 +290,27 @@ export function buildInvocation(input: BuildInput): Invocation {
   }
 }
 
+/** Tokens, context and cost of a run, as far as the CLI reports them. */
+export interface RunUsage {
+  /** Input tokens, including cached ones. */
+  input?: number;
+  cached?: number;
+  output?: number;
+  /** Tokens in the conversation at the last model call: how full the context is. */
+  context?: number;
+  contextWindow?: number;
+  /** Cost the CLI reports (list price; a subscription may not charge it). */
+  costUsd?: number;
+  turns?: number;
+  model?: string;
+}
+
 /** What the runner learns from one line of output. */
 export type StreamEvent =
   | { kind: "session"; id: string }
+  | { kind: "usage"; usage: RunUsage }
+  | { kind: "tool" }
+  | { kind: "denied"; tool: string }
   | { kind: "activity"; text: string }
   | { kind: "message"; text: string; partial?: boolean }
   | { kind: "error"; text: string }
@@ -313,7 +331,14 @@ function describeToolInput(name: string, input: unknown): string {
 function parseCodex(o: Record<string, unknown>): StreamEvent[] {
   const type = String(o.type ?? "");
   if (type === "thread.started" && typeof o.thread_id === "string") return [{ kind: "session", id: o.thread_id }];
-  if (type === "turn.completed") return [{ kind: "result", ok: true }];
+  if (type === "turn.completed") {
+    const u = (o.usage ?? {}) as Record<string, unknown>;
+    const n = (v: unknown) => (typeof v === "number" ? v : undefined);
+    return [
+      { kind: "usage", usage: { input: n(u.input_tokens), cached: n(u.cached_input_tokens), output: n(u.output_tokens) } },
+      { kind: "result", ok: true },
+    ];
+  }
   if (type === "turn.failed") {
     const err = (o.error as { message?: string } | undefined)?.message ?? "Turn failed";
     return [{ kind: "result", ok: false, error: err }];
@@ -327,7 +352,7 @@ function parseCodex(o: Record<string, unknown>): StreamEvent[] {
     case "agent_message":
       return done && typeof item.text === "string" ? [{ kind: "message", text: item.text }] : [];
     case "command_execution":
-      if (type === "item.started") return [{ kind: "activity", text: `$ ${clip(String(item.command ?? ""), 200)}` }];
+      if (type === "item.started") return [{ kind: "tool" }, { kind: "activity", text: `$ ${clip(String(item.command ?? ""), 200)}` }];
       if (done && typeof item.exit_code === "number" && item.exit_code !== 0) {
         return [{ kind: "activity", text: `  ↳ exit ${item.exit_code}` }];
       }
@@ -335,12 +360,12 @@ function parseCodex(o: Record<string, unknown>): StreamEvent[] {
     case "file_change": {
       if (!done) return [];
       const changes = Array.isArray(item.changes) ? (item.changes as { path?: string; kind?: string }[]) : [];
-      return [{ kind: "activity", text: `✎ ${changes.map((c) => `${c.kind ?? "edit"} ${c.path ?? ""}`).join(", ")}` }];
+      return [{ kind: "tool" }, { kind: "activity", text: `✎ ${changes.map((c) => `${c.kind ?? "edit"} ${c.path ?? ""}`).join(", ")}` }];
     }
     case "mcp_tool_call":
-      return type === "item.started" ? [{ kind: "activity", text: `⚙ ${item.server ?? ""}.${item.tool ?? ""}` }] : [];
+      return type === "item.started" ? [{ kind: "tool" }, { kind: "activity", text: `⚙ ${item.server ?? ""}.${item.tool ?? ""}` }] : [];
     case "web_search":
-      return type === "item.started" ? [{ kind: "activity", text: `⌕ ${clip(String(item.query ?? ""))}` }] : [];
+      return type === "item.started" ? [{ kind: "tool" }, { kind: "activity", text: `⌕ ${clip(String(item.query ?? ""))}` }] : [];
     case "todo_list": {
       const items = Array.isArray(item.items) ? (item.items as { text?: string; completed?: boolean }[]) : [];
       return items.length ? [{ kind: "activity", text: `☐ ${items.map((i) => `${i.completed ? "✓" : "·"} ${i.text ?? ""}`).join("  ")}` }] : [];
@@ -356,18 +381,48 @@ function parseClaude(o: Record<string, unknown>): StreamEvent[] {
   const type = String(o.type ?? "");
   if (type === "system" && o.subtype === "init" && typeof o.session_id === "string") return [{ kind: "session", id: o.session_id }];
   if (type === "assistant") {
-    const content = ((o.message as { content?: unknown[] } | undefined)?.content ?? []) as Record<string, unknown>[];
+    const message = (o.message ?? {}) as { content?: unknown[]; usage?: Record<string, unknown>; model?: string };
+    const content = (message.content ?? []) as Record<string, unknown>[];
     const out: StreamEvent[] = [];
     for (const block of content) {
       if (block.type === "text" && typeof block.text === "string" && block.text.trim()) out.push({ kind: "message", text: block.text });
-      if (block.type === "tool_use") out.push({ kind: "activity", text: `⚙ ${describeToolInput(String(block.name ?? "tool"), block.input)}` });
+      if (block.type === "tool_use") {
+        out.push({ kind: "tool" });
+        out.push({ kind: "activity", text: `⚙ ${describeToolInput(String(block.name ?? "tool"), block.input)}` });
+      }
+    }
+    const u = message.usage;
+    if (u) {
+      const n = (v: unknown) => (typeof v === "number" ? v : 0);
+      const context = n(u.input_tokens) + n(u.cache_creation_input_tokens) + n(u.cache_read_input_tokens) + n(u.output_tokens);
+      if (context > 0) out.push({ kind: "usage", usage: { context, model: typeof message.model === "string" ? message.model : undefined } });
     }
     return out;
   }
   if (type === "result") {
     const out: StreamEvent[] = [];
     const denials = Array.isArray(o.permission_denials) ? (o.permission_denials as { tool_name?: string; tool_input?: unknown }[]) : [];
-    for (const d of denials) out.push({ kind: "activity", text: `⛔ permission denied: ${describeToolInput(d.tool_name ?? "tool", d.tool_input)}` });
+    for (const d of denials) {
+      const tool = describeToolInput(d.tool_name ?? "tool", d.tool_input);
+      out.push({ kind: "denied", tool });
+      out.push({ kind: "activity", text: `⛔ permission denied: ${tool}` });
+    }
+    const u = (o.usage ?? {}) as Record<string, unknown>;
+    const n = (v: unknown) => (typeof v === "number" ? v : undefined);
+    const windows = Object.values((o.modelUsage ?? {}) as Record<string, { contextWindow?: number }>)
+      .map((m) => m?.contextWindow)
+      .filter((v): v is number => typeof v === "number");
+    out.push({
+      kind: "usage",
+      usage: {
+        input: (n(u.input_tokens) ?? 0) + (n(u.cache_creation_input_tokens) ?? 0) + (n(u.cache_read_input_tokens) ?? 0) || undefined,
+        cached: n(u.cache_read_input_tokens),
+        output: n(u.output_tokens),
+        costUsd: n(o.total_cost_usd),
+        turns: n(o.num_turns),
+        contextWindow: windows.length ? Math.max(...windows) : undefined,
+      },
+    });
     const ok = o.is_error !== true && (o.subtype === undefined || o.subtype === "success");
     out.push({
       kind: "result",
@@ -386,14 +441,19 @@ function parseGemini(o: Record<string, unknown>): StreamEvent[] {
   if (type === "message" && o.role === "assistant" && typeof o.content === "string") {
     return [{ kind: "message", text: o.content, partial: o.delta === true }];
   }
-  if (type === "tool_use") return [{ kind: "activity", text: `⚙ ${describeToolInput(String(o.tool_name ?? "tool"), o.parameters)}` }];
+  if (type === "tool_use") return [{ kind: "tool" }, { kind: "activity", text: `⚙ ${describeToolInput(String(o.tool_name ?? "tool"), o.parameters)}` }];
   if (type === "tool_result" && o.status === "error") {
     return [{ kind: "activity", text: `  ↳ ${clip(String((o.error as { message?: string } | undefined)?.message ?? "tool error"))}` }];
   }
   if (type === "error") return [{ kind: "error", text: String(o.message ?? "error") }];
   if (type === "result") {
     const ok = o.status === "success";
-    return [{ kind: "result", ok, error: ok ? undefined : String((o.error as { message?: string } | undefined)?.message ?? "error") }];
+    const st = (o.stats ?? {}) as Record<string, unknown>;
+    const n = (v: unknown) => (typeof v === "number" ? v : undefined);
+    return [
+      { kind: "usage", usage: { input: n(st.input_tokens), cached: n(st.cached), output: n(st.output_tokens) } },
+      { kind: "result", ok, error: ok ? undefined : String((o.error as { message?: string } | undefined)?.message ?? "error") },
+    ];
   }
   return [];
 }
@@ -406,6 +466,9 @@ export class OutputParser {
   result: { ok: boolean; text?: string; error?: string } | null = null;
   sessionId: string | null = null;
   errors: string[] = [];
+  usage: RunUsage = {};
+  tools = 0;
+  denials: string[] = [];
 
   constructor(readonly format: Invocation["format"]) {}
 
@@ -433,6 +496,11 @@ export class OutputParser {
       if (e.kind === "session") this.sessionId = e.id;
       if (e.kind === "error") this.errors.push(e.text);
       if (e.kind === "result") this.result = { ok: e.ok, text: e.text, error: e.error };
+      if (e.kind === "tool") this.tools += 1;
+      if (e.kind === "denied" && !this.denials.includes(e.tool)) this.denials.push(e.tool);
+      if (e.kind === "usage") {
+        for (const [k, v] of Object.entries(e.usage)) if (v !== undefined) (this.usage as Record<string, unknown>)[k] = v;
+      }
       if (e.kind === "message") {
         if (e.partial) this.partial += e.text;
         else {
