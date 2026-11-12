@@ -112,6 +112,35 @@ export interface RunLogEvent {
   lastActivity?: string;
 }
 
+export interface UpdateCommit {
+  sha: string;
+  date: string;
+  subject: string;
+}
+
+export interface UpdateInfo {
+  state: "current" | "available" | "blocked" | "unsupported" | "error";
+  reason?: string;
+  detail?: string;
+  repo?: string;
+  branch?: string;
+  upstream?: string;
+  current?: UpdateCommit;
+  behind: number;
+  ahead: number;
+  commits: UpdateCommit[];
+  checkedAt: string;
+}
+
+export interface UpdateProgress {
+  state: "idle" | "running" | "done" | "failed" | "current";
+  message?: string;
+  at?: string;
+  from?: string;
+  to?: string;
+  log: string[];
+}
+
 export interface Activity {
   key: string;
   projectName?: string;
@@ -138,6 +167,13 @@ export interface DesktopBridge {
   setMini?(options: { pinned?: boolean; opacity?: number }): Promise<void>;
   /** Brings the main window forward, optionally on a project and task. */
   focusMain?(projectKey?: string, taskId?: string): Promise<void>;
+  /** In-app updates (desktop app built from a git clone). */
+  updates?: {
+    check(): Promise<UpdateInfo | null>;
+    run(): Promise<{ ok: boolean; error?: string }>;
+    progress(): Promise<UpdateProgress | null>;
+    onOpen(callback: () => void): () => void;
+  };
   /** The tracker's control token, needed to start agents. */
   controlToken?(): Promise<string | null>;
   /** Main window: called when the floating window asks to show a task. Returns an unsubscribe function. */
@@ -253,6 +289,7 @@ export const api = {
   reply: (key: string, agent: string, text: string, task?: string) =>
     request<RunSummary>("POST", `/api/projects/${enc(key)}/agents/${enc(agent)}/reply`, { text, task }),
   stopRun: (id: string) => request<RunSummary>("POST", `/api/runs/${enc(id)}/stop`, {}),
+  activeRuns: () => request<{ count: number }>("GET", "/api/runs/active").then((r) => r.count),
   runLog: (id: string, after = 0) =>
     request<{ lines: string[]; next: number; run: RunSummary }>("GET", `/api/runs/${enc(id)}/log?after=${after}`),
 };

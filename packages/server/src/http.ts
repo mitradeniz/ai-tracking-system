@@ -307,6 +307,7 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     control(ctx);
     send(ctx.res, 200, runs().stop(decodeURIComponent(id!)));
   });
+  route("GET", "/api/runs/active", (ctx) => send(ctx.res, 200, { count: options.runs?.activeTotal() ?? 0 }));
   route("GET", "/api/runs/:id/log", (ctx, [id]) =>
     send(ctx.res, 200, runs().log(decodeURIComponent(id!), Number(ctx.url.searchParams.get("after") ?? 0) || 0)),
   );

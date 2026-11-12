@@ -224,6 +224,11 @@ export class RunManager extends EventEmitter {
     return [...this.runs.values()].find((r) => r.key === key && r.agent === agentId && r.state === "running");
   }
 
+  /** Runs going on in every project. */
+  activeTotal(): number {
+    return [...this.runs.values()].filter((r) => r.state === "running").length;
+  }
+
   private activeCount(key: string): number {
     return [...this.runs.values()].filter((r) => r.key === key && r.state === "running").length;
   }

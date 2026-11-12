@@ -15,6 +15,7 @@ import {
   type Rectangle,
 } from "electron";
 import { defaultDataDir, ensureControlToken, startServer, type RunningServer } from "@aitrack/server";
+import { checkForUpdates, findRepo, readProgress, startUpdate } from "./updater.ts";
 
 const PREFERRED_PORT = Number(process.env.AITRACK_PORT ?? 4317);
 const REPO_URL = "https://github.com/mitradeniz/ai-tracking-system";
@@ -194,6 +195,21 @@ function registerIpc(): void {
     if (!isOwnFrame(event)) return;
     if (theme === "dark" || theme === "light" || theme === "system") nativeTheme.themeSource = theme;
   });
+  // Updates: check the clone the app was built from, and run the updater in the background.
+  const repo = () => findRepo(defaultDataDir(), app.isPackaged ? undefined : path.resolve(__dirname, "..", "..", ".."));
+  ipcMain.handle("aitrack:update-check", (event) => {
+    if (!isOwnFrame(event)) return null;
+    return checkForUpdates({ repo: repo(), platform: process.platform, packaged: app.isPackaged });
+  });
+  ipcMain.handle("aitrack:update-progress", (event) => (isOwnFrame(event) ? readProgress(defaultDataDir()) : null));
+  ipcMain.handle("aitrack:update-run", async (event) => {
+    if (!isOwnFrame(event)) return { ok: false, error: "forbidden" };
+    const info = await checkForUpdates({ repo: repo(), platform: process.platform, packaged: app.isPackaged });
+    if (info.state !== "available" || !info.repo) return { ok: false, error: info.reason ?? info.state };
+    startUpdate(info.repo, defaultDataDir());
+    return { ok: true };
+  });
+
   // Starting agents needs the tracker's control token; only the app's own windows get it.
   ipcMain.handle("aitrack:control-token", async (event) => {
     if (!isOwnFrame(event)) return null;
@@ -233,8 +249,18 @@ function buildMenu(): void {
   const isMac = process.platform === "darwin";
   const tr = app.getLocale().toLowerCase().startsWith("tr");
   const L = tr
-    ? { file: "Dosya", open: "Proje Aç…", view: "Görünüm", docs: "Belgeler", issue: "Sorun Bildir", window: "Pencere", floating: "Kayan Pencere" }
+    ? {
+        file: "Dosya",
+        open: "Proje Aç…",
+        view: "Görünüm",
+        docs: "Belgeler",
+        issue: "Sorun Bildir",
+        window: "Pencere",
+        floating: "Kayan Pencere",
+        updates: "Güncellemeleri Denetle…",
+      }
     : {
+        updates: "Check for Updates…",
         file: "File",
         open: "Open Project…",
         view: "View",
@@ -243,8 +269,32 @@ function buildMenu(): void {
         window: "Window",
         floating: "Floating Window",
       };
+  const openUpdates = () => {
+    const w = showMain();
+    const send = () => w.webContents.send("aitrack:open-updates");
+    if (w.webContents.isLoading()) w.webContents.once("did-finish-load", send);
+    else send();
+  };
   const template: MenuItemConstructorOptions[] = [
-    ...(isMac ? [{ role: "appMenu" as const }] : []),
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: "about" as const },
+              { label: L.updates, click: openUpdates },
+              { type: "separator" as const },
+              { role: "services" as const },
+              { type: "separator" as const },
+              { role: "hide" as const },
+              { role: "hideOthers" as const },
+              { role: "unhide" as const },
+              { type: "separator" as const },
+              { role: "quit" as const },
+            ],
+          },
+        ]
+      : []),
     {
       label: L.file,
       submenu: [
@@ -290,6 +340,7 @@ function buildMenu(): void {
     {
       role: "help",
       submenu: [
+        ...(isMac ? [] : [{ label: L.updates, click: openUpdates }]),
         { label: L.docs, click: () => void shell.openExternal(REPO_URL) },
         { label: L.issue, click: () => void shell.openExternal(`${REPO_URL}/issues`) },
       ],

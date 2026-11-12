@@ -4,19 +4,37 @@
 # Double-click this file in Finder. It builds the app for this Mac, puts it in Applications and
 # opens it. Run it again after `git pull` to update. Needs Node.js 22.12 or newer and an internet
 # connection the first time (npm packages and Electron are downloaded).
+#
+# The app's "Update" button runs it unattended (AITRACK_UNATTENDED=1): no prompts, progress in
+# ~/.aitrack/update-status.json. Either way it records where it was installed from in
+# ~/.aitrack/install.json, so the app knows which folder to update.
 
 set -euo pipefail
 cd "$(dirname "$0")"
 
 APP_NAME="AI Tracking System"
+DATA_DIR="$HOME/.aitrack"
+STATUS_FILE="$DATA_DIR/update-status.json"
 
-bold() { printf '\n\033[1m%s\033[0m\n' "$1"; }
+# Progress for the app: {"state","message","at","from","to"}.
+status() {
+  mkdir -p "$DATA_DIR"
+  local msg="${2//\\/\\\\}"
+  msg="${msg//\"/\\\"}"
+  printf '{"state":"%s","message":"%s","at":"%s","from":"%s","to":"%s"}\n' \
+    "$1" "$msg" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${AITRACK_FROM:-}" "${AITRACK_TO:-}" >"$STATUS_FILE"
+}
+bold() {
+  printf '\n\033[1m%s\033[0m\n' "$1"
+  status running "$1"
+}
 finish() {
   printf '\n%s\n' "$1"
-  read -r -p "Press Return to close this window. " _ || true
+  [ "${AITRACK_UNATTENDED:-}" = "1" ] || read -r -p "Press Return to close this window. " _ || true
 }
 fail() {
   printf '\n\033[31m%s\033[0m\n' "$1" >&2
+  status failed "$1"
   finish ""
   exit 1
 }
@@ -80,6 +98,13 @@ xattr -dr com.apple.quarantine "$target" >/dev/null 2>&1 || true
 # Register the app so .aitrack files open with it on double-click.
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$target" >/dev/null 2>&1 || true
 rm -rf apps/desktop/release
+
+commit="$(git rev-parse --short HEAD 2>/dev/null || echo "")"
+mkdir -p "$DATA_DIR"
+printf '{"repo":"%s","app":"%s","commit":"%s","installedAt":"%s"}\n' \
+  "$PWD" "$target" "$commit" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$DATA_DIR/install.json"
+AITRACK_TO="${AITRACK_TO:-$commit}"
+status done "Installed $commit"
 
 trap - ERR
 open "$target"

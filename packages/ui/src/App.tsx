@@ -11,6 +11,7 @@ import { chosenLang, I18nContext, initialLang, rememberLang, translator, type Ke
 import { defaultLayouts, newLayout, useLayouts, type Layout } from "./layouts.ts";
 import { buildModel } from "./model.ts";
 import { usePref } from "./prefs.ts";
+import { useUpdates } from "./updates.ts";
 
 interface Toast {
   id: number;
@@ -72,6 +73,17 @@ export function App() {
   );
 
   const { projects, loaded, detail, live, refresh, runners } = useTracker(selected, onActivity, (m) => toast(m, "failed"));
+
+  const updates = useUpdates((kind, p) =>
+    toast(kind === "done" ? t("upd_done", { to: p.to ?? "" }) : t("upd_failed", { message: p.message ?? "" }), kind === "done" ? "done" : "failed"),
+  );
+  const [focusUpdates, setFocusUpdates] = useState(false);
+  const openSettings = (atUpdates = false) => {
+    setFocusUpdates(atUpdates);
+    setDialog("settings");
+  };
+  useEffect(() => desktop?.updates?.onOpen(() => openSettings(true)), []);
+  const updateReady = updates.info?.state === "available" || updates.progress?.state === "running";
 
   // Keep a valid project selected.
   useEffect(() => {
@@ -199,6 +211,16 @@ export function App() {
             })}
           </ul>
           <div className="sidebar-footer">
+            {updateReady && (
+              <button
+                className="btn update-pill"
+                onClick={() => openSettings(true)}
+                title={updates.progress?.state === "running" ? t("upd_running") : t("upd_available", { n: updates.info?.behind ?? 0 })}
+              >
+                <span aria-hidden="true">↑</span>
+                {!collapsed && (updates.progress?.state === "running" ? t("upd_running") : t("upd_availableShort"))}
+              </button>
+            )}
             <button className="btn primary" onClick={() => setDialog("add")} title={t("addProject")} aria-label={t("addProject")}>
               +{collapsed ? "" : ` ${t("addProject")}`}
             </button>
@@ -216,9 +238,9 @@ export function App() {
               {!collapsed && <span className="spacer" />}
               <button
                 className="btn small ghost"
-                onClick={() => setDialog("settings")}
-                aria-label={t("appearance")}
-                title={t("appearance")}
+                onClick={() => openSettings(false)}
+                aria-label={t("settings")}
+                title={t("settings")}
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <circle cx="12" cy="12" r="3" />
@@ -467,6 +489,8 @@ export function App() {
             setActiveLayout("lanes");
           }}
           onClose={() => setDialog(null)}
+          updates={updates.supported ? updates : undefined}
+          focusUpdates={focusUpdates}
         />
       )}
       {dialog === "paste" && detail && <PasteDialog projectKey={detail.key} onClose={() => setDialog(null)} />}

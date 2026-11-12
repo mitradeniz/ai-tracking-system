@@ -1,10 +1,24 @@
 import type { ProjectFile } from "@aitrack/core";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, desktop } from "../api.ts";
 import { useI18n } from "../i18n.ts";
 import { agentIdFromName, helpedChats, sharedBootstrapPrompts } from "../model.ts";
 
+/** Closes a dialog with Escape. */
+export function useEscape(onClose: () => void): void {
+  const close = useRef(onClose);
+  close.current = onClose;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) close.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+}
+
 export function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+  useEscape(onClose);
   return (
     <div className="dialog-backdrop" onClick={onClose}>
       <div className="dialog" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>

@@ -10,6 +10,17 @@ contextBridge.exposeInMainWorld("aitrackDesktop", {
   vibrancy: process.argv.includes("--aitrack-vibrancy"),
   setTheme: (theme: "dark" | "light" | "system"): Promise<void> => ipcRenderer.invoke("aitrack:set-theme", String(theme)),
   controlToken: (): Promise<string | null> => ipcRenderer.invoke("aitrack:control-token"),
+  updates: {
+    check: (): Promise<unknown> => ipcRenderer.invoke("aitrack:update-check"),
+    run: (): Promise<unknown> => ipcRenderer.invoke("aitrack:update-run"),
+    progress: (): Promise<unknown> => ipcRenderer.invoke("aitrack:update-progress"),
+    /** The menu's "Check for Updates…" asks the window to show the updates section. */
+    onOpen: (callback: () => void): (() => void) => {
+      const listener = () => callback();
+      ipcRenderer.on("aitrack:open-updates", listener);
+      return () => ipcRenderer.removeListener("aitrack:open-updates", listener);
+    },
+  },
   openProjectDialog: (): Promise<string | null> => ipcRenderer.invoke("aitrack:open-dialog"),
   saveProjectDialog: (defaultName: string): Promise<string | null> =>
     ipcRenderer.invoke("aitrack:save-dialog", String(defaultName)),

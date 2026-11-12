@@ -5,84 +5,107 @@
 # AI Tracking System
 
 **Mission control for running many AI coding chats in parallel.**
-Plan once, send the green tasks, watch the board move.
+Plan once, send the green tasks — or let the chats run themselves — and watch the board move.
 
-![version](https://img.shields.io/badge/version-0.1.0-f5f4ef?style=flat-square&labelColor=262624)
-![platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-desktop-f5f4ef?style=flat-square&labelColor=262624)
-![local first](https://img.shields.io/badge/runs%20on-127.0.0.1-8fcfa6?style=flat-square&labelColor=262624)
-![no telemetry](https://img.shields.io/badge/telemetry-none-8fcfa6?style=flat-square&labelColor=262624)
+![version](https://img.shields.io/badge/version-0.1.0-f5f4ef?style=flat-square&labelColor=111111)
+![platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-desktop-f5f4ef?style=flat-square&labelColor=111111)
+![agents](https://img.shields.io/badge/runs-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Copilot%20%C2%B7%20Gemini-f5f4ef?style=flat-square&labelColor=111111)
+![local first](https://img.shields.io/badge/runs%20on-127.0.0.1-8fcfa6?style=flat-square&labelColor=111111)
+![no telemetry](https://img.shields.io/badge/telemetry-none-8fcfa6?style=flat-square&labelColor=111111)
 
 **English** · [Türkçe](README.tr.md)
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/hero-light.png">
-  <img src="docs/images/hero-dark.png" alt="The board: one lane per chat; the task that can be sent right now is green" width="100%">
+  <img src="docs/images/hero-dark.png" alt="The board: one lane per chat, black and white, the tasks that can be sent right now are green" width="100%">
 </picture>
 
 </div>
 
 > [!TIP]
-> **The whole idea in one line:** a task turns **green** when everything it depends on is done and its chat is free. Send it — paste the prompt into that chat, or let a Codex / Claude Code / Copilot / Gemini chat **run it by itself**. The chat reports back, the board moves, the next tasks turn green.
+> **The whole idea in one line:** a task turns **green** when everything it depends on is done and its chat is free. Send it — paste the prompt into that chat, or let a Codex / Claude Code / Copilot / Gemini chat **run it by itself**. The chat reports back, the board moves, the next tasks turn green. If something went wrong, the task gets a red **!** with a fix prompt ready to send.
 
 <details>
 <summary><b>Contents</b></summary>
 
+- [What's inside](#-whats-inside)
 - [See it move](#-see-it-move)
-- [Chats that run themselves](#-chats-that-run-themselves)
 - [Install](#-install)
-- [Update](#-update)
-- [Automatic updates: how we add them](#-automatic-updates-how-we-add-them)
+- [Updates](#-updates)
+- [Quick start](#-quick-start)
+- [Chats that run themselves](#-chats-that-run-themselves)
+- [Problems, run details and your own prompts](#-problems-run-details-and-your-own-prompts)
 - [How it works](#-how-it-works)
 - [Reporting from a chat](#-reporting-from-a-chat)
 - [The `.aitrack` file](#-the-aitrack-file)
 - [Make it yours](#-make-it-yours)
+- [Keyboard shortcuts](#%EF%B8%8F-keyboard-shortcuts)
 - [Commands](#-commands)
+- [Where your data lives](#-where-your-data-lives)
 - [Security](#-security)
 - [FAQ](#-faq)
+- [Roadmap](#%EF%B8%8F-roadmap)
 
 </details>
+
+## ✨ What's inside
+
+| | |
+| --- | --- |
+| 🟢 **A board that knows what's next** | Tasks unlock when their dependencies are done and their chat has room. *Ready to send* shows the green ones at a glance; every other task says why it is waiting. |
+| 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or any command run the task in their own session, in your repository. Output streams in live; you reply and stop from the app. |
+| ⚡ **Auto-dispatch** | One switch: free chats pick up their most urgent ready task, up to *N* at once, as soon as it turns green. |
+| ❗ **Problems in plain words** | What a chat could not do, skipped or needs from you is marked with a red **!** everywhere, explained in your language, with a fix prompt ready to edit, copy or send. |
+| ⏱️ **Run details** | Elapsed time, tool calls, tokens, turns, list price and how full the session's context is — live. |
+| ✍️ **Your own prompts** | Add instructions when sending, write to a chat's session at any time, keep a list of saved prompts. |
+| 🪟 **Floating window** | A small always-on-top window over your editor and the AI apps: what each chat is doing, what waits for you, one-click send. |
+| 🧩 **Panels and layouts** | Build screens from panels, drag and resize them, filter by chat, keep as many layouts as you like. |
+| 🎨 **Black and white UI** | A high-contrast black theme (and a white one) where only status speaks in colour. Collapsible sidebar, ⓘ tips that explain each switch. |
+| 🔄 **One-click updates** | On macOS the app checks GitHub and updates itself: **Update and restart**, or let it install new versions when no chat is running. |
+| 🔌 **Works with any chat** | Chats you run by hand report over HTTP, a CLI, an inbox file, a pasted block or a one-line hook. |
+| 🏠 **Local first** | Runs on `127.0.0.1`, no account, no telemetry. The plan is a file you commit. |
 
 ## 🎬 See it move
 
 ### The board updates itself
 
-Two chats get their first tasks, they report back, and the next tasks light up — without touching anything.
+Two chats get their first tasks by hand, they report back, and the next tasks light up.
 
-<img src="docs/images/board.gif" alt="Sending T-01 and T-02, the chats report done, T-03, T-04 and T-05 turn green, then T-04 gets blocked" width="100%">
+<img src="docs/images/board.gif" alt="T-01 and T-02 are copied and marked sent, the chats report started and done, T-03, T-04 and T-05 turn green, then T-04 is sent and gets blocked with a reason" width="100%">
 
 <details>
 <summary>What happens in this clip</summary>
 
 1. **T-01** and **T-02** are green: they depend on nothing and their chats are free.
-2. Clicking a green task opens the drawer: **which chat** gets it, and the **full prompt** — shared context, task, allowed paths, acceptance criteria and how to report.
+2. Clicking a green task opens the drawer: **which chat** gets it and the **full prompt** — shared context, task, allowed paths, acceptance criteria and how to report.
 3. **Copy prompt and mark as sent** puts the prompt on the clipboard; the task moves to *Sent*.
 4. The chats report `started`, then `done`. **T-03**, **T-04** and **T-05** unlock and turn green.
-5. A chat reports `blocked` with a reason — the card shows it in red, and you get a notification.
+5. **T-04** is sent and its chat reports `blocked` with a reason — the card turns red and you get a notification.
 
 </details>
 
 ### Chats that run themselves
 
-Auto-dispatch is switched on: free chats get their ready tasks, their output streams in, Claude asks a question and gets a reply from the drawer, and finished work unlocks the next tasks — which start on their own.
+Auto-dispatch is switched on: free chats start their ready tasks, their commands stream in, Claude Code asks a question and gets a reply from the drawer, and finished work unlocks the next tasks — which start on their own.
 
-<img src="docs/images/runners.gif" alt="Turning on auto-dispatch: Codex and Claude Code chats start their tasks, Claude waits for a reply, the reply is sent from the task drawer, finished tasks unlock the next ones" width="100%">
+<img src="docs/images/runners.gif" alt="Turning on auto-dispatch: Codex and Claude Code chats start their tasks, Claude waits for a reply, the reply is sent from the task drawer with the run's time, tool calls, context and tokens, and finished tasks unlock the next ones" width="100%">
 
 ### Floating window
 
 <table>
 <tr>
-<td width="300"><img src="docs/images/floating.gif" alt="Floating window: chat statuses change live, one click copies the next prompt" width="300"></td>
+<td width="300"><img src="docs/images/floating.gif" alt="Floating window: one click sends T-02, T-03 and T-04 to their chats; live commands, timers, context use and a red ! for a task with problems" width="300"></td>
 <td>
 
-A small glass window that **stays on top of every app** — your editor, the Codex app, Claude — and on every desktop.
+A small window that **stays on top of every app** — your editor, the Codex app, Claude — and on every desktop.
 
-- what each chat is doing right now
-- what **waits for you**: tasks to send, approvals, blocks
-- **one click** copies the next prompt and marks it sent
+- what each chat is doing right now, with its live command and timer
+- what **waits for you**: tasks to send, replies, approvals, blocks and problems (**!**)
+- **one click** sends the next task — it starts the chat's run, or copies the prompt for chats you run by hand
 - click a chat or task to jump to it in the main window
 - views: **overview**, **compact list**, **mini lanes**; choose sections and chats, pin it, change its opacity
 
-Open it from the sidebar, or <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd>.
+Open it from the sidebar, the *Window* menu, or <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd>.
 
 </td>
 </tr>
@@ -90,67 +113,36 @@ Open it from the sidebar, or <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd>.
 
 ### Make it yours
 
-Screens are built from **panels**. Add, drag, resize, filter them by chat, keep several layouts, and pick your theme and accent.
+Screens are built from **panels**. Add, drag, resize, filter them by chat, keep several layouts, pick the theme and accent, and fold the sidebar away.
 
-<img src="docs/images/customize.gif" alt="Customizing the Overview layout: adding a chat lanes panel filtered to two chats, then changing accent and theme" width="100%">
-
-## 🤖 Chats that run themselves
-
-Set a chat up once (the **⚙ by hand** badge on its lane) and **Send** gives it the task directly — no copy and paste.
-
-| | |
-| --- | --- |
-| **Runs with** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · any command (Cursor CLI, Aider, scripts) |
-| **Where** | the project's repository, or a folder per chat (a git worktree when several chats edit code) |
-| **Access** | read only · edit files (default) · full access |
-| **Conversation** | continues the same session, like a chat you keep open — or a new session per task. Paste an existing session id to continue *that* chat. |
-| **Status** | *started* on the first output, *done* from the report at the end, **waiting for your reply** when the agent asks — answer with **Reply** |
-| **Live** | commands, edits and messages stream into the task drawer; **Stop** at any time |
-| **Run details** | elapsed time, tool calls, tokens and how full the session's context is (Claude Code reports it) |
-| **Problems** | what the chat could not do, skipped or needs from you is marked with a red **!**, in plain words, with a fix prompt ready to send |
-| **Your prompts** | add your own instructions when sending, write to a chat at any time, keep saved prompts to insert |
-| **Auto-dispatch** | the switch in the header: free chats get their most urgent ready task, up to *N* at once |
-| **Your own sessions** | a one-line hook for Claude Code and Codex marks tasks *in progress* and *waiting for your reply* as you work |
-
-<table>
-<tr>
-<td width="380"><img src="docs/images/problems.png" alt="Task drawer: two problems the chat reported in plain words, each with a fix prompt, and the run's time, tool calls, context and tokens" width="380"></td>
-<td>
-
-**Problems, in plain words.** When a chat could not do something, skipped it or needs you, it lists it in its report — in the project's language. The task gets a red **!** everywhere (cards, lanes, *Needs you*, floating window), and the drawer shows each problem with a **fix prompt**: open it to edit, copy it, or send it to the chat in one click. Tools a CLI refused show up here too, with a shortcut to the run settings.
-
-**Run details.** Time, tool calls, tokens, turns and how full the session's context is, live.
-
-**Your own prompts.** Add your instructions when sending a task, write to a chat's session at any time, and keep the prompts you reuse under **My prompts**.
-
-</td>
-</tr>
-</table>
-
-> [!IMPORTANT]
-> The CLIs run on your computer with **your own sign-in and plan**. Run settings stay in `~/.aitrack/runners.json`, never in the project file, and starting an agent needs the app's control token — a shared `.aitrack` file or a web page cannot start anything. Keep tasks that need a person (payments, identity checks, legal acceptance) with a chat you run by hand.
-
-Everything — commands per CLI, access levels, sessions, hooks, API: **[docs/agent-runners.md](docs/agent-runners.md)**.
+<img src="docs/images/customize.gif" alt="Customizing the Overview layout: adding a chat lanes panel, changing the accent, switching between the light and dark themes, folding the sidebar into a rail" width="100%">
 
 ## 📦 Install
 
-> [!NOTE]
-> You need **Node.js 22.12+** to build the app. The installed app does not need it.
+| You need | Why |
+| --- | --- |
+| **Node.js 22.12+** | To build the app. The installed app does not need it. |
+| **git** | To clone the repository and for one-click updates. On macOS: `xcode-select --install`. |
+| An AI CLI *(optional)* | `codex`, `claude`, `copilot` or `gemini`, signed in, for chats that run themselves. Without one, chats work by copy and paste. |
 
 <details open>
-<summary><b>macOS — double-click install</b></summary>
+<summary><b>macOS — double-click install</b> (recommended)</summary>
 
 1. Clone the repository (Terminal or GitHub Desktop):
    ```bash
    git clone https://github.com/mitradeniz/ai-tracking-system.git
    ```
 2. In Finder, open the folder and double-click **`install-macos.command`**.
-3. A Terminal window builds the app, puts **AI Tracking System** in Applications and Launchpad, and opens it.
+3. A Terminal window does four steps — **install dependencies** (the first run downloads Electron, about 150 MB) → **build** → **package the app for this Mac** → **install** — and opens the app.
 
-From then on, double-clicking any `.aitrack` file opens it in the app.
+The result:
+
+- **AI Tracking System** is in `/Applications` (or `~/Applications` if that is not writable) and in Launchpad.
+- Double-clicking a `.aitrack` file opens it in the app.
+- The installer remembers which clone it was built from (`~/.aitrack/install.json`), so the app can [update itself](#-updates) from now on.
 
 > [!IMPORTANT]
-> If macOS says the installer cannot be opened, **right-click → Open** once. The app is signed ad hoc on your own machine, not with a Developer ID, so it is meant for your computer, not for sharing as a download.
+> Keep the cloned folder — updates are pulled and built there. If macOS says the installer cannot be opened, **right-click → Open** once. The app is signed ad hoc on your own machine, not with a Developer ID, so it is meant for your computer, not for sharing as a download.
 
 </details>
 
@@ -158,6 +150,8 @@ From then on, double-clicking any `.aitrack` file opens it in the app.
 <summary><b>Windows and Linux</b></summary>
 
 ```bash
+git clone https://github.com/mitradeniz/ai-tracking-system.git
+cd ai-tracking-system
 npm install
 npm run dist        # installers in apps/desktop/release/ (.exe, .AppImage)
 ```
@@ -175,54 +169,145 @@ npm run desktop                                   # build and start the desktop 
 npm run serve -- examples/landing-page.aitrack    # same UI at http://127.0.0.1:4317
 ```
 
-</details>
-
-**First steps:** open the app → **Add project → Browse…** → pick `examples/landing-page.aitrack` (or a `.aitrack` file from your own repository).
-
-## 🔄 Update
-
-| | How |
-| --- | --- |
-| **macOS** | Double-click **`update-macos.command`**. It pulls the latest version from GitHub and, if there is one, reinstalls the app. Your projects and task status are kept. |
-| **Terminal** | `git pull` then double-click `install-macos.command` again (or `npm run update:mac`). |
-| **Windows / Linux** | `git pull && npm install && npm run dist`, then install the new build. |
-
-<details>
-<summary>What the updater checks before it changes anything</summary>
-
-- The folder must be a clean git clone. If `package-lock.json` is the only changed file (npm rewrites it on some machines), it is restored, because the installer always uses the committed lockfile.
-- Any other local change stops the update and tells you to commit or stash it.
-- The current branch must follow a branch on GitHub (usually `main`), and the update must be a fast-forward — nothing is merged or overwritten.
-- If you are already up to date, nothing is rebuilt.
+`serve` prints a link with the control token; open that link to start agents from the browser.
 
 </details>
 
-## 🚀 Automatic updates: how we add them
+## 🔄 Updates
 
-Today updates are one double-click. True in-app updates ("A new version is ready — restart") are on the roadmap. This is the plan:
+<table>
+<tr>
+<td width="380"><img src="docs/images/updates.png" alt="Settings → Updates: this version, 3 new changes on GitHub with their commit messages, Check now, Update and restart, and the two automatic options" width="380"></td>
+<td>
+
+**On macOS the app updates itself.** When there is a new version on GitHub you see **↑ Update available** at the bottom of the sidebar.
+
+1. Click it — or open **Settings → Updates**, or **AI Tracking System → Check for Updates…** in the menu bar.
+2. You see this version and the new changes, one line per commit.
+3. Click **Update and restart**.
+
+The app keeps working while the new version is built (a few minutes). Then it closes and opens the new version by itself, with a note *"Updated to …"*. Your projects, layouts, run settings and task status are kept.
+
+**Automatic options** (in the same place):
+
+- **Check when the app opens and every 6 hours** — on by default.
+- **Install new versions by itself when no chat is running** — off by default. It waits until no agent is running, so a task is never cut off.
+
+</td>
+</tr>
+</table>
+
+### How it works
+
+There is no separate download server: the app updates the git clone it was installed from, with the same scripts you can double-click yourself.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CI as GitHub Actions
-    participant R as GitHub Releases
-    participant A as AI Tracking System
     participant U as You
-    CI->>R: tag v0.2.0 → build, sign, notarize, upload<br/>(.dmg, .zip, latest-mac.yml)
-    A->>R: on start and every few hours: is there a newer version?
-    R-->>A: latest-mac.yml (version, sha512)
-    A->>A: download in the background, verify signature and hash
-    A->>U: "Version 0.2.0 is ready — Restart"
-    U->>A: Restart
-    A->>A: replace itself, reopen your projects
+    participant A as App
+    participant C as Updater (your clone)
+    participant G as GitHub
+    A->>C: on open and every 6 h: git fetch
+    C->>G: fetch main
+    G-->>C: new commits
+    A->>U: Update available (n new changes)
+    U->>A: Update and restart
+    A->>C: run update-macos.command in the background
+    C->>G: git pull --ff-only
+    C->>C: npm ci, build, package, sign ad hoc
+    C->>A: quit the app
+    C->>C: replace the app in Applications
+    C->>U: open the new version: Updated to abc1234
 ```
 
-- [ ] **Release pipeline** — a GitHub Actions workflow that runs `electron-builder --publish always` on version tags and uploads installers plus the `latest*.yml` update manifests to GitHub Releases.
-- [ ] **Code signing** — Apple Developer ID + notarization on macOS (the macOS updater only installs signed builds), Authenticode on Windows. Secrets live in GitHub encrypted secrets, never in the repository.
-- [ ] **`electron-updater`** in the desktop shell — check on start and every few hours, download in the background, verify, and offer *Restart to update*; never interrupt a running task.
-- [ ] **Update banner in the UI** — version, release notes, *Restart* / *Later*; a setting to turn checks off.
-- [ ] **Channels** — `stable` and `beta`, chosen in settings.
-- [ ] **Until signing is in place** — a lightweight check of the GitHub Releases API that only *tells* you a new version exists and points to `update-macos.command`.
+1. **Check.** The app runs `git fetch` in its clone and compares your branch with the one it follows on GitHub (usually `origin/main`). Nothing is changed by a check.
+2. **Update.** **Update and restart** starts `update-macos.command` in the background with `AITRACK_UNATTENDED=1` (no prompts). It pulls (fast-forward only) and hands over to `install-macos.command`.
+3. **Rebuild and swap.** The installer installs the locked dependencies, builds, packages the app for this Mac, quits the running app, replaces it in Applications and opens the new version.
+4. **Report back.** Progress goes to `~/.aitrack/update-status.json` and the full output to `~/.aitrack/update.log`; the Updates section shows the last lines live, and the new version tells you it was updated (or why it failed).
+
+> [!NOTE]
+> **Chats that are running** stop when the app restarts. If any are running, the app asks first. Interrupted runs are marked *blocked* on the next start; reply to them or send them again to continue the same session.
+
+### Before it changes anything
+
+- The folder must be a git clone whose branch follows a branch on GitHub, and the update must be a **fast-forward** — nothing is merged, rebased or overwritten.
+- Local changes stop the update. The one exception is `package-lock.json` alone (npm rewrites it on some machines): it is restored, because the installer always uses the committed lockfile.
+- If you are already up to date, nothing is rebuilt.
+
+### Other ways to update
+
+| | How |
+| --- | --- |
+| **macOS, double-click** | Double-click **`update-macos.command`** in the clone. Same steps as the button, in a Terminal window. |
+| **macOS, Terminal** | `npm run update:mac` — or `git pull`, then `npm run install:mac`. |
+| **Windows / Linux** | `git pull && npm install && npm run dist`, then install the new build. |
+| **From source** | `git pull && npm install && npm run desktop`. |
+| **Browser tab** | `git pull`, then restart `npm run serve`. |
+
+<details>
+<summary><b>Troubleshooting: what the Updates section may tell you</b></summary>
+
+| Message | What to do |
+| --- | --- |
+| *The app does not know which folder it was installed from.* | The app was installed by an older installer. Double-click `install-macos.command` in your clone once; after that, updates work from the app. |
+| *git was not found.* | Install the Xcode Command Line Tools: `xcode-select --install`. |
+| *GitHub could not be reached.* | Check your connection and try **Check now** again. The error is shown below the message. |
+| *The clone has local changes.* | The changed files are listed. Commit or stash them (`git stash`), then update. |
+| *The clone's branch does not follow a branch on GitHub.* | `git switch main` in the clone. |
+| *Your clone and GitHub both have new commits.* | Run `git pull` in the clone to combine them, then update. |
+| *n local commits are not on GitHub yet.* | Just information: your clone is ahead of GitHub (for example, you committed but did not push). |
+| *One-click updates are for macOS.* / *Running from source.* | Use the commands in the table above. |
+| *The update failed: …* | Read `~/.aitrack/update.log`, fix the cause (often Node.js too old or no network) and click **Update and restart** again — or double-click `update-macos.command` to watch it in Terminal. |
+
+</details>
+
+## 🚀 Quick start
+
+1. **Open the app → Add project → Browse…** and pick `examples/landing-page.aitrack` — or a `.aitrack` file in your own repository ([write one with AI](docs/authoring-with-ai.md)).
+2. **Start the chats.** For a chat you run by hand, copy its **Session prompt** once into a new Claude / Codex / Cursor chat. To let a chat run itself, click its **⚙ by hand** badge and pick a CLI ([below](#-chats-that-run-themselves)).
+3. **Send the green tasks.** Click a green card → **Copy prompt and mark as sent** (by hand) or **Send ▶** (runs itself). Or switch on **Auto-dispatch** in the header.
+4. **Watch.** Chats report `started`, `done`, `blocked`; dependent tasks unlock. **Needs you** collects what waits for you: replies, approvals, blocks and problems.
+5. **Keep it on screen.** Open the **floating window** (<kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd>) and go back to your editor.
+6. **Share the plan.** **Export** writes the plan — optionally with a status snapshot — back to a file you can commit.
+
+## 🤖 Chats that run themselves
+
+Set a chat up once — click the **⚙ by hand** badge on its lane — and **Send** gives it the task directly: no copy and paste.
+
+| | |
+| --- | --- |
+| **Runs with** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · any command (Cursor CLI, Aider, scripts). Installed CLIs are found automatically, with their versions. |
+| **Model and effort** | Picked from lists, not typed: Codex's model catalog with each model's reasoning levels, Copilot's models, and the Claude Code (`opus`, `sonnet`, `haiku`, `fable`) and Gemini (`pro`, `flash`, …) aliases that always follow the latest version. **Other** takes any model id; **Default** leaves it to the CLI. |
+| **Where** | The project's repository, or a folder per chat (a git worktree when several chats edit code). |
+| **Access** | Read only · edit files (default) · full access. |
+| **Conversation** | Continues the same session, like a chat you keep open — or a new session per task. Paste an existing session id to continue *that* chat. |
+| **Status** | *Started* on the first output, *done* from the report at the end, **waiting for your reply** when the agent asks — answer with **Reply** (<kbd>⌘</kbd><kbd>↵</kbd>). |
+| **Live** | Commands, edits and messages stream into the task drawer; **Stop** at any time. |
+| **Auto-dispatch** | The switch in the header: free chats get their most urgent ready task, up to *N* runs at once. |
+| **Your own sessions** | A one-line hook for Claude Code and Codex marks tasks *in progress* and *waiting for your reply* while you work in a session you opened yourself. |
+
+> [!IMPORTANT]
+> The CLIs run on your computer with **your own sign-in and plan**. Run settings stay in `~/.aitrack/runners.json`, never in the project file, and starting an agent needs the app's control token — a shared `.aitrack` file or a web page cannot start anything. Keep tasks that need a person (payments, identity checks, accepting terms) with a chat you run by hand.
+
+Everything — commands per CLI, access levels, sessions, hooks, API: **[docs/agent-runners.md](docs/agent-runners.md)**.
+
+## ❗ Problems, run details and your own prompts
+
+<table>
+<tr>
+<td width="380"><img src="docs/images/problems.png" alt="Task drawer: two problems the chat reported in plain words, each with a fix prompt, and the run's time, tool calls, context and tokens" width="380"></td>
+<td>
+
+**Problems, in plain words.** When a chat could not do something, skipped it or needs you, it lists it in its report — in the project's language. The task gets a red **!** on cards, lanes, *Needs you* and the floating window. The drawer shows each problem with a **fix prompt**: open it to edit, copy it, or send it to the chat in one click. Failures, questions the chat waits on and tools a CLI refused show up here too, with a shortcut to the run settings.
+
+**Run details.** Time, tool calls, tokens in and out, turns, list price, and how full the session's context window is (Claude Code reports it) — on lanes, cards, the drawer and the floating window.
+
+**Your own prompts.** Add your instructions when sending a task (they take precedence over the plan), write to a chat's session at any time, and keep the prompts you reuse under **My prompts**.
+
+</td>
+</tr>
+</table>
 
 ## 🧭 How it works
 
@@ -235,17 +320,16 @@ flowchart LR
       L[(event log)] --> B
     end
     T --> UI["🖥️ Desktop app<br/>panels · floating window"]
-    UI -- "copy prompt & mark sent" --> C["🤖 AI chats<br/>Claude · Codex · Cursor · you"]
+    UI -- "copy prompt & mark sent" --> C["🤖 AI chats<br/>Claude · Codex · Copilot · Gemini · you"]
     T -- "Send ▶ runs the CLI<br/>codex · claude · copilot · gemini" --> C
-    C -- "started / blocked / done<br/>HTTP · CLI · inbox · paste · run output · hooks" --> L
+    C -- "started / blocked / done / issues<br/>HTTP · CLI · inbox · paste · run output · hooks" --> L
 ```
 
 1. **Plan.** A `.aitrack` file lists the chats, the tasks with their real dependencies, and the prompts. Write it by hand or let an AI write it from your plan — see [Authoring a project with AI](docs/authoring-with-ai.md).
 2. **Open.** The app validates it (unknown ids, cycles, missing prompts) and lays it out as a graph.
-3. **Start sessions.** In each chat's lane, copy the **Session prompt** once.
-4. **Dispatch.** Send the green tasks — by hand, with **Send ▶** for chats that run themselves, or let **auto-dispatch** do it.
-5. **Track.** Chats report as they work; dependents unlock; blocked tasks say why.
-6. **Share.** **Export** writes the plan, optionally with a status snapshot, back to a file you can commit.
+3. **Dispatch.** Send the green tasks — by hand, with **Send ▶**, or with **auto-dispatch**.
+4. **Track.** Chats report as they work; dependents unlock; blocked tasks say why; problems get a **!**.
+5. **Share.** **Export** writes the plan, optionally with a status snapshot, back to a file you can commit.
 
 <details>
 <summary><b>Task lifecycle</b></summary>
@@ -273,19 +357,19 @@ stateDiagram-v2
 | Ready / **Send now** | Dependencies done and an eligible chat has room. Green. |
 | Ready, chat busy | Dependencies done, but every eligible chat is at its `maxParallel` limit. |
 | Sent | You gave the task to a chat (copied, or started its run); it has not started yet. |
-| In progress | The chat reported `started` or `progress`. |
+| In progress | The chat reported `started` or `progress`, or its run is producing output. |
 | Blocked | The chat reported `blocked` with a reason, or stopped to ask you something (*waiting for your reply*). Still holds the chat. |
 | In review | Waiting for your approval (`requireApproval`, or the chat reported `review`). |
 | Done | Reported `done` (and approved, if approval is required). Unblocks dependents. |
 | Failed | The chat gave up, with a reason. Reopen it to send it again. |
 
-Every state can also be set by hand from the task drawer.
+Any state can carry **problems** (the red **!**) until the task is sent again, reported done without problems, approved or reopened. Every state can also be set by hand from the task drawer.
 
 </details>
 
 ## 📡 Reporting from a chat
 
-Every prompt ends with a short **REPORTING** section, so chats know how to report without extra setup. Four channels, in order of preference:
+Every prompt ends with a short **REPORTING** section, so chats know how to report without extra setup:
 
 | Channel | When to use it |
 | --- | --- |
@@ -295,6 +379,24 @@ Every prompt ends with a short **REPORTING** section, so chats know how to repor
 | **Paste** an ` ```aitrack-report ` block | Cloud chats that cannot reach your disk. |
 | **Run output** | Chats that [run themselves](docs/agent-runners.md): the block at the end of the final message is read automatically. |
 | **Hooks** | Claude Code and Codex sessions you open yourself: turn start and end. |
+
+A report can also list **problems** — what failed, was skipped, is missing or needs a person — each with a fix prompt:
+
+```json
+{
+  "task": "T-05",
+  "status": "done",
+  "summary": "Signup endpoint with rate limiting",
+  "issues": [
+    {
+      "title": "Email sending not tested",
+      "detail": "SMTP settings are not set, so the welcome email was written but never sent.",
+      "kind": "needs-you",
+      "fix": "SMTP settings are now in .env.local. Send a test signup, check the welcome email arrives and report again."
+    }
+  ]
+}
+```
 
 Details and the report schema: [docs/agent-reporting.md](docs/agent-reporting.md).
 
@@ -339,9 +441,22 @@ Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`sch
 | **Layouts** | As many as you like — *Morning*, *Only Claude*, *Review time*. Built-in: Chats, Overview, Flow, List. |
 | **Chats** | **+ Add chat** at the end of the lanes, ✏️ on a lane to edit or remove one. A new chat can take over tasks of busy chats. |
 | **Appearance** | Theme (dark, light, system), accent colour, density, text size, glass strength, language (English, Türkçe). |
-| **Glass** | On macOS the sidebar is translucent and takes the tone of whatever is behind it; the board sits on black. |
-| **Sidebar** | Folds into a narrow rail of project badges (⌘B). |
-| **Info tips** | ⓘ next to settings and switches explains what they do. |
+| **Black and white** | The dark theme sits on black with black-and-white components; green, amber, red and blue are kept for status only. The light theme is its white mirror. |
+| **Glass** | On macOS the sidebar is translucent and takes the tone of whatever is behind it. |
+| **Sidebar** | Folds into a narrow rail of project badges (<kbd>⌘</kbd><kbd>B</kbd>). |
+| **Info tips** | ⓘ next to auto-dispatch, the run limit, the run settings and the panels explains what each one does. |
+
+## ⌨️ Keyboard shortcuts
+
+| Keys | Action |
+| --- | --- |
+| <kbd>⌘</kbd><kbd>B</kbd> | Fold or unfold the sidebar |
+| <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd> | Open the floating window |
+| <kbd>⌘</kbd><kbd>O</kbd> | Open a `.aitrack` file |
+| <kbd>⌘</kbd><kbd>↵</kbd> | Send the reply or message in the task drawer |
+| <kbd>Esc</kbd> | Close the task drawer or a dialog |
+
+On Windows and Linux use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.
 
 ## 🧰 Commands
 
@@ -364,21 +479,38 @@ Environment: `AITRACK_PORT` (default `4317`), `AITRACK_DATA_DIR` (default `~/.ai
 ```text
 packages/core       file format (zod), task graph, board logic, prompt rendering, file edits — no I/O
 packages/server     local tracker: registry, event log, inbox watcher, agent runners and hooks, HTTP API, SSE
-packages/ui         React UI: panels, layouts, floating window, appearance; English and Turkish
+packages/ui         React UI: panels, layouts, floating window, appearance, updates; English and Turkish
 packages/reporter   aitrack-report CLI for agents, zero dependencies
-apps/desktop        Electron shell: tracker, translucent windows, floating window, .aitrack association
+apps/desktop        Electron shell: tracker, translucent windows, floating window, in-app updates, .aitrack association
+install-macos.command / update-macos.command   double-click installer and updater (also used by the Update button)
 schema/             generated JSON Schema
 examples/           example projects
-docs/               file format, reporting, authoring with AI, images
+docs/               file format, reporting, agent runners, authoring with AI, images
 ```
 
 </details>
 
+## 💾 Where your data lives
+
+| What | Where |
+| --- | --- |
+| The plan | Your `.aitrack` file, in your repository. |
+| Task status (event log) | `~/.aitrack/events/` |
+| Run settings per chat | `~/.aitrack/runners.json` — never in the project file |
+| Run output | `~/.aitrack/runs/` |
+| Control token | `~/.aitrack/control-token` |
+| Where the app was installed from | `~/.aitrack/install.json` |
+| Update progress and output | `~/.aitrack/update-status.json`, `~/.aitrack/update.log` |
+| Layouts, appearance, saved prompts | Inside the app, on this computer |
+
+The tracker itself sends nothing anywhere. The prompts you give to AI chats leave your computer with those chats; update checks talk only to GitHub through `git`.
+
 ## 🔒 Security
 
 - The tracker listens on **127.0.0.1 only**, refuses foreign `Host` headers (DNS rebinding) and cross-origin writes, and requires `application/json` for writes.
-- Windows run with context isolation and the sandbox; the native bridge is limited to file dialogs, the floating window and the control token, and every call is checked in the main process.
-- Starting agents needs a **control token** (`~/.aitrack/control-token`); run settings live only on your computer, never in project files.
+- Windows run with context isolation and the sandbox; the native bridge is limited to file dialogs, the floating window, updates and the control token, and every call is checked in the main process.
+- Starting agents needs a **control token**; run settings live only on your computer, never in project files.
+- Updates run only the clone's own `update-macos.command`, pull **fast-forward only** from the branch the clone already follows, and never touch local changes.
 - Reports are data: they change task status and are shown as text, never executed.
 - Do not put secrets in `.aitrack` files or reports — the file is meant to be committed.
 
@@ -394,9 +526,23 @@ Yes, if you want. A chat set to run by itself is started through its official CL
 </details>
 
 <details>
-<summary><b>Where is my data?</b></summary>
+<summary><b>I use Claude in the desktop app (or Cowork). Does Send open a chat there?</b></summary>
 
-The plan is your `.aitrack` file. Status events are in `~/.aitrack/events/` on your machine, run settings in `~/.aitrack/runners.json` and run output in `~/.aitrack/runs/`. Layouts and appearance are stored in the app. The tracker itself sends nothing anywhere; the prompts you give to AI chats leave your computer with those chats.
+No. **Send** runs the `claude` CLI (Claude Code) headless in the project's folder, with the same account. If you prefer to work in the desktop app, keep that chat *by hand*: copy the prompt with one click, and add the hook (or let the chat report) so the board still moves.
+
+</details>
+
+<details>
+<summary><b>Why does Updates say it does not know where the app was installed from?</b></summary>
+
+The app was installed before in-app updates existed. Double-click `install-macos.command` in your clone once; the installer then records the folder in `~/.aitrack/install.json`, and from then on the app updates itself.
+
+</details>
+
+<details>
+<summary><b>Will an update stop my running chats?</b></summary>
+
+Only if you confirm. With chats running, **Update and restart** asks first, and automatic installs wait until no chat is running. Interrupted runs are marked *blocked*; reply or send again to continue the same session.
 
 </details>
 
@@ -413,6 +559,15 @@ Yes. Each project is a `.aitrack` file in its own repository; the sidebar lists 
 Use the inbox file (if the chat works in a worktree on your disk) or paste the `aitrack-report` block that every prompt asks the chat to end with.
 
 </details>
+
+## 🗺️ Roadmap
+
+- [x] Chats that run themselves, auto-dispatch, hooks
+- [x] Problems with fix prompts, run details, your own prompts
+- [x] One-click and automatic updates on macOS (from your clone)
+- [ ] Signed and notarized releases on GitHub Releases, so the app can be downloaded and updated (with `electron-updater`) without cloning or Node.js
+- [ ] One-click updates on Windows and Linux
+- [ ] Update channels: `stable` and `beta`
 
 ---
 

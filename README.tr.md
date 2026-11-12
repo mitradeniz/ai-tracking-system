@@ -4,51 +4,74 @@
 
 # AI Tracking System
 
-**Birden çok yapay zekâ sohbetini paralel yürütmek için kontrol masası.**
-Planı bir kez yaz, yeşil görevleri gönder, panonun kendi kendine ilerlemesini izle.
+**Birden çok yapay zekâ kod sohbetini paralel yürütmek için kontrol masası.**
+Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendine çalışmasına bırak — ve panonun ilerlemesini izle.
 
-![sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-0.1.0-f5f4ef?style=flat-square&labelColor=262624)
-![platformlar](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-masa%C3%BCst%C3%BC-f5f4ef?style=flat-square&labelColor=262624)
-![yerel](https://img.shields.io/badge/%C3%A7al%C4%B1%C5%9Ft%C4%B1%C4%9F%C4%B1%20yer-127.0.0.1-8fcfa6?style=flat-square&labelColor=262624)
-![telemetri yok](https://img.shields.io/badge/telemetri-yok-8fcfa6?style=flat-square&labelColor=262624)
+![sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-0.1.0-f5f4ef?style=flat-square&labelColor=111111)
+![platformlar](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-masa%C3%BCst%C3%BC-f5f4ef?style=flat-square&labelColor=111111)
+![ajanlar](https://img.shields.io/badge/%C3%A7al%C4%B1%C5%9Ft%C4%B1r%C4%B1r-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Copilot%20%C2%B7%20Gemini-f5f4ef?style=flat-square&labelColor=111111)
+![yerel](https://img.shields.io/badge/%C3%A7al%C4%B1%C5%9Ft%C4%B1%C4%9F%C4%B1%20yer-127.0.0.1-8fcfa6?style=flat-square&labelColor=111111)
+![telemetri yok](https://img.shields.io/badge/telemetri-yok-8fcfa6?style=flat-square&labelColor=111111)
 
 [English](README.md) · **Türkçe**
 
 <picture>
   <source media="(prefers-color-scheme: light)" srcset="docs/images/hero-light.png">
-  <img src="docs/images/hero-dark.png" alt="Pano: her sohbet için bir şerit; şu an gönderilebilecek görev yeşil" width="100%">
+  <img src="docs/images/hero-dark.png" alt="Pano: her sohbet için bir şerit, siyah beyaz; şu an gönderilebilecek görevler yeşil" width="100%">
 </picture>
 
 </div>
 
 > [!TIP]
-> **Bütün fikir tek satırda:** bir görev, bağlı olduğu her şey bitince ve sohbeti boştayken **yeşil** yanar. Gönder: promptu o sohbete yapıştır ya da Codex / Claude Code / Copilot / Gemini sohbetinin **kendi kendine çalıştırmasına** bırak. Sohbet geri bildirir, pano ilerler, sıradaki görevler yeşile döner.
+> **Bütün fikir tek satırda:** bir görev, bağlı olduğu her şey bitince ve sohbeti boştayken **yeşil** yanar. Gönder: promptu o sohbete yapıştır ya da Codex / Claude Code / Copilot / Gemini sohbetinin **kendi kendine çalıştırmasına** bırak. Sohbet geri bildirir, pano ilerler, sıradaki görevler yeşile döner. Bir şey ters giderse görev, gönderilmeye hazır bir çözüm promptuyla birlikte kırmızı **!** alır.
 
 <details>
 <summary><b>İçindekiler</b></summary>
 
+- [Neler var](#-neler-var)
 - [Hareket halinde](#-hareket-halinde)
-- [Kendi kendine çalışan sohbetler](#-kendi-kendine-çalışan-sohbetler)
 - [Kurulum](#-kurulum)
-- [Güncelleme](#-güncelleme)
-- [Otomatik güncelleme: nasıl ekleriz](#-otomatik-güncelleme-nasıl-ekleriz)
+- [Güncellemeler](#-güncellemeler)
+- [Hızlı başlangıç](#-hızlı-başlangıç)
+- [Kendi kendine çalışan sohbetler](#-kendi-kendine-çalışan-sohbetler)
+- [Sorunlar, çalıştırma bilgileri ve kendi promptların](#-sorunlar-çalıştırma-bilgileri-ve-kendi-promptların)
 - [Nasıl çalışır](#-nasıl-çalışır)
 - [Sohbetten bildirim](#-sohbetten-bildirim)
 - [`.aitrack` dosyası](#-aitrack-dosyası)
 - [Kendine göre ayarla](#-kendine-göre-ayarla)
+- [Klavye kısayolları](#%EF%B8%8F-klavye-kısayolları)
 - [Komutlar](#-komutlar)
+- [Verilerin nerede](#-verilerin-nerede)
 - [Güvenlik](#-güvenlik)
 - [Sık sorulanlar](#-sık-sorulanlar)
+- [Yol haritası](#%EF%B8%8F-yol-haritası)
 
 </details>
+
+## ✨ Neler var
+
+| | |
+| --- | --- |
+| 🟢 **Sırada ne olduğunu bilen pano** | Görevler, bağlı oldukları işler bitince ve sohbetlerinde yer varken açılır. *Şimdi gönderilebilir* yeşil olanları tek bakışta gösterir; diğer her görev neden beklediğini söyler. |
+| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak ve durdurmak uygulamadan. |
+| ⚡ **Otomatik dağıtım** | Tek anahtar: boştaki sohbetler, en acil hazır görevlerini yeşile döner dönmez alır; aynı anda en fazla *N* tane. |
+| ❗ **Sade bir dille sorunlar** | Sohbetin yapamadığı, atladığı ya da senden beklediği şeyler her yerde kırmızı **!** ile işaretlenir, senin dilinde açıklanır ve düzenlemeye, kopyalamaya ya da göndermeye hazır bir çözüm promptuyla gelir. |
+| ⏱️ **Çalıştırma bilgileri** | Geçen süre, araç çağrıları, tokenlar, turlar, liste fiyatı ve oturumun bağlamının ne kadar dolu olduğu — canlı. |
+| ✍️ **Kendi promptların** | Gönderirken talimat ekle, sohbetin oturumuna istediğin an yaz, kayıtlı promptlarını tut. |
+| 🪟 **Kayan pencere** | Editörünün ve yapay zekâ uygulamalarının üstünde duran küçük pencere: her sohbetin ne yaptığı, senden bekleyenler, tek tıkla gönder. |
+| 🧩 **Paneller ve düzenler** | Ekranları panellerden kur, sürükle, boyutlandır, sohbete göre süz, istediğin kadar düzen kaydet. |
+| 🎨 **Siyah beyaz arayüz** | Yalnızca durumların renkli olduğu yüksek kontrastlı siyah tema (ve beyazı). Katlanan kenar çubuğu, her anahtarı açıklayan ⓘ ipuçları. |
+| 🔄 **Tek tıkla güncelleme** | macOS'ta uygulama GitHub'ı kontrol eder ve kendini günceller: **Güncelle ve yeniden başlat**, ya da çalışan sohbet yokken yeni sürümü kendiliğinden kursun. |
+| 🔌 **Her sohbetle çalışır** | Elle yürüttüğün sohbetler HTTP, bir CLI, bir gelen kutusu dosyası, yapıştırılan bir blok ya da tek satırlık bir kanca ile bildirir. |
+| 🏠 **Önce yerel** | `127.0.0.1` üzerinde çalışır; hesap yok, telemetri yok. Plan, commit'lediğin bir dosyadır. |
 
 ## 🎬 Hareket halinde
 
 ### Pano kendini günceller
 
-İki sohbet ilk görevlerini alıyor, geri bildiriyor ve sıradaki görevler kendiliğinden yanıyor.
+İki sohbet ilk görevlerini elle alıyor, geri bildiriyor ve sıradaki görevler yanıyor.
 
-<img src="docs/images/board.gif" alt="T-01 ve T-02 gönderiliyor, sohbetler bitti bildiriyor, T-03, T-04 ve T-05 yeşile dönüyor, sonra T-04 engelleniyor" width="100%">
+<img src="docs/images/board.gif" alt="T-01 ve T-02 kopyalanıp gönderildi işaretleniyor, sohbetler başladı ve bitti bildiriyor, T-03, T-04 ve T-05 yeşile dönüyor, sonra T-04 gönderiliyor ve nedeniyle birlikte engelleniyor" width="100%">
 
 <details>
 <summary>Bu kayıtta ne oluyor</summary>
@@ -57,32 +80,32 @@ Planı bir kez yaz, yeşil görevleri gönder, panonun kendi kendine ilerlemesin
 2. Yeşil göreve tıklayınca açılan panelde görevin **hangi sohbete** verileceği ve **tam prompt** var: ortak bağlam, görev, izinli klasörler, kabul kriteri ve nasıl bildirileceği.
 3. **Promptu kopyala ve gönderildi işaretle** promptu panoya alır; görev *Gönderildi*'ye geçer.
 4. Sohbetler önce `started`, sonra `done` bildirir. **T-03**, **T-04** ve **T-05** açılır, yeşile döner.
-5. Bir sohbet nedeniyle birlikte `blocked` bildirir; kart kırmızıyla nedeni gösterir, sana bildirim gelir.
+5. **T-04** gönderilir, sohbeti nedeniyle birlikte `blocked` bildirir; kart kırmızıya döner, sana bildirim gelir.
 
 </details>
 
 ### Kendi kendine çalışan sohbetler
 
-Otomatik dağıtım açılıyor: boştaki sohbetler hazır görevlerini alıyor, çıktıları canlı akıyor, Claude bir soru soruyor ve görev panelinden yanıtını alıyor, biten işler sıradaki görevleri açıyor — onlar da kendiliğinden başlıyor.
+Otomatik dağıtım açılıyor: boştaki sohbetler hazır görevlerine başlıyor, komutları canlı akıyor, Claude Code bir soru soruyor ve görev panelinden yanıtını alıyor, biten işler sıradaki görevleri açıyor — onlar da kendiliğinden başlıyor.
 
-<img src="docs/images/runners.gif" alt="Otomatik dağıtımı açmak: Codex ve Claude Code sohbetleri görevlerine başlıyor, Claude yanıt bekliyor, yanıt görev panelinden gönderiliyor, biten görevler sıradakileri açıyor" width="100%">
+<img src="docs/images/runners.gif" alt="Otomatik dağıtımı açmak: Codex ve Claude Code sohbetleri görevlerine başlıyor, Claude yanıt bekliyor, yanıt görev panelinden gönderiliyor; süre, araç çağrıları, bağlam ve tokenlar görünüyor; biten görevler sıradakileri açıyor" width="100%">
 
 ### Kayan pencere
 
 <table>
 <tr>
-<td width="300"><img src="docs/images/floating.gif" alt="Kayan pencere: sohbet durumları canlı değişiyor, tek tıkla sıradaki prompt kopyalanıyor" width="300"></td>
+<td width="300"><img src="docs/images/floating.gif" alt="Kayan pencere: tek tıkla T-02, T-03 ve T-04 sohbetlerine gönderiliyor; canlı komutlar, sayaçlar, bağlam kullanımı ve sorunlu görev için kırmızı !" width="300"></td>
 <td>
 
-**Bütün uygulamaların üstünde duran** küçük cam pencere: editörün, Codex uygulaması, Claude… Her masaüstünde görünür.
+**Bütün uygulamaların üstünde duran** küçük pencere: editörün, Codex uygulaması, Claude… Her masaüstünde görünür.
 
-- her sohbetin şu an ne yaptığı
-- **senden bekleyenler**: gönderilecek görevler, onaylar, engeller
-- **tek tıkla** sıradaki promptu kopyala ve gönderildi işaretle
+- her sohbetin şu an ne yaptığı, canlı komutu ve sayacıyla
+- **senden bekleyenler**: gönderilecek görevler, yanıtlar, onaylar, engeller ve sorunlar (**!**)
+- **tek tıkla** sıradaki görevi gönder — sohbetin çalıştırmasını başlatır, elle yürüttüğün sohbetlerde promptu kopyalar
 - sohbete ya da göreve tıkla, ana pencerede açılsın
 - görünümler: **Genel**, **Kompakt liste**, **Mini şeritler**; bölümleri ve sohbetleri seç, üstte tut, saydamlığı ayarla
 
-Kenar çubuğundan ya da <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd> ile açılır.
+Kenar çubuğundan, *Pencere* menüsünden ya da <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd> ile açılır.
 
 </td>
 </tr>
@@ -90,67 +113,36 @@ Kenar çubuğundan ya da <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd> ile açılır.
 
 ### Kendine göre ayarla
 
-Ekranlar **panellerden** oluşur. Ekle, sürükle, boyutlandır, sohbete göre süz, birden çok düzen kaydet; temayı ve vurgu rengini seç.
+Ekranlar **panellerden** oluşur. Ekle, sürükle, boyutlandır, sohbete göre süz, birden çok düzen kaydet; temayı ve vurgu rengini seç, kenar çubuğunu katla.
 
-<img src="docs/images/customize.gif" alt="Genel bakış düzenini özelleştirme: iki sohbete süzülmüş şerit paneli ekleniyor, sonra vurgu rengi ve tema değişiyor" width="100%">
-
-## 🤖 Kendi kendine çalışan sohbetler
-
-Bir sohbeti bir kez ayarla (şeridindeki **⚙ elle** rozeti); artık **Gönder** görevi doğrudan ona verir — kopyala-yapıştır yok.
-
-| | |
-| --- | --- |
-| **Çalıştıran** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · herhangi bir komut (Cursor CLI, Aider, betikler) |
-| **Nerede** | projenin deposunda ya da sohbete özel bir klasörde (birden fazla sohbet kod değiştiriyorsa git worktree) |
-| **Erişim** | salt okunur · dosya düzenleme (varsayılan) · tam erişim |
-| **Sohbet** | açık tuttuğun bir sohbet gibi aynı oturumda devam eder — ya da her görevde yeni oturum. Var olan bir oturumun kimliğini yapıştırırsan tam *o* sohbet devam eder. |
-| **Durum** | ilk çıktıda *başladı*, sondaki rapordan *bitti*, ajan bir şey sorunca **yanıtını bekliyor** — **Yanıtla** ile cevap ver |
-| **Canlı** | komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur** |
-| **Çalıştırma bilgileri** | süre, araç çağrısı, token ve oturumun bağlamının ne kadar dolu olduğu (Claude Code bildirir) |
-| **Sorunlar** | sohbetin yapamadığı, atladığı ya da senden beklediği şeyler kırmızı **!** ile, sade bir dille ve gönderilmeye hazır bir çözüm promptuyla gösterilir |
-| **Kendi promptların** | gönderirken kendi talimatını ekle, sohbete istediğin an yaz, kayıtlı promptlarını ekle |
-| **Otomatik dağıtım** | başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* tane |
-| **Kendi açtığın oturumlar** | Claude Code ve Codex için tek satırlık bir kanca, sen çalışırken görevleri *çalışıyor* ve *yanıtını bekliyor* olarak işaretler |
-
-<table>
-<tr>
-<td width="380"><img src="docs/images/problems.png" alt="Görev paneli: sohbetin sade bir dille bildirdiği iki sorun, her birinin çözüm promptu, ve çalıştırmanın süresi, araç çağrıları, bağlamı ve tokenları" width="380"></td>
-<td>
-
-**Sorunlar, sade bir dille.** Sohbet bir şeyi yapamadığında, atladığında ya da senden bir şey beklediğinde bunu raporunda — projenin dilinde — listeler. Görev her yerde kırmızı **!** ile işaretlenir (kartlar, şeritler, *Senden bekleyen*, kayan pencere); görev panelinde her sorun bir **çözüm promptuyla** görünür: aç, düzenle, kopyala ya da tek tıkla sohbete gönder. CLI'ın reddettiği araçlar da burada, çalıştırma ayarlarına kısayoluyla birlikte çıkar.
-
-**Çalıştırma bilgileri.** Süre, araç çağrısı, token, tur ve oturumun bağlamının ne kadar dolu olduğu, canlı.
-
-**Kendi promptların.** Görevi gönderirken kendi talimatını ekle, sohbetin oturumuna istediğin an yaz, tekrar kullandığın promptları **Promptlarım**'da tut.
-
-</td>
-</tr>
-</table>
-
-> [!IMPORTANT]
-> CLI'lar senin bilgisayarında, **kendi girişin ve planınla** çalışır. Çalıştırma ayarları `~/.aitrack/runners.json` dosyasında kalır, proje dosyasına asla yazılmaz; ajan başlatmak uygulamanın denetim anahtarını ister — paylaşılan bir `.aitrack` dosyası ya da bir web sayfası hiçbir şey başlatamaz. İnsan gerektiren görevleri (ödeme, kimlik doğrulama, yasal onay) elle çalıştırdığın bir sohbette tut.
-
-Her şey — CLI başına komutlar, erişim düzeyleri, oturumlar, kancalar, API: **[docs/agent-runners.md](docs/agent-runners.md)** (İngilizce).
+<img src="docs/images/customize.gif" alt="Genel bakış düzenini özelleştirme: sohbet şeritleri paneli ekleniyor, vurgu rengi değişiyor, açık ve koyu tema arasında geçiliyor, kenar çubuğu dar bir şeride katlanıyor" width="100%">
 
 ## 📦 Kurulum
 
-> [!NOTE]
-> Uygulamayı derlemek için **Node.js 22.12+** gerekir. Kurulan uygulama Node.js'e ihtiyaç duymaz.
+| Gereken | Neden |
+| --- | --- |
+| **Node.js 22.12+** | Uygulamayı derlemek için. Kurulan uygulamanın Node.js'e ihtiyacı yok. |
+| **git** | Repoyu klonlamak ve tek tıkla güncelleme için. macOS'ta: `xcode-select --install`. |
+| Bir yapay zekâ CLI'ı *(isteğe bağlı)* | Kendi kendine çalışan sohbetler için giriş yapılmış `codex`, `claude`, `copilot` ya da `gemini`. Yoksa sohbetler kopyala-yapıştırla çalışır. |
 
 <details open>
-<summary><b>macOS — çift tıkla kur</b></summary>
+<summary><b>macOS — çift tıkla kur</b> (önerilen)</summary>
 
 1. Repoyu klonla (Terminal ya da GitHub Desktop):
    ```bash
    git clone https://github.com/mitradeniz/ai-tracking-system.git
    ```
 2. Finder'da klasörü aç ve **`install-macos.command`** dosyasına çift tıkla.
-3. Açılan Terminal penceresi uygulamayı derler, **AI Tracking System**'i Applications ve Launchpad'e koyar ve açar.
+3. Açılan Terminal penceresi dört adımı yapar — **bağımlılıkları kur** (ilk seferde yaklaşık 150 MB'lık Electron iner) → **derle** → **bu Mac için paketle** → **kur** — ve uygulamayı açar.
 
-Bundan sonra herhangi bir `.aitrack` dosyasına çift tıklamak onu uygulamada açar.
+Sonuç:
+
+- **AI Tracking System** `/Applications` içinde (yazılamıyorsa `~/Applications`) ve Launchpad'de.
+- Bir `.aitrack` dosyasına çift tıklamak onu uygulamada açar.
+- Kurulum, uygulamanın hangi klondan derlendiğini hatırlar (`~/.aitrack/install.json`); böylece uygulama bundan sonra [kendini güncelleyebilir](#-güncellemeler).
 
 > [!IMPORTANT]
-> macOS kurulum dosyasının açılamayacağını söylerse bir kez **sağ tık → Aç** de. Uygulama kendi bilgisayarında ad hoc imzalanır, Developer ID ile değil; yani indirilip paylaşılmak için değil, senin bilgisayarın için.
+> Klonladığın klasörü silme — güncellemeler orada çekilip derlenir. macOS kurulum dosyasının açılamayacağını söylerse bir kez **sağ tık → Aç** de. Uygulama kendi bilgisayarında ad hoc imzalanır, Developer ID ile değil; yani indirilip paylaşılmak için değil, senin bilgisayarın için.
 
 </details>
 
@@ -158,6 +150,8 @@ Bundan sonra herhangi bir `.aitrack` dosyasına çift tıklamak onu uygulamada a
 <summary><b>Windows ve Linux</b></summary>
 
 ```bash
+git clone https://github.com/mitradeniz/ai-tracking-system.git
+cd ai-tracking-system
 npm install
 npm run dist        # kurulum dosyaları apps/desktop/release/ içinde (.exe, .AppImage)
 ```
@@ -175,77 +169,167 @@ npm run desktop                                   # derle ve masaüstü uygulama
 npm run serve -- examples/landing-page.aitrack    # aynı arayüz http://127.0.0.1:4317 adresinde
 ```
 
-</details>
-
-**İlk adımlar:** uygulamayı aç → **Proje ekle → Seç…** → `examples/landing-page.aitrack` (ya da kendi reponda bir `.aitrack` dosyası).
-
-## 🔄 Güncelleme
-
-| | Nasıl |
-| --- | --- |
-| **macOS** | **`update-macos.command`** dosyasına çift tıkla. GitHub'dan son sürümü çeker, yenisi varsa uygulamayı yeniden kurar. Projelerin ve görev durumların korunur. |
-| **Terminal** | `git pull`, ardından `install-macos.command`'a yeniden çift tıkla (ya da `npm run update:mac`). |
-| **Windows / Linux** | `git pull && npm install && npm run dist`, sonra yeni kurulum dosyasını kur. |
-
-<details>
-<summary>Güncelleyici bir şeyi değiştirmeden önce neye bakar</summary>
-
-- Klasör temiz bir git klonu olmalı. Değişen tek dosya `package-lock.json` ise (npm bazı makinelerde onu yeniden yazar) geri alınır, çünkü kurulum her zaman repodaki kilit dosyasını kullanır.
-- Başka bir yerel değişiklik varsa güncelleme durur ve commit'lemeni ya da stash'lemeni söyler.
-- Bulunduğun dal GitHub'daki bir dalı (genelde `main`) izlemeli ve güncelleme ileri sarma (fast-forward) olmalı; hiçbir şey birleştirilmez ya da üzerine yazılmaz.
-- Zaten güncelsen hiçbir şey yeniden derlenmez.
+`serve` denetim anahtarını içeren bir bağlantı yazar; ajanları tarayıcıdan başlatmak için o bağlantıyı aç.
 
 </details>
 
-## 🚀 Otomatik güncelleme: nasıl ekleriz
+## 🔄 Güncellemeler
 
-Bugün güncelleme tek çift tıklama. Uygulama içi gerçek güncelleme ("Yeni sürüm hazır — yeniden başlat") yol haritasında. Plan şu:
+<table>
+<tr>
+<td width="380"><img src="docs/images/updates.png" alt="Ayarlar → Güncellemeler: bu sürüm, GitHub'daki 3 yeni değişiklik ve commit mesajları, Şimdi kontrol et, Güncelle ve yeniden başlat ve iki otomatik seçenek" width="380"></td>
+<td>
+
+**macOS'ta uygulama kendini günceller.** GitHub'da yeni bir sürüm olduğunda kenar çubuğunun altında **↑ Güncelleme var** görünür.
+
+1. Ona tıkla — ya da **Ayarlar → Güncellemeler**'i veya menü çubuğunda **AI Tracking System → Güncellemeleri Denetle…**'yi aç.
+2. Bu sürümü ve yeni değişiklikleri görürsün, her commit için bir satır.
+3. **Güncelle ve yeniden başlat**'a tıkla.
+
+Yeni sürüm hazırlanırken (birkaç dakika) uygulama çalışmaya devam eder. Sonra kendini kapatır ve yeni sürümle *"… sürümüne güncellendi"* notuyla açılır. Projelerin, düzenlerin, çalıştırma ayarların ve görev durumların korunur.
+
+**Otomatik seçenekler** (aynı yerde):
+
+- **Uygulama açılınca ve 6 saatte bir kontrol et** — varsayılan olarak açık.
+- **Çalışan sohbet yokken yeni sürümü kendiliğinden kur** — varsayılan olarak kapalı. Hiçbir ajan çalışmıyorken kurar; böylece hiçbir görev yarıda kesilmez.
+
+</td>
+</tr>
+</table>
+
+### Güncelleme nasıl işler
+
+Ayrı bir indirme sunucusu yok: uygulama, kurulduğu git klonunu, senin de çift tıklayabileceğin aynı betiklerle günceller.
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CI as GitHub Actions
-    participant R as GitHub Releases
-    participant A as AI Tracking System
     participant U as Sen
-    CI->>R: v0.2.0 etiketi → derle, imzala, notarize et, yükle<br/>(.dmg, .zip, latest-mac.yml)
-    A->>R: açılışta ve birkaç saatte bir: yeni sürüm var mı?
-    R-->>A: latest-mac.yml (sürüm, sha512)
-    A->>A: arka planda indir, imzayı ve özeti doğrula
-    A->>U: "0.2.0 hazır — Yeniden başlat"
-    U->>A: Yeniden başlat
-    A->>A: kendini değiştirir, projelerini yeniden açar
+    participant A as Uygulama
+    participant C as Güncelleyici (klonun)
+    participant G as GitHub
+    A->>C: açılışta ve 6 saatte bir: git fetch
+    C->>G: main'i çek
+    G-->>C: yeni commit'ler
+    A->>U: Güncelleme var (n yeni değişiklik)
+    U->>A: Güncelle ve yeniden başlat
+    A->>C: update-macos.command arka planda çalışır
+    C->>G: git pull --ff-only
+    C->>C: npm ci, derle, paketle, ad hoc imzala
+    C->>A: uygulamayı kapat
+    C->>C: Uygulamalar'daki uygulamayı değiştir
+    C->>U: yeni sürümü aç: abc1234 sürümüne güncellendi
 ```
 
-- [ ] **Sürüm hattı** — sürüm etiketlerinde `electron-builder --publish always` çalıştıran, kurulum dosyalarını ve `latest*.yml` güncelleme bildirimlerini GitHub Releases'e yükleyen bir GitHub Actions iş akışı.
-- [ ] **Kod imzalama** — macOS'ta Apple Developer ID + notarization (macOS güncelleyicisi yalnızca imzalı sürümleri kurar), Windows'ta Authenticode. Sırlar GitHub'ın şifreli secrets alanında durur, repoya asla girmez.
-- [ ] Masaüstü kabuğunda **`electron-updater`** — açılışta ve birkaç saatte bir kontrol, arka planda indirme, doğrulama ve *Güncellemek için yeniden başlat*; süren bir işi asla bölmez.
-- [ ] **Arayüzde güncelleme şeridi** — sürüm, değişiklik notları, *Yeniden başlat* / *Sonra*; kontrolleri kapatma ayarı.
-- [ ] **Kanallar** — `stable` ve `beta`, ayarlardan seçilir.
-- [ ] **İmzalama gelene kadar** — GitHub Releases API'sine bakıp yalnızca yeni sürüm olduğunu *söyleyen* ve `update-macos.command`'a yönlendiren hafif bir kontrol.
+1. **Kontrol.** Uygulama klonunda `git fetch` çalıştırır ve dalını GitHub'da izlediği dalla (genelde `origin/main`) karşılaştırır. Kontrol hiçbir şeyi değiştirmez.
+2. **Güncelleme.** **Güncelle ve yeniden başlat**, `update-macos.command`'ı arka planda `AITRACK_UNATTENDED=1` ile (soru sormadan) başlatır. Betik çeker (yalnızca ileri sarma) ve işi `install-macos.command`'a devreder.
+3. **Yeniden derle ve değiştir.** Kurulum kilitli bağımlılıkları kurar, derler, bu Mac için paketler, çalışan uygulamayı kapatır, Uygulamalar'dakini değiştirir ve yeni sürümü açar.
+4. **Geri bildirim.** İlerleme `~/.aitrack/update-status.json`'a, tam çıktı `~/.aitrack/update.log`'a yazılır; Güncellemeler bölümü son satırları canlı gösterir, yeni sürüm de güncellendiğini (ya da neden başarısız olduğunu) söyler.
+
+> [!NOTE]
+> **Çalışan sohbetler** uygulama yeniden başlarken durur. Çalışan varsa uygulama önce sorar. Yarıda kalan çalıştırmalar bir sonraki açılışta *engelli* işaretlenir; aynı oturumdan devam etmek için yanıtla ya da yeniden gönder.
+
+### Bir şeyi değiştirmeden önce
+
+- Klasör, dalı GitHub'daki bir dalı izleyen bir git klonu olmalı ve güncelleme **ileri sarma (fast-forward)** olmalı — hiçbir şey birleştirilmez, rebase edilmez ya da üzerine yazılmaz.
+- Yerel değişiklikler güncellemeyi durdurur. Tek istisna yalnızca `package-lock.json`'ın değişmiş olması (npm bazı makinelerde onu yeniden yazar): kurulum her zaman repodaki kilit dosyasını kullandığı için geri alınır.
+- Zaten güncelsen hiçbir şey yeniden derlenmez.
+
+### Diğer güncelleme yolları
+
+| | Nasıl |
+| --- | --- |
+| **macOS, çift tıkla** | Klondaki **`update-macos.command`** dosyasına çift tıkla. Düğmeyle aynı adımlar, bir Terminal penceresinde. |
+| **macOS, Terminal** | `npm run update:mac` — ya da `git pull`, sonra `npm run install:mac`. |
+| **Windows / Linux** | `git pull && npm install && npm run dist`, sonra yeni kurulum dosyasını kur. |
+| **Kaynaktan** | `git pull && npm install && npm run desktop`. |
+| **Tarayıcı sekmesi** | `git pull`, sonra `npm run serve`'ü yeniden başlat. |
+
+<details>
+<summary><b>Sorun giderme: Güncellemeler bölümünün sana söyleyebilecekleri</b></summary>
+
+| Mesaj | Ne yapmalı |
+| --- | --- |
+| *Uygulama hangi klasörden kurulduğunu bilmiyor.* | Uygulama eski bir kurulum betiğiyle kurulmuş. Klonundaki `install-macos.command`'a bir kez çift tıkla; ondan sonra güncellemeler uygulamadan yapılır. |
+| *git bulunamadı.* | Xcode Command Line Tools'u kur: `xcode-select --install`. |
+| *GitHub'a ulaşılamadı.* | Bağlantını kontrol et ve **Şimdi kontrol et**'e yeniden bas. Hata mesajın altında görünür. |
+| *Klonda yerel değişiklikler var.* | Değişen dosyalar listelenir. Commit'le ya da stash'le (`git stash`), sonra güncelle. |
+| *Klondaki dal GitHub'daki bir dalı izlemiyor.* | Klonda `git switch main`. |
+| *Hem senin klonunda hem GitHub'da yeni commit'ler var.* | Birleştirmek için klonda `git pull` çalıştır, sonra güncelle. |
+| *n yerel commit henüz GitHub'da değil.* | Yalnızca bilgi: klonun GitHub'ın önünde (örneğin commit'ledin ama push'lamadın). |
+| *Tek tıkla güncelleme macOS için.* / *Kaynaktan çalışıyor.* | Yukarıdaki tablodaki komutları kullan. |
+| *Güncelleme başarısız: …* | `~/.aitrack/update.log`'u oku, nedeni düzelt (çoğunlukla eski Node.js ya da ağ yok) ve **Güncelle ve yeniden başlat**'a yeniden bas — ya da Terminal'de izlemek için `update-macos.command`'a çift tıkla. |
+
+</details>
+
+## 🚀 Hızlı başlangıç
+
+1. **Uygulamayı aç → Proje ekle → Seç…** ve `examples/landing-page.aitrack`'i seç — ya da kendi reponda bir `.aitrack` dosyası ([yapay zekâya yazdır](docs/authoring-with-ai.md)).
+2. **Sohbetleri başlat.** Elle yürüttüğün bir sohbet için **Oturum promptu**'nu bir kez yeni bir Claude / Codex / Cursor sohbetine kopyala. Bir sohbetin kendi kendine çalışması için şeridindeki **⚙ elle** rozetine tıkla ve bir CLI seç ([aşağıda](#-kendi-kendine-çalışan-sohbetler)).
+3. **Yeşil görevleri gönder.** Yeşil karta tıkla → **Promptu kopyala ve gönderildi işaretle** (elle) ya da **Gönder ▶** (kendi kendine). Ya da başlıktaki **Otomatik dağıtım**'ı aç.
+4. **İzle.** Sohbetler `started`, `done`, `blocked` bildirir; bağlı görevler açılır. **Senden bekleyenler** yanıtları, onayları, engelleri ve sorunları toplar.
+5. **Ekranda tut.** **Kayan pencere**'yi aç (<kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd>) ve editörüne dön.
+6. **Planı paylaş.** **Dışa aktar** planı — istersen durum anlık görüntüsüyle — commit'leyebileceğin bir dosyaya yazar.
+
+## 🤖 Kendi kendine çalışan sohbetler
+
+Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — artık **Gönder** görevi doğrudan ona verir: kopyala-yapıştır yok.
+
+| | |
+| --- | --- |
+| **Çalıştıran** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · herhangi bir komut (Cursor CLI, Aider, betikler). Kurulu CLI'lar sürümleriyle birlikte kendiliğinden bulunur. |
+| **Model ve düşünme düzeyi** | Yazılmaz, listeden seçilir: Codex'in model kataloğu ve her modelin düşünme düzeyleri, Copilot'un modelleri, Claude Code (`opus`, `sonnet`, `haiku`, `fable`) ve Gemini (`pro`, `flash`, …) için her zaman en güncel sürümü seçen takma adlar. **Diğer** herhangi bir model kimliğini alır; **Varsayılan** seçimi CLI'a bırakır. |
+| **Nerede** | Projenin reposunda ya da sohbete özel bir klasörde (birden fazla sohbet kod değiştiriyorsa git worktree). |
+| **Erişim** | Salt okunur · dosya düzenleme (varsayılan) · tam erişim. |
+| **Sohbet** | Açık tuttuğun bir sohbet gibi aynı oturumda devam eder — ya da her görevde yeni oturum. Var olan bir oturumun kimliğini yapıştırırsan tam *o* sohbet devam eder. |
+| **Durum** | İlk çıktıda *başladı*, sondaki rapordan *bitti*, ajan bir şey sorunca **yanıtını bekliyor** — **Yanıtla** ile cevap ver (<kbd>⌘</kbd><kbd>↵</kbd>). |
+| **Canlı** | Komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur**. |
+| **Otomatik dağıtım** | Başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* çalıştırma. |
+| **Kendi açtığın oturumlar** | Claude Code ve Codex için tek satırlık bir kanca, kendi açtığın bir oturumda çalışırken görevleri *çalışıyor* ve *yanıtını bekliyor* olarak işaretler. |
+
+> [!IMPORTANT]
+> CLI'lar senin bilgisayarında, **kendi girişin ve planınla** çalışır. Çalıştırma ayarları `~/.aitrack/runners.json` dosyasında kalır, proje dosyasına asla yazılmaz; ajan başlatmak uygulamanın denetim anahtarını ister — paylaşılan bir `.aitrack` dosyası ya da bir web sayfası hiçbir şey başlatamaz. İnsan gerektiren görevleri (ödeme, kimlik doğrulama, koşulları kabul etme) elle yürüttüğün bir sohbette tut.
+
+Her şey — CLI başına komutlar, erişim düzeyleri, oturumlar, kancalar, API: **[docs/agent-runners.md](docs/agent-runners.md)** (İngilizce).
+
+## ❗ Sorunlar, çalıştırma bilgileri ve kendi promptların
+
+<table>
+<tr>
+<td width="380"><img src="docs/images/problems.png" alt="Görev paneli: sohbetin sade bir dille bildirdiği iki sorun, her birinin çözüm promptu, ve çalıştırmanın süresi, araç çağrıları, bağlamı ve tokenları" width="380"></td>
+<td>
+
+**Sorunlar, sade bir dille.** Sohbet bir şeyi yapamadığında, atladığında ya da senden bir şey beklediğinde bunu raporunda — projenin dilinde — listeler. Görev kartlarda, şeritlerde, *Senden bekleyenler*'de ve kayan pencerede kırmızı **!** alır. Görev paneli her sorunu bir **çözüm promptuyla** gösterir: aç ve düzenle, kopyala ya da tek tıkla sohbete gönder. Hatalar, sohbetin beklediği sorular ve CLI'ın reddettiği araçlar da burada, çalıştırma ayarlarına kısayoluyla birlikte çıkar.
+
+**Çalıştırma bilgileri.** Süre, giren ve çıkan tokenlar, araç çağrıları, turlar, liste fiyatı ve oturumun bağlam penceresinin ne kadar dolu olduğu (Claude Code bildirir) — şeritlerde, kartlarda, görev panelinde ve kayan pencerede.
+
+**Kendi promptların.** Görevi gönderirken kendi talimatını ekle (plandan önce gelir), sohbetin oturumuna istediğin an yaz, tekrar kullandığın promptları **Promptlarım**'da tut.
+
+</td>
+</tr>
+</table>
 
 ## 🧭 Nasıl çalışır
 
 ```mermaid
 flowchart LR
-    F["📄 .aitrack dosyası<br/>sohbetler · görevler · bağımlılıklar · promptlar"] --> T
-    subgraph T["Yerel takip sunucusu · 127.0.0.1:4317"]
+    F["📄 .aitrack dosyası<br/>sohbetler · görevler · dependsOn · promptlar"] --> T
+    subgraph T["Yerel izleyici · 127.0.0.1:4317"]
       direction TB
       G[görev grafiği] --> B[pano durumu]
-      L[(olay kaydı)] --> B
+      L[(olay günlüğü)] --> B
     end
     T --> UI["🖥️ Masaüstü uygulaması<br/>paneller · kayan pencere"]
-    UI -- "promptu kopyala, gönderildi işaretle" --> C["🤖 Yapay zekâ sohbetleri<br/>Claude · Codex · Cursor · sen"]
+    UI -- "promptu kopyala & gönderildi işaretle" --> C["🤖 Yapay zekâ sohbetleri<br/>Claude · Codex · Copilot · Gemini · sen"]
     T -- "Gönder ▶ CLI'ı çalıştırır<br/>codex · claude · copilot · gemini" --> C
-    C -- "started / blocked / done<br/>HTTP · CLI · gelen kutusu · yapıştır · çalıştırma çıktısı · kancalar" --> L
+    C -- "started / blocked / done / issues<br/>HTTP · CLI · gelen kutusu · yapıştır · çalıştırma çıktısı · kancalar" --> L
 ```
 
-1. **Planla.** `.aitrack` dosyası sohbetleri, görevleri gerçek bağımlılıklarıyla ve promptları içerir. Elle yaz ya da planından bir yapay zekâya yazdır: [Yapay zekâyla proje dosyası hazırlama](docs/authoring-with-ai.md).
-2. **Aç.** Uygulama dosyayı doğrular (bilinmeyen kimlikler, döngüler, eksik promptlar) ve grafiğe döker.
-3. **Oturumları başlat.** Her sohbetin şeridinde **Oturum promptu**'nu bir kez kopyala.
-4. **Dağıt.** Yeşil görevleri gönder — elle, kendi kendine çalışan sohbetler için **Gönder ▶** ile ya da **otomatik dağıtıma** bırakarak.
-5. **İzle.** Sohbetler çalıştıkça bildirir; bağlı görevler açılır; engelli görevler nedenini söyler.
-6. **Paylaş.** **Dışa aktar** planı, istersen durum anlık görüntüsüyle birlikte commit'leyebileceğin bir dosyaya yazar.
+1. **Planla.** Bir `.aitrack` dosyası sohbetleri, gerçek bağımlılıklarıyla görevleri ve promptları listeler. Elle yaz ya da planından bir yapay zekâya yazdır — bkz. [Yapay zekâyla proje yazmak](docs/authoring-with-ai.md).
+2. **Aç.** Uygulama dosyayı doğrular (bilinmeyen kimlikler, döngüler, eksik promptlar) ve bir grafik olarak dizer.
+3. **Dağıt.** Yeşil görevleri gönder — elle, **Gönder ▶** ile ya da **otomatik dağıtım**la.
+4. **İzle.** Sohbetler çalışırken bildirir; bağlı görevler açılır; engellenen görevler nedenini söyler; sorunlar **!** alır.
+5. **Paylaş.** **Dışa aktar** planı, istersen durum anlık görüntüsüyle, commit'leyebileceğin bir dosyaya yazar.
 
 <details>
 <summary><b>Görevin yaşam döngüsü</b></summary>
@@ -253,23 +337,15 @@ flowchart LR
 ```mermaid
 stateDiagram-v2
     direction LR
-    state "Bekliyor" as Bekliyor
-    state "Hazır" as Hazir
-    state "Gönderildi" as Gonderildi
-    state "Çalışıyor" as Calisiyor
-    state "Engelli" as Engelli
-    state "İncelemede" as Incelemede
-    state "Bitti" as Bitti
-    state "Başarısız" as Basarisiz
     [*] --> Bekliyor
     Bekliyor --> Hazir: bağımlılıklar bitti
     Hazir --> Gonderildi: gönder
     Gonderildi --> Calisiyor: started
     Calisiyor --> Engelli: blocked (neden) / yanıtını bekliyor
     Engelli --> Calisiyor: devam / sen yanıtlarsın
-    Calisiyor --> Incelemede: done (onay açık)
+    Calisiyor --> Onayda: done (onay açık)
     Calisiyor --> Bitti: done
-    Incelemede --> Bitti: sen onaylarsın
+    Onayda --> Bitti: sen onaylarsın
     Calisiyor --> Basarisiz: failed (neden)
     Basarisiz --> Hazir: yeniden aç
     Bitti --> [*]
@@ -281,30 +357,48 @@ stateDiagram-v2
 | Hazır / **Şimdi gönder** | Bağımlılıklar bitti ve uygun bir sohbette yer var. Yeşil. |
 | Hazır, sohbet meşgul | Bağımlılıklar bitti ama uygun her sohbet `maxParallel` sınırında. |
 | Gönderildi | Görevi bir sohbete verdin (kopyaladın ya da çalıştırmasını başlattın); henüz başlamadı. |
-| Çalışıyor | Sohbet `started` ya da `progress` bildirdi. |
-| Engelli | Sohbet nedeniyle birlikte `blocked` bildirdi ya da sana bir şey sormak için durdu (*yanıtını bekliyor*). Sohbeti meşgul tutar. |
-| İncelemede | Onayını bekliyor (`requireApproval` açık ya da sohbet `review` bildirdi). |
+| Çalışıyor | Sohbet `started` ya da `progress` bildirdi veya çalıştırması çıktı üretiyor. |
+| Engelli | Sohbet nedeniyle `blocked` bildirdi ya da sana bir şey sormak için durdu (*yanıtını bekliyor*). Sohbeti tutmaya devam eder. |
+| Onayda | Onayını bekliyor (`requireApproval` ya da sohbet `review` bildirdi). |
 | Bitti | `done` bildirildi (onay gerekiyorsa onaylandı). Bağlı görevleri açar. |
-| Başarısız | Sohbet nedeniyle birlikte vazgeçti. Yeniden açıp tekrar gönderebilirsin. |
+| Başarısız | Sohbet nedeniyle birlikte vazgeçti. Yeniden göndermek için yeniden aç. |
 
-Her durumu görev panelinden elle de değiştirebilirsin.
+Her durum, görev yeniden gönderilene, sorunsuz bitti bildirilene, onaylanana ya da yeniden açılana kadar **sorunlar** (kırmızı **!**) taşıyabilir. Her durum görev panelinden elle de ayarlanabilir.
 
 </details>
 
 ## 📡 Sohbetten bildirim
 
-Her promptun sonunda kısa bir **REPORTING** bölümü vardır; sohbetler ek kurulum olmadan nasıl bildireceğini bilir. Kanallar, tercih sırasıyla:
+Her prompt kısa bir **REPORTING** bölümüyle biter; sohbetler ek kurulum olmadan nasıl bildireceklerini bilir:
 
 | Kanal | Ne zaman |
 | --- | --- |
-| **HTTP** `POST /api/report` | Sohbet senin bilgisayarında çalışıyorsa. |
-| **CLI** `aitrack-report --task T-03 --status done` | Aynısı, ulaşamazsa gelen kutusuna kendisi düşer. |
-| **Gelen kutusu dosyası** `.aitrack/inbox/<görev>-<durum>-<ms>.json` | Sohbet localhost'a ulaşamayan bir sanal ortamda çalışıyorsa. Git worktree'leri de taranır. |
-| ` ```aitrack-report ` bloğunu **yapıştır** | Diskine ulaşamayan bulut sohbetleri için. |
+| **HTTP** `POST /api/report` | Sohbet senin makinende çalışıyor. |
+| **CLI** `aitrack-report --task T-03 --status done` | Aynısı, olmazsa gelen kutusuna kendiliğinden düşer. |
+| **Gelen kutusu dosyası** `.aitrack/inbox/<görev>-<durum>-<ms>.json` | Sohbet localhost'a ulaşamayan bir kum havuzunda çalışıyor. Git worktree'leri de taranır. |
+| **Yapıştır** bir ` ```aitrack-report ` bloğu | Diskine ulaşamayan bulut sohbetleri. |
 | **Çalıştırma çıktısı** | [Kendi kendine çalışan](docs/agent-runners.md) sohbetler: son mesajın sonundaki blok kendiliğinden okunur. |
 | **Kancalar** | Kendi açtığın Claude Code ve Codex oturumları: tur başı ve sonu. |
 
-Ayrıntılar ve rapor şeması: [docs/agent-reporting.md](docs/agent-reporting.md).
+Bir rapor **sorunları** da listeleyebilir — başarısız olan, atlanan, eksik olan ya da bir insana ihtiyaç duyan şeyler — her biri bir çözüm promptuyla:
+
+```json
+{
+  "task": "T-05",
+  "status": "done",
+  "summary": "Hız sınırlamalı kayıt uç noktası",
+  "issues": [
+    {
+      "title": "E-posta gönderimi denenmedi",
+      "detail": "SMTP ayarları yok; hoş geldin e-postası yazıldı ama hiç gönderilmedi.",
+      "kind": "needs-you",
+      "fix": "SMTP ayarları artık .env.local içinde. Deneme bir kayıt yap, hoş geldin e-postasının geldiğini kontrol et ve yeniden bildir."
+    }
+  ]
+}
+```
+
+Ayrıntılar ve rapor şeması: [docs/agent-reporting.md](docs/agent-reporting.md) (İngilizce).
 
 ## 📄 `.aitrack` dosyası
 
@@ -322,110 +416,163 @@ Ayrıntılar ve rapor şeması: [docs/agent-reporting.md](docs/agent-reporting.m
     { "id": "codex-a", "name": "Codex A", "tool": "codex", "bootstrapPrompts": ["context"] }
   ],
   "tasks": [
-    { "id": "T-01", "title": "API contract", "agent": "claude-a", "prompts": ["contract"] },
-    { "id": "T-02", "title": "Page against the mock", "agent": "codex-a", "dependsOn": ["T-01"],
-      "instructions": "Build the page using the mock server.", "allowedPaths": ["src/"] }
+    { "id": "T-01", "title": "API sözleşmesi", "agent": "claude-a", "prompts": ["contract"] },
+    { "id": "T-02", "title": "Sahte sunucuya karşı sayfa", "agent": "codex-a", "dependsOn": ["T-01"],
+      "instructions": "Sayfayı sahte sunucuyu kullanarak yap.", "allowedPaths": ["src/"] }
   ],
   "prompts": {
-    "context": { "title": "Shared context", "body": "You are working on …" },
-    "contract": { "title": "Contract", "body": "Write contracts/openapi.yaml …" }
+    "context": { "title": "Ortak bağlam", "body": "Şu proje üzerinde çalışıyorsun …" },
+    "contract": { "title": "Sözleşme", "body": "contracts/openapi.yaml dosyasını yaz …" }
   }
 }
 ```
 
 </details>
 
-Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`schema/aitrack.schema.json`](schema/aitrack.schema.json) · doğrulama: `npm run validate -- yol/proje.aitrack`.
+Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Şeması: [`schema/aitrack.schema.json`](schema/aitrack.schema.json) · doğrulamak için `npm run validate -- yol/proje.aitrack`.
 
-**Yeni proje mi?** Planını [bu yönergeyle](docs/authoring-with-ai.md) birlikte bir yapay zekâya ver, cevabı o repoda `<proje>.aitrack` olarak kaydet, doğrula ve **Proje ekle**.
+**Yeni proje mi?** Planını [bu talimatlarla](docs/authoring-with-ai.md) birlikte bir yapay zekâya ver, cevabı o repoda `<proje>.aitrack` olarak kaydet, doğrula ve **Proje ekle**.
 
 ## 🎨 Kendine göre ayarla
 
 | | |
 | --- | --- |
-| **Paneller** | Şimdi gönderilebilir · Sohbet şeritleri · Akış · Liste · Senden bekleyenler · Son olaylar · İlerleme. Ekle, sürükle, boyutlandır (¼'ten tam genişliğe, otomatikten ekran boyuna) ve her birini belirli sohbetlerle sınırla. |
-| **Düzenler** | İstediğin kadar: *Sabah*, *Sadece Claude*, *İnceleme saati*. Hazır gelenler: Sohbetler, Genel bakış, Akış, Liste. |
-| **Sohbetler** | Şeritlerin sonunda **+ Sohbet ekle**, şeritteki ✏️ ile düzenle ya da kaldır. Yeni sohbet meşgul sohbetlerin görevlerini devralabilir. |
-| **Görünüm** | Tema (koyu, açık, sistem), vurgu rengi, yoğunluk, yazı boyutu, cam yoğunluğu, dil (Türkçe, English). |
-| **Cam** | macOS'ta yan menü yarı saydamdır ve arkasında ne varsa onun tonunu alır; pano siyah zemindedir. |
-| **Yan menü** | Proje rozetlerinden oluşan dar bir şeride katlanır (⌘B). |
-| **Bilgi kutucukları** | Ayarların ve anahtarların yanındaki ⓘ ne işe yaradıklarını açıklar. |
+| **Paneller** | Şimdi gönderilebilir · Sohbet şeritleri · Akış · Liste · Senden bekleyenler · Son olaylar · İlerleme. Ekle, sürükle, boyutlandır (genişlikte ¼'ten tama, yükseklikte otomatikten tama) ve her birini bazı sohbetlerle sınırla. |
+| **Düzenler** | İstediğin kadar — *Sabah*, *Yalnızca Claude*, *İnceleme zamanı*. Hazır olanlar: Sohbetler, Genel bakış, Akış, Liste. |
+| **Sohbetler** | Şeritlerin sonunda **+ Sohbet ekle**, düzenlemek ya da kaldırmak için şeritteki ✏️. Yeni bir sohbet, meşgul sohbetlerin görevlerini devralabilir. |
+| **Görünüm** | Tema (koyu, açık, sistem), vurgu rengi, yoğunluk, yazı boyutu, cam yoğunluğu, dil (English, Türkçe). |
+| **Siyah beyaz** | Koyu tema siyah zemin üstünde siyah beyaz bileşenlerle gelir; yeşil, sarı, kırmızı ve mavi yalnızca durumlar için. Açık tema bunun beyaz aynası. |
+| **Cam** | macOS'ta kenar çubuğu yarı saydamdır ve arkasındakinin tonunu alır. |
+| **Kenar çubuğu** | Dar bir proje rozetleri şeridine katlanır (<kbd>⌘</kbd><kbd>B</kbd>). |
+| **Bilgi ipuçları** | Otomatik dağıtımın, çalıştırma sınırının, çalıştırma ayarlarının ve panellerin yanındaki ⓘ, ne işe yaradıklarını açıklar. |
+
+## ⌨️ Klavye kısayolları
+
+| Tuşlar | İşlem |
+| --- | --- |
+| <kbd>⌘</kbd><kbd>B</kbd> | Kenar çubuğunu katla ya da aç |
+| <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd> | Kayan pencereyi aç |
+| <kbd>⌘</kbd><kbd>O</kbd> | Bir `.aitrack` dosyası aç |
+| <kbd>⌘</kbd><kbd>↵</kbd> | Görev panelindeki yanıtı ya da mesajı gönder |
+| <kbd>Esc</kbd> | Görev panelini ya da bir pencereyi kapat |
+
+Windows ve Linux'ta <kbd>⌘</kbd> yerine <kbd>Ctrl</kbd>.
 
 ## 🧰 Komutlar
 
 | Komut | Ne yapar |
 | --- | --- |
 | `npm run desktop` | Her şeyi derler ve masaüstü uygulamasını başlatır. |
-| `npm run serve -- [dosyalar…]` | Takip sunucusu ve web arayüzü `127.0.0.1:4317`'de (`--port`, `--data-dir`). Tarayıcıdan sohbet çalıştırmak için denetim anahtarlı bir bağlantı yazar. |
-| `npm run dev:web` | Geliştirme: yeniden yüklenen sunucu + Vite geliştirme sunucusu. |
+| `npm run serve -- [dosyalar…]` | `127.0.0.1:4317` üzerinde izleyici ve web arayüzü (`--port`, `--data-dir`). Sohbetleri tarayıcıdan çalıştırmak için denetim anahtarlı bir bağlantı yazar. |
+| `npm run dev:web` | Geliştirme: yeniden yüklenen izleyici ve Vite geliştirme sunucusu. |
 | `npm run dist` | electron-builder ile kurulum dosyaları üretir. |
 | `npm run install:mac` / `npm run update:mac` | Kurulum / güncelleme dosyasına çift tıklamakla aynı. |
-| `npm test` · `npm run typecheck` | Testler (Vitest) ve TypeScript denetimi. |
+| `npm test` · `npm run typecheck` | Testler (Vitest) ve TypeScript kontrolleri. |
 | `npm run validate -- <dosyalar…>` | `.aitrack` dosyalarını doğrular. |
-| `npm run schema` | JSON Schema'yı zod şemasından yeniden üretir. |
+| `npm run schema` | JSON Şemasını zod şemasından yeniden üretir. |
 
-Ortam değişkenleri: `AITRACK_PORT` (varsayılan `4317`), `AITRACK_DATA_DIR` (varsayılan `~/.aitrack`), `AITRACK_SERVER` (rapor CLI'ı).
+Ortam değişkenleri: `AITRACK_PORT` (varsayılan `4317`), `AITRACK_DATA_DIR` (varsayılan `~/.aitrack`), `AITRACK_SERVER` (bildirim CLI'ı).
 
 <details>
 <summary>Repo yapısı</summary>
 
 ```text
-packages/core       dosya biçimi (zod), görev grafiği, pano mantığı, prompt üretimi, dosya düzenleme — G/Ç yok
-packages/server     yerel takip sunucusu: kayıt, olay günlüğü, gelen kutusu izleyici, ajan çalıştırıcıları ve kancalar, HTTP API, SSE
-packages/ui         React arayüzü: paneller, düzenler, kayan pencere, görünüm; Türkçe ve İngilizce
-packages/reporter   ajanlar için aitrack-report CLI, bağımlılıksız
-apps/desktop        Electron kabuğu: sunucu, yarı saydam pencereler, kayan pencere, .aitrack ilişkilendirmesi
-schema/             üretilmiş JSON Schema
+packages/core       dosya biçimi (zod), görev grafiği, pano mantığı, prompt oluşturma, dosya düzenleme — G/Ç yok
+packages/server     yerel izleyici: kayıt, olay günlüğü, gelen kutusu izleyici, ajan çalıştırıcılar ve kancalar, HTTP API, SSE
+packages/ui         React arayüzü: paneller, düzenler, kayan pencere, görünüm, güncellemeler; İngilizce ve Türkçe
+packages/reporter   ajanlar için aitrack-report CLI'ı, bağımlılıksız
+apps/desktop        Electron kabuğu: izleyici, yarı saydam pencereler, kayan pencere, uygulama içi güncelleme, .aitrack ilişkilendirme
+install-macos.command / update-macos.command   çift tıklanan kurulum ve güncelleme (Güncelle düğmesi de bunları kullanır)
+schema/             üretilen JSON Şeması
 examples/           örnek projeler
-docs/               dosya biçimi, bildirim, yapay zekâyla hazırlama, görseller
+docs/               dosya biçimi, bildirim, ajan çalıştırıcılar, yapay zekâyla yazma, görseller
 ```
 
 </details>
 
+## 💾 Verilerin nerede
+
+| Ne | Nerede |
+| --- | --- |
+| Plan | Reponda, senin `.aitrack` dosyan. |
+| Görev durumu (olay günlüğü) | `~/.aitrack/events/` |
+| Sohbet başına çalıştırma ayarları | `~/.aitrack/runners.json` — proje dosyasına asla yazılmaz |
+| Çalıştırma çıktısı | `~/.aitrack/runs/` |
+| Denetim anahtarı | `~/.aitrack/control-token` |
+| Uygulamanın kurulduğu yer | `~/.aitrack/install.json` |
+| Güncelleme ilerlemesi ve çıktısı | `~/.aitrack/update-status.json`, `~/.aitrack/update.log` |
+| Düzenler, görünüm, kayıtlı promptlar | Uygulamanın içinde, bu bilgisayarda |
+
+İzleyicinin kendisi hiçbir yere bir şey göndermez. Yapay zekâ sohbetlerine verdiğin promptlar o sohbetlerle bilgisayarından çıkar; güncelleme kontrolleri yalnızca `git` üzerinden GitHub'la konuşur.
+
 ## 🔒 Güvenlik
 
-- Sunucu **yalnızca 127.0.0.1**'i dinler, yabancı `Host` başlıklarını (DNS rebinding) ve başka kaynaklardan gelen yazma isteklerini reddeder, yazmalarda `application/json` ister.
-- Pencereler context isolation ve sandbox ile çalışır; yerel köprü dosya pencereleri, kayan pencere ve denetim anahtarıyla sınırlıdır, her çağrı ana süreçte denetlenir.
-- Ajan başlatmak bir **denetim anahtarı** ister (`~/.aitrack/control-token`); çalıştırma ayarları yalnızca senin bilgisayarında durur, proje dosyalarına yazılmaz.
+- İzleyici **yalnızca 127.0.0.1**'i dinler, yabancı `Host` başlıklarını (DNS rebinding) ve başka kökenlerden gelen yazmaları reddeder, yazmalar için `application/json` ister.
+- Pencereler bağlam yalıtımı ve sandbox ile çalışır; yerel köprü dosya pencereleri, kayan pencere, güncellemeler ve denetim anahtarıyla sınırlıdır ve her çağrı ana süreçte kontrol edilir.
+- Ajan başlatmak bir **denetim anahtarı** ister; çalıştırma ayarları yalnızca senin bilgisayarında durur, proje dosyalarında asla.
+- Güncellemeler yalnızca klonun kendi `update-macos.command`'ını çalıştırır, klonun zaten izlediği daldan **yalnızca ileri sararak** çeker ve yerel değişikliklere asla dokunmaz.
 - Raporlar veridir: görev durumunu değiştirir ve metin olarak gösterilir, asla çalıştırılmaz.
-- `.aitrack` dosyalarına ve raporlara sır yazma; dosya commit'lenmek için var.
+- `.aitrack` dosyalarına ya da raporlara gizli bilgi koyma — dosya commit'lenmek için var.
 
-Daha fazlası: [SECURITY.md](SECURITY.md).
+Daha fazlası [SECURITY.md](SECURITY.md) içinde.
 
 ## ❓ Sık sorulanlar
 
 <details>
-<summary><b>Claude ya da Codex'le benim yerime konuşuyor mu?</b></summary>
+<summary><b>Benim yerime Claude'la ya da Codex'le konuşuyor mu?</b></summary>
 
-İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmî CLI'ıyla — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle çalıştırdığın sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
-
-</details>
-
-<details>
-<summary><b>Verilerim nerede?</b></summary>
-
-Plan senin `.aitrack` dosyandır. Durum olayları bilgisayarında `~/.aitrack/events/`, çalıştırma ayarları `~/.aitrack/runners.json`, çalıştırma çıktıları `~/.aitrack/runs/` altındadır. Düzenler ve görünüm uygulamada saklanır. Takip sunucusu kendisi hiçbir yere bir şey göndermez; yapay zekâ sohbetlerine verdiğin promptlar o sohbetlerle birlikte bilgisayarından çıkar.
+İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmi CLI'ı üzerinden — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle yürüttüğün sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
 
 </details>
 
 <details>
-<summary><b>Aynı anda birden çok proje açık olabilir mi?</b></summary>
+<summary><b>Claude'u masaüstü uygulamasında (ya da Cowork'te) kullanıyorum. Gönder orada bir sohbet açar mı?</b></summary>
 
-Evet. Her proje kendi reposundaki bir `.aitrack` dosyasıdır; kenar çubuğu hepsini listeler, kayan pencere istediğini izleyebilir.
+Hayır. **Gönder**, `claude` CLI'ını (Claude Code) aynı hesapla, projenin klasöründe arka planda çalıştırır. Masaüstü uygulamasında çalışmayı tercih ediyorsan o sohbeti *elle* bırak: promptu tek tıkla kopyala ve kancayı ekle (ya da sohbetin bildirmesine bırak), pano yine ilerler.
 
 </details>
 
 <details>
-<summary><b>Sohbetim bulutta çalışıyor, localhost'a ulaşamıyor.</b></summary>
+<summary><b>Güncellemeler neden uygulamanın nereden kurulduğunu bilmediğini söylüyor?</b></summary>
 
-Sohbet diskindeki bir worktree'de çalışıyorsa gelen kutusu dosyasını kullan; değilse her promptun sonunda istenen `aitrack-report` bloğunu **Rapor yapıştır** ile ekle.
+Uygulama, uygulama içi güncellemeler gelmeden önce kurulmuş. Klonundaki `install-macos.command`'a bir kez çift tıkla; kurulum klasörü `~/.aitrack/install.json`'a yazar ve uygulama bundan sonra kendini günceller.
 
 </details>
+
+<details>
+<summary><b>Güncelleme çalışan sohbetlerimi durdurur mu?</b></summary>
+
+Yalnızca onaylarsan. Çalışan sohbet varken **Güncelle ve yeniden başlat** önce sorar; otomatik kurulum da hiçbir sohbet çalışmıyorken yapılır. Yarıda kalan çalıştırmalar *engelli* işaretlenir; aynı oturumdan devam etmek için yanıtla ya da yeniden gönder.
+
+</details>
+
+<details>
+<summary><b>Aynı anda birden fazla proje açık olabilir mi?</b></summary>
+
+Evet. Her proje kendi reposundaki bir `.aitrack` dosyasıdır; kenar çubuğu hepsini listeler ve kayan pencere istediğini izleyebilir.
+
+</details>
+
+<details>
+<summary><b>Sohbetim bulutta çalışıyor ve localhost'a ulaşamıyor.</b></summary>
+
+Gelen kutusu dosyasını kullan (sohbet diskindeki bir worktree'de çalışıyorsa) ya da her promptun sohbetten sonunda istediği `aitrack-report` bloğunu yapıştır.
+
+</details>
+
+## 🗺️ Yol haritası
+
+- [x] Kendi kendine çalışan sohbetler, otomatik dağıtım, kancalar
+- [x] Çözüm promptlu sorunlar, çalıştırma bilgileri, kendi promptların
+- [x] macOS'ta tek tıkla ve otomatik güncelleme (klonundan)
+- [ ] GitHub Releases'ta imzalı ve noter onaylı sürümler; böylece uygulama klonlamadan ve Node.js olmadan indirilip (`electron-updater` ile) güncellenebilir
+- [ ] Windows ve Linux'ta tek tıkla güncelleme
+- [ ] Güncelleme kanalları: `stable` ve `beta`
 
 ---
 
 <div align="center">
 
-Sürüm 0.1 · dosya biçimi sürümlüdür ve aynı ana sürüm içinde geriye uyumlu kalır · [Katkı](CONTRIBUTING.md) · [Değişiklikler](CHANGELOG.md)
+Sürüm 0.1 · dosya biçimi sürümlüdür ve bir ana sürüm içinde geriye dönük uyumlu kalır · [Katkı](CONTRIBUTING.md) · [Değişiklik günlüğü](CHANGELOG.md)
 
 </div>

@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format follows [Kee
 - Info tips (ⓘ) next to auto-dispatch, the run limit, the run settings and the new panels; the sidebar folds into a rail (⌘B).
 - Dark theme on a black ground with black-and-white components; status colours unchanged. Smaller corner radii. Clearer lane headers and floating-window rows.
 - Event sources `runner` and `hook`. Runs interrupted by quitting the app are marked blocked on the next start.
+- In-app updates on macOS: the app checks the git clone it was installed from (`git fetch`) when it opens and every 6 hours, shows **Update available** in the sidebar and the new commits under **Settings → Updates** (also **Check for Updates…** in the app menu), and **Update and restart** runs `update-macos.command` in the background: pull (fast-forward only), rebuild, replace the app and reopen it. Progress and the last lines of output are shown live; the new version says it was updated or why it failed. Optional: install new versions by itself when no chat is running. It asks before restarting while chats are running.
+- The installer records where it was installed from in `~/.aitrack/install.json`; installer and updater run unattended with `AITRACK_UNATTENDED=1` and write their progress to `~/.aitrack/update-status.json` and `~/.aitrack/update.log`.
+- Escape closes dialogs and settings.
+- README rewritten in English and Turkish for the new UI and features: what's inside, install, how updates work and troubleshooting, quick start, problems and run details, keyboard shortcuts, where data lives, roadmap; new demo recordings and an Updates screenshot.
 
 ## [0.1.0] - 2026-11-12
 
