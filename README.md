@@ -57,12 +57,12 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 | 🆕 **New project wizard** | Pick the folder, the chats (suggested from the AI CLIs on your computer) and how to plan: Claude Code or Codex writes the tasks from your plan, any other AI does it by copy and paste, or you start empty. No JSON to write. |
 | ✏️ **Plan editor** | Add, change and remove tasks and prompts in the app: which chat takes a task, what it waits for, its instructions, allowed paths and acceptance criteria. |
 | 🟢 **A board that knows what's next** | Tasks unlock when their dependencies are done and their chat has room. *Ready to send* shows the green ones at a glance; every other task says why it is waiting. |
-| 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or any command run the task in their own session, in your repository. Output streams in live; you reply and stop from the app. |
+| 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or any command run the task in their own session, in your repository. Output streams in live; you reply, approve and stop from the app or the floating window. |
 | ⚡ **Auto-dispatch** | One switch: free chats pick up their most urgent ready task, up to *N* at once, as soon as it turns green. |
-| ❗ **Problems in plain words** | What a chat could not do, skipped or needs from you is marked with a red **!** everywhere, explained in your language, with a fix prompt ready to edit, copy or send. |
+| ❗ **Problems in plain words** | What a chat could not do, skipped or needs from you is marked with a red **!** everywhere, explained in your language, with a fix prompt ready to edit, copy or send. Mark it resolved or ignore it; a refused command is allowed in one click. |
 | ⏱️ **Run details** | Elapsed time, tool calls, tokens, turns, list price and how full the session's context is — live. |
 | ✍️ **Your own prompts** | Add instructions when sending, write to a chat's session at any time, keep a list of saved prompts. |
-| 🪟 **Floating window** | A small always-on-top window over your editor and the AI apps: what each chat is doing, what waits for you, one-click send. |
+| 🪟 **Floating window** | A small always-on-top window over your editor and the AI apps: what each chat is doing, what waits for you, one-click send — and replies, approvals, fixes and stop right there. |
 | 🧩 **Panels and layouts** | Build screens from panels, drag and resize them, filter by chat, keep as many layouts as you like. |
 | 🎨 **Black and white UI** | A high-contrast black theme (and a white one) where only status speaks in colour. Collapsible sidebar, ⓘ tips that explain each switch, and a short intro the first time you open the app. |
 | 📌 **Your project list** | Pin projects to the top, drag them into your own order, remove them from the list or move their file to the Trash. |
@@ -338,11 +338,12 @@ Set a chat up once — click the **⚙ by hand** badge on its lane — and **Sen
 | --- | --- |
 | **Runs with** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · any command (Cursor CLI, Aider, scripts). Installed CLIs are found automatically, with their versions. |
 | **Model and effort** | Picked from lists, not typed: Codex's model catalog with each model's reasoning levels, Copilot's models, and the Claude Code (`opus`, `sonnet`, `haiku`, `fable`) and Gemini (`pro`, `flash`, …) aliases that always follow the latest version. **Other** takes any model id; **Default** leaves it to the CLI. |
-| **Where** | The project's repository, or a folder per chat (a git worktree when several chats edit code). |
-| **Access** | Read only · edit files (default) · full access. |
+| **Where** | The project's code folder — the repository the project file is in, or the one the plan names (**Project settings → Code folder**) — or a folder per chat (a git worktree when several chats edit code). If the plan names a folder that is not on this computer yet, the board offers to create it. |
+| **Access** | Read only · edit files (default) · full access. With *edit files*, Claude Code also runs the usual work commands without asking — read and search, `mkdir`/`cp`/`mv`, local git, build and test; `git push`, `rm` and the rest still ask. A refused step shows **Allow …** on its problem. |
 | **Conversation** | Continues the same session, like a chat you keep open — or a new session per task. Paste an existing session id to continue *that* chat. |
 | **Status** | *Started* on the first output, *done* from the report at the end, **waiting for your reply** when the agent asks — answer with **Reply** (<kbd>⌘</kbd><kbd>↵</kbd>). |
-| **Live** | Commands, edits and messages stream into the task drawer; **Stop** at any time. |
+| **Live** | Commands, edits and messages stream into the task drawer; **Stop** at any time — from the lane, the drawer or the floating window — or **Stop all**. A chat you stopped gets nothing new from auto-dispatch until you send it something. |
+| **Setup help** | A CLI that is not installed shows the command that installs it; one that is not signed in shows the command to sign in. |
 | **Auto-dispatch** | The switch in the header: free chats get their most urgent ready task, up to *N* runs at once. |
 | **Your own sessions** | A one-line hook for Claude Code and Codex marks tasks *in progress* and *waiting for your reply* while you work in a session you opened yourself. |
 
@@ -358,7 +359,7 @@ Everything — commands per CLI, access levels, sessions, hooks, API: **[docs/ag
 <td width="380"><img src="docs/images/problems.png" alt="Task drawer: two problems the chat reported in plain words, each with a fix prompt, and the run's time, tool calls, context and tokens" width="380"></td>
 <td>
 
-**Problems, in plain words.** When a chat could not do something, skipped it or needs you, it lists it in its report — in the project's language. The task gets a red **!** on cards, lanes, *Needs you* and the floating window. The drawer shows each problem with a **fix prompt**: open it to edit, copy it, or send it to the chat in one click. Failures, questions the chat waits on and tools a CLI refused show up here too, with a shortcut to the run settings.
+**Problems, in plain words.** When a chat could not do something, skipped it or needs you, it lists it in its report — in the project's language. The task gets a red **!** on cards, lanes, *Needs you* and the floating window. The drawer shows each problem with a **fix prompt**: open it to edit, copy it, or send it to the chat in one click. Failures, questions the chat waits on and tools a CLI refused show up here too, with a shortcut to the run settings. Mark a problem **Resolved** or **Ignore** it: it stops counting and stays listed, so you can open it again. What the chat wrote is shown as Markdown — headings, lists, tables, code.
 
 **Run details.** Time, tool calls, tokens in and out, turns, list price, and how full the session's context window is (Claude Code reports it) — on lanes, cards, the drawer and the floating window.
 
@@ -623,6 +624,13 @@ Yes. Each project is a `.aitrack` file in its own repository; the sidebar lists 
 </details>
 
 <details>
+<summary><b>A chat stops at "permission denied" or "working folder not found".</b></summary>
+
+*Permission denied:* the chat's access level did not allow a command. With **edit files**, Claude Code already runs the usual work commands; for anything else, click **Allow …** on the problem and send the task again, or choose **full access** in the run settings (only in a disposable worktree). *Working folder not found:* the plan names a code folder that is not on this computer yet — **Create the folder**, choose another one, or use the plan's repository from the notice on the board or **Project settings → Code folder**.
+
+</details>
+
+<details>
 <summary><b>My chat runs in the cloud and cannot reach localhost.</b></summary>
 
 Use the inbox file (if the chat works in a worktree on your disk) or paste the `aitrack-report` block that every prompt asks the chat to end with.
@@ -635,6 +643,7 @@ Use the inbox file (if the chat works in a worktree on your disk) or paste the `
 - [x] Problems with fix prompts, run details, your own prompts
 - [x] One-click and automatic updates on macOS (from your clone)
 - [x] New project wizard with AI planning, plan editor, project list you can pin and order, first-run intro
+- [x] Actions from the floating window, closing problems, stop and stop all, disk image (.dmg) for your Mac
 - [ ] Signed and notarized releases on GitHub Releases, so the app can be downloaded and updated (with `electron-updater`) without cloning or Node.js
 - [ ] One-click updates on Windows and Linux
 - [ ] Update channels: `stable` and `beta`

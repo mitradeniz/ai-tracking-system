@@ -57,12 +57,12 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 | 🆕 **Yeni proje sihirbazı** | Klasörü, sohbetleri (bilgisayarındaki yapay zekâ CLI'larından önerilir) ve nasıl planlanacağını seç: Claude Code ya da Codex planından görevleri yazsın, başka bir yapay zekâ kopyala-yapıştırla yazsın ya da boş başla. JSON yazmak yok. |
 | ✏️ **Plan düzenleyici** | Görevleri ve promptları uygulamada ekle, değiştir, kaldır: görevi hangi sohbetin alacağı, neyi beklediği, talimatı, izinli yolları ve kabul kriteri. |
 | 🟢 **Sırada ne olduğunu bilen pano** | Görevler, bağlı oldukları işler bitince ve sohbetlerinde yer varken açılır. *Şimdi gönderilebilir* yeşil olanları tek bakışta gösterir; diğer her görev neden beklediğini söyler. |
-| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak ve durdurmak uygulamadan. |
+| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
 | ⚡ **Otomatik dağıtım** | Tek anahtar: boştaki sohbetler, en acil hazır görevlerini yeşile döner dönmez alır; aynı anda en fazla *N* tane. |
-| ❗ **Sade bir dille sorunlar** | Sohbetin yapamadığı, atladığı ya da senden beklediği şeyler her yerde kırmızı **!** ile işaretlenir, senin dilinde açıklanır ve düzenlemeye, kopyalamaya ya da göndermeye hazır bir çözüm promptuyla gelir. |
+| ❗ **Sade bir dille sorunlar** | Sohbetin yapamadığı, atladığı ya da senden beklediği şeyler her yerde kırmızı **!** ile işaretlenir, senin dilinde açıklanır ve düzenlemeye, kopyalamaya ya da göndermeye hazır bir çözüm promptuyla gelir. Çözüldü olarak işaretle ya da yoksay; reddedilen bir komuta tek tıkla izin ver. |
 | ⏱️ **Çalıştırma bilgileri** | Geçen süre, araç çağrıları, tokenlar, turlar, liste fiyatı ve oturumun bağlamının ne kadar dolu olduğu — canlı. |
 | ✍️ **Kendi promptların** | Gönderirken talimat ekle, sohbetin oturumuna istediğin an yaz, kayıtlı promptlarını tut. |
-| 🪟 **Kayan pencere** | Editörünün ve yapay zekâ uygulamalarının üstünde duran küçük pencere: her sohbetin ne yaptığı, senden bekleyenler, tek tıkla gönder. |
+| 🪟 **Kayan pencere** | Editörünün ve yapay zekâ uygulamalarının üstünde duran küçük pencere: her sohbetin ne yaptığı, senden bekleyenler, tek tıkla gönder — yanıt, onay, çözüm ve durdurma da orada. |
 | 🧩 **Paneller ve düzenler** | Ekranları panellerden kur, sürükle, boyutlandır, sohbete göre süz, istediğin kadar düzen kaydet. |
 | 🎨 **Siyah beyaz arayüz** | Yalnızca durumların renkli olduğu yüksek kontrastlı siyah tema (ve beyazı). Katlanan kenar çubuğu, her anahtarı açıklayan ⓘ ipuçları ve uygulamayı ilk açışta kısa bir tanıtım. |
 | 📌 **Proje listen** | Projeleri en üste sabitle, sürükleyerek kendi sırana koy, listeden kaldır ya da dosyasını Çöp Kutusu'na taşı. |
@@ -338,11 +338,12 @@ Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — art
 | --- | --- |
 | **Çalıştıran** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · herhangi bir komut (Cursor CLI, Aider, betikler). Kurulu CLI'lar sürümleriyle birlikte kendiliğinden bulunur. |
 | **Model ve düşünme düzeyi** | Yazılmaz, listeden seçilir: Codex'in model kataloğu ve her modelin düşünme düzeyleri, Copilot'un modelleri, Claude Code (`opus`, `sonnet`, `haiku`, `fable`) ve Gemini (`pro`, `flash`, …) için her zaman en güncel sürümü seçen takma adlar. **Diğer** herhangi bir model kimliğini alır; **Varsayılan** seçimi CLI'a bırakır. |
-| **Nerede** | Projenin reposunda ya da sohbete özel bir klasörde (birden fazla sohbet kod değiştiriyorsa git worktree). |
-| **Erişim** | Salt okunur · dosya düzenleme (varsayılan) · tam erişim. |
+| **Nerede** | Projenin kod klasöründe — proje dosyasının bulunduğu repo ya da planın gösterdiği klasör (**Proje ayarları → Kod klasörü**) — ya da sohbete özel bir klasörde (birden fazla sohbet kod değiştiriyorsa git worktree). Plan bu bilgisayarda henüz olmayan bir klasörü gösteriyorsa pano onu oluşturmayı önerir. |
+| **Erişim** | Salt okunur · dosya düzenleme (varsayılan) · tam erişim. *Dosya düzenleme*'de Claude Code olağan çalışma komutlarını da sormadan çalıştırır — okuma ve arama, `mkdir`/`cp`/`mv`, yerel git, derleme ve test; `git push`, `rm` ve diğerleri yine sorar. Reddedilen bir adım, sorununda **… izni ver** butonuyla gelir. |
 | **Sohbet** | Açık tuttuğun bir sohbet gibi aynı oturumda devam eder — ya da her görevde yeni oturum. Var olan bir oturumun kimliğini yapıştırırsan tam *o* sohbet devam eder. |
 | **Durum** | İlk çıktıda *başladı*, sondaki rapordan *bitti*, ajan bir şey sorunca **yanıtını bekliyor** — **Yanıtla** ile cevap ver (<kbd>⌘</kbd><kbd>↵</kbd>). |
-| **Canlı** | Komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur**. |
+| **Canlı** | Komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur** — şeritten, görev panelinden ya da kayan pencereden — ya da **Tümünü durdur**. Durdurduğun sohbete sen bir şey gönderene kadar otomatik dağıtım yeni görev vermez. |
+| **Kurulum yardımı** | Kurulu olmayan bir CLI, onu kuran komutu gösterir; giriş yapılmamış olan, giriş komutunu gösterir. |
 | **Otomatik dağıtım** | Başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* çalıştırma. |
 | **Kendi açtığın oturumlar** | Claude Code ve Codex için tek satırlık bir kanca, kendi açtığın bir oturumda çalışırken görevleri *çalışıyor* ve *yanıtını bekliyor* olarak işaretler. |
 
@@ -358,7 +359,7 @@ Her şey — CLI başına komutlar, erişim düzeyleri, oturumlar, kancalar, API
 <td width="380"><img src="docs/images/problems.png" alt="Görev paneli: sohbetin sade bir dille bildirdiği iki sorun, her birinin çözüm promptu, ve çalıştırmanın süresi, araç çağrıları, bağlamı ve tokenları" width="380"></td>
 <td>
 
-**Sorunlar, sade bir dille.** Sohbet bir şeyi yapamadığında, atladığında ya da senden bir şey beklediğinde bunu raporunda — projenin dilinde — listeler. Görev kartlarda, şeritlerde, *Senden bekleyenler*'de ve kayan pencerede kırmızı **!** alır. Görev paneli her sorunu bir **çözüm promptuyla** gösterir: aç ve düzenle, kopyala ya da tek tıkla sohbete gönder. Hatalar, sohbetin beklediği sorular ve CLI'ın reddettiği araçlar da burada, çalıştırma ayarlarına kısayoluyla birlikte çıkar.
+**Sorunlar, sade bir dille.** Sohbet bir şeyi yapamadığında, atladığında ya da senden bir şey beklediğinde bunu raporunda — projenin dilinde — listeler. Görev kartlarda, şeritlerde, *Senden bekleyenler*'de ve kayan pencerede kırmızı **!** alır. Görev paneli her sorunu bir **çözüm promptuyla** gösterir: aç ve düzenle, kopyala ya da tek tıkla sohbete gönder. Hatalar, sohbetin beklediği sorular ve CLI'ın reddettiği araçlar da burada, çalıştırma ayarlarına kısayoluyla birlikte çıkar. Bir sorunu **Çözüldü** olarak işaretle ya da **Yoksay**: artık sayılmaz ama listede kalır, istersen yeniden açarsın. Sohbetin yazdıkları Markdown olarak gösterilir — başlıklar, listeler, tablolar, kod.
 
 **Çalıştırma bilgileri.** Süre, giren ve çıkan tokenlar, araç çağrıları, turlar, liste fiyatı ve oturumun bağlam penceresinin ne kadar dolu olduğu (Claude Code bildirir) — şeritlerde, kartlarda, görev panelinde ve kayan pencerede.
 
@@ -623,6 +624,13 @@ Evet. Her proje kendi reposundaki bir `.aitrack` dosyasıdır; kenar çubuğu he
 </details>
 
 <details>
+<summary><b>Sohbet "permission denied" ya da "working folder not found" diyerek duruyor.</b></summary>
+
+*Permission denied:* sohbetin erişim düzeyi bir komuta izin vermedi. **Dosya düzenleme**'de Claude Code olağan çalışma komutlarını zaten çalıştırır; başka bir komut için sorundaki **… izni ver** butonuna tıkla ve görevi yeniden gönder, ya da çalıştırma ayarlarında **tam erişim**'i seç (yalnızca silinebilir bir worktree'de). *Working folder not found:* plan bu bilgisayarda henüz olmayan bir kod klasörünü gösteriyor — panodaki uyarıdan ya da **Proje ayarları → Kod klasörü**'nden klasörü oluştur, başka bir klasör seç ya da planın deposunu kullan.
+
+</details>
+
+<details>
 <summary><b>Sohbetim bulutta çalışıyor ve localhost'a ulaşamıyor.</b></summary>
 
 Gelen kutusu dosyasını kullan (sohbet diskindeki bir worktree'de çalışıyorsa) ya da her promptun sohbetten sonunda istediği `aitrack-report` bloğunu yapıştır.
@@ -635,6 +643,7 @@ Gelen kutusu dosyasını kullan (sohbet diskindeki bir worktree'de çalışıyor
 - [x] Çözüm promptlu sorunlar, çalıştırma bilgileri, kendi promptların
 - [x] macOS'ta tek tıkla ve otomatik güncelleme (klonundan)
 - [x] Yapay zekâyla planlayan yeni proje sihirbazı, plan düzenleyici, sabitlenip sıralanabilen proje listesi, ilk açılış tanıtımı
+- [x] Kayan pencereden işlem, sorunları kapatma, durdurma ve tümünü durdurma, Mac için disk görüntüsü (.dmg)
 - [ ] GitHub Releases'ta imzalı ve noter onaylı sürümler; böylece uygulama klonlamadan ve Node.js olmadan indirilip (`electron-updater` ile) güncellenebilir
 - [ ] Windows ve Linux'ta tek tıkla güncelleme
 - [ ] Güncelleme kanalları: `stable` ve `beta`
