@@ -182,6 +182,30 @@ describe("reports", () => {
     expect(computeBoard(p, doneWithGap).byId.get("T1")!.runtime.issues).toEqual([{ title: "Tests skipped", kind: "missing" }]);
   });
 
+  it("reads reports the way chats write them: nulls, unknown kinds, no fence", () => {
+    const loose = '```aitrack-report\n{"task":"T1","status":"Blocked","pr":null,"verify":null,"issues":[{"title":"No folder","kind":"blocker","fix":null}]}\n```';
+    expect(parseReports(loose).reports).toEqual([{ task: "T1", status: "blocked", issues: [{ title: "No folder" }] }]);
+    const bare = 'Done, see below.\n```json\n{"task":"T1","status":"done","summary":"a {brace} in a \\"string\\""}\n```\nThanks.';
+    expect(parseReports(bare).reports).toEqual([{ task: "T1", status: "done", summary: 'a {brace} in a "string"' }]);
+    const inline = 'Summary first. {"task":"T1","status":"review","summary":"ok"} and {"other":1}';
+    expect(parseReports(inline).reports).toEqual([{ task: "T1", status: "review", summary: "ok" }]);
+    expect(parseReports("Not a report at all.").reports).toEqual([]);
+  });
+
+  it("closes problems with a note that keeps the chat's last message", () => {
+    const p = project();
+    const issues = [{ title: "A" }, { title: "B", kind: "warning" as const }];
+    const events = [
+      ev("T1", "dispatched", { agent: "a" }),
+      ev("T1", "blocked", { reason: "Waiting for your reply.", message: "What now?", issues }),
+      ev("T1", "note", { message: "Problem resolved: A", issues: [{ title: "A", state: "resolved" }, issues[1]!] }),
+    ];
+    const r = computeBoard(p, events).byId.get("T1")!.runtime;
+    expect(r.issues.map((i) => i.state)).toEqual(["resolved", undefined]);
+    expect(r.lastMessage).toBe("What now?");
+    expect(r.status).toBe("blocked");
+  });
+
   it("asks for problems in the project's language", () => {
     const tr = renderTaskPrompt(project({ settings: { requireApproval: false, inboxDir: ".aitrack/inbox", language: "tr" } }), "T1", { serverUrl: "http://x" });
     expect(tr).toContain('"issues":[{"title"');

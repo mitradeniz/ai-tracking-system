@@ -402,6 +402,14 @@
                       "description": "A prompt that would fix it, ready to send to a chat.",
                       "type": "string",
                       "maxLength": 8000
+                    },
+                    "state": {
+                      "description": "Set by the person in the app when the problem is resolved or ignored; chats leave it out.",
+                      "type": "string",
+                      "enum": [
+                        "resolved",
+                        "ignored"
+                      ]
                     }
                   },
                   "required": [

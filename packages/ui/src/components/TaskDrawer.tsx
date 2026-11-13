@@ -3,6 +3,7 @@ import { api, copyText, type RunSummary } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import {
   agentName,
+  closedIssuesOf,
   contextPercent,
   formatDuration,
   formatTime,
@@ -19,6 +20,7 @@ import {
 } from "../model.ts";
 import { usePlanEditing } from "../editing.ts";
 import { InfoTip, PromptPicker, useNow } from "./Info.tsx";
+import { Markdown, splitReport } from "./Markdown.tsx";
 import { RunLog } from "./Runners.tsx";
 
 interface Props {
@@ -176,6 +178,28 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
   const canMessage = Boolean(msgRunner) && hasSession && !running && !sendable;
   const canRunFix = Boolean(chosenRunner) && (s === "ready" || s === "failed");
   const problems = problemsOf(model, snap, t);
+  const closed = closedIssuesOf(snap);
+  const setIssue = (issue: { index: number; title: string }, state: "resolved" | "ignored" | "open") => {
+    api
+      .setIssueState(model.detail.key, task.id, { ...issue, state })
+      .then(() =>
+        onInfo?.(
+          t(state === "resolved" ? "problem_resolvedToast" : state === "ignored" ? "problem_ignoredToast" : "problem_reopenedToast", {
+            title: issue.title,
+          }),
+        ),
+      )
+      .catch((e: Error) => onError(e.message));
+  };
+  const said = snap.lastMessage ? splitReport(localMessage(snap.lastMessage, t)) : null;
+  // A report the tracker could not read (it left the task waiting for a reply instead).
+  const unreadReport = said?.report && s === "blocked" && snap.reason === "Waiting for your reply." ? said.report : null;
+  const recordReport = (text: string) => {
+    api
+      .paste(model.detail.key, text)
+      .then((r) => (r.recorded > 0 ? onInfo?.(t("rep_applied")) : onError(t("rep_notRecorded", { error: r.errors.join("; ") || "—" }))))
+      .catch((e: Error) => onError(t("rep_notRecorded", { error: e.message })));
+  };
 
   return (
     <>
@@ -298,10 +322,18 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
 
             {canMessage && (
               <div className="field compose reply-box">
-                {s === "blocked" && snap.lastMessage && (
+                {s === "blocked" && said && (said.text || unreadReport) && (
                   <div className="agent-says">
                     <span className="label">{t("run_agentSays")}</span>
-                    <div className="pre-wrap">{localMessage(snap.lastMessage, t)}</div>
+                    {said.text && <Markdown text={said.text} />}
+                    {unreadReport && (
+                      <div className="report-note small">
+                        <span className="muted">{t("rep_inMessage")}</span>
+                        <button className="btn small" onClick={() => recordReport(unreadReport)}>
+                          {t("rep_apply")}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="row">
@@ -418,17 +450,19 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
             )}
           </div>
 
-          {problems.length > 0 && (
+          {(problems.length > 0 || closed.length > 0) && (
             <section className="section problems">
-              <div className="row">
-                <h3 style={{ margin: 0 }}>
-                  <span className="bang" aria-hidden="true">
-                    !
-                  </span>{" "}
-                  {t("problems")} · {problems.length}
-                </h3>
-                <InfoTip text={t("problemsHint")} />
-              </div>
+              {problems.length > 0 && (
+                <div className="row">
+                  <h3 style={{ margin: 0 }}>
+                    <span className="bang" aria-hidden="true">
+                      !
+                    </span>{" "}
+                    {t("problems")} · {problems.length}
+                  </h3>
+                  <InfoTip text={t("problemsHint")} />
+                </div>
+              )}
               {problems.map((p, i) => (
                 <ProblemCard
                   key={`${p.title}-${i}`}
@@ -437,8 +471,25 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                   busy={busy}
                   onSend={(text) => void sendMessage(text)}
                   onSettings={p.settings && onRunnerSettings && msgAgent ? () => onRunnerSettings(msgAgent) : undefined}
+                  onState={p.issue ? (state) => setIssue(p.issue!, state) : undefined}
                 />
               ))}
+              {closed.length > 0 && (
+                <details className="closed-problems">
+                  <summary className="small muted">{t("problems_closed", { n: closed.length })}</summary>
+                  {closed.map((c) => (
+                    <div className="closed-problem" key={`${c.index}-${c.title}`}>
+                      <span className={`pill closed-${c.state}`}>{t(`problem_state_${c.state!}` as Key)}</span>
+                      <span className="grow ellipsis" title={c.detail ?? c.title}>
+                        {c.title}
+                      </span>
+                      <button className="btn small ghost" onClick={() => setIssue({ index: c.index, title: c.title }, "open")}>
+                        {t("problem_reopen")}
+                      </button>
+                    </div>
+                  ))}
+                </details>
+              )}
             </section>
           )}
 
@@ -493,7 +544,9 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                 {snap.summary && (
                   <>
                     <dt>{t("summary")}</dt>
-                    <dd>{snap.summary}</dd>
+                    <dd>
+                      <Markdown text={snap.summary} />
+                    </dd>
                   </>
                 )}
                 {snap.reason && (
@@ -519,13 +572,17 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                 {snap.verify && (
                   <>
                     <dt>{t("verify")}</dt>
-                    <dd>{snap.verify}</dd>
+                    <dd>
+                      <Markdown text={snap.verify} />
+                    </dd>
                   </>
                 )}
-                {snap.lastMessage && snap.lastMessage !== snap.summary && (
+                {said?.text && snap.lastMessage !== snap.summary && !(canMessage && s === "blocked") && (
                   <>
                     <dt>{t("message")}</dt>
-                    <dd className="pre-wrap">{localMessage(snap.lastMessage, t)}</dd>
+                    <dd>
+                      <Markdown text={said.text} />
+                    </dd>
                   </>
                 )}
                 <dt>{t("updated")}</dt>
@@ -654,12 +711,15 @@ function ProblemCard({
   busy,
   onSend,
   onSettings,
+  onState,
 }: {
   problem: Problem;
   canSend: boolean;
   busy: boolean;
   onSend: (text: string) => void;
   onSettings?: () => void;
+  /** Marks a problem the chat reported resolved or ignored. */
+  onState?: (state: "resolved" | "ignored") => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -673,7 +733,7 @@ function ProblemCard({
         </span>
         <div className="grow">
           <div className="problem-title">{problem.title}</div>
-          {problem.detail && <div className="small muted pre-wrap">{problem.detail}</div>}
+          {problem.detail && <Markdown text={problem.detail} className="small muted" />}
         </div>
         <span className={`pill kind-${problem.kind}`}>{t(`problem_kind_${problem.kind}` as Key)}</span>
       </div>
@@ -719,6 +779,16 @@ function ProblemCard({
           <button className="btn small ghost" onClick={onSettings}>
             ⚙ {t("run_setup")}
           </button>
+        )}
+        {onState && (
+          <span className="problem-close">
+            <button className="btn small ghost" title={t("problem_resolveHint")} onClick={() => onState("resolved")}>
+              ✓ {t("problem_resolve")}
+            </button>
+            <button className="btn small ghost" title={t("problem_ignoreHint")} onClick={() => onState("ignored")}>
+              {t("problem_ignore")}
+            </button>
+          </span>
         )}
       </div>
       {open && problem.fix && <textarea className="input mono small" style={{ minHeight: 110 }} value={text} onChange={(e) => setText(e.target.value)} />}

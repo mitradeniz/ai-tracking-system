@@ -2661,7 +2661,7 @@ pre.runlog {
   border-left: 2px solid var(--blocked-line);
   padding: 4px 0 4px 10px;
   font-size: 13px;
-  max-height: 220px;
+  max-height: 340px;
   overflow: auto;
 }
 
@@ -4129,4 +4129,161 @@ details.advanced[open] {
 .code-folder p {
   margin: 2px 0 0;
   overflow-wrap: anywhere;
+}
+
+/* Markdown from chats. */
+.md {
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.md > :first-child {
+  margin-top: 0;
+}
+
+.md > :last-child {
+  margin-bottom: 0;
+}
+
+.md p,
+.md ul,
+.md ol,
+.md pre,
+.md blockquote,
+.md .md-table {
+  margin: 0 0 8px;
+}
+
+.md h3,
+.md h4,
+.md h5,
+.md h6 {
+  margin: 10px 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.md h3 {
+  font-size: 14px;
+}
+
+.md ul,
+.md ol {
+  padding-left: 20px;
+}
+
+.md li + li {
+  margin-top: 2px;
+}
+
+.md li > ul,
+.md li > ol {
+  margin: 2px 0 0;
+}
+
+.md code {
+  font-family: var(--mono);
+  font-size: 0.92em;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--glass-3);
+}
+
+.md pre {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--glass-2);
+  overflow: auto;
+  max-height: 260px;
+}
+
+.md pre code {
+  padding: 0;
+  background: none;
+  font-size: 12px;
+  white-space: pre;
+}
+
+.md blockquote {
+  padding-left: 10px;
+  border-left: 2px solid var(--edge-strong);
+  color: var(--muted);
+}
+
+.md hr {
+  border: none;
+  border-top: 1px solid var(--edge);
+  margin: 10px 0;
+}
+
+.md a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.md .md-table {
+  overflow: auto;
+}
+
+.md table {
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.md th,
+.md td {
+  border: 1px solid var(--edge);
+  padding: 3px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.md th {
+  font-weight: 600;
+}
+
+.agent-says .md {
+  font-size: 13px;
+}
+
+.report-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-top: 6px;
+}
+
+/* Closing problems. */
+.problem-close {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 4px;
+}
+
+.closed-problems {
+  margin-top: 4px;
+}
+
+.closed-problems summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.closed-problem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.closed-problem .pill.closed-resolved {
+  color: var(--ready);
+  border-color: var(--ready-line);
+}
+
+.closed-problem .pill.closed-ignored {
+  color: var(--muted);
 }

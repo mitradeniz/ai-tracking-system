@@ -242,6 +242,14 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
       }),
     );
   });
+  route("POST", "/api/projects/:key/tasks/:task/issues", async (ctx, [key, task]) => {
+    const body = await readJson(ctx.req);
+    const state = body.state;
+    if (state !== "resolved" && state !== "ignored" && state !== "open") throw new HttpError(400, '"state" must be resolved, ignored or open.');
+    if (typeof body.title !== "string" || !body.title) throw new HttpError(400, '"title" is required.');
+    const index = typeof body.index === "number" && Number.isInteger(body.index) && body.index >= 0 ? body.index : undefined;
+    send(ctx.res, 201, await manager.setIssueState(key!, task!, { index, title: body.title, state }));
+  });
   route("POST", "/api/projects/:key/plan", async (ctx, [key]) => {
     const body = await readJson(ctx.req);
     if (typeof body.text !== "string") throw new HttpError(400, '"text" is required.');

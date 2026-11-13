@@ -645,7 +645,7 @@ export class RunManager extends EventEmitter {
 
   /** The report in the agent's final message for this task, unless it is the template's example. */
   private reportFrom(text: string, task: string): Report | null {
-    if (!text.includes("aitrack-report")) return null;
+    if (!text.includes("aitrack-report") && !/"status"\s*:/.test(text)) return null;
     const { reports } = parseReports(text);
     const mine = reports.filter((r) => r.task === task && r.summary !== "..." && r.summary !== "<what changed>");
     return mine[mine.length - 1] ?? null;

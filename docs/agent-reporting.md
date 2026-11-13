@@ -45,7 +45,9 @@ A report can list what did not go as planned, so it is not buried in the summary
 ]
 ```
 
-`kind` is `error` (default), `missing`, `needs-you` or `warning`; `fix` is a prompt that would solve it. The task prompt asks chats to write `title` and `detail` in the project's language (`settings.language`), in plain words. The app marks such tasks with a red **!**, lists the problems in the task drawer and keeps each fix prompt ready to copy or send to the chat. Problems stay until the task is sent again, reported `done` without problems, approved or reopened; a report with `"issues": []` clears them. With the CLI: `--issues '[{"title":"…","fix":"…"}]'`.
+`kind` is `error` (default), `missing`, `needs-you` or `warning`; `fix` is a prompt that would solve it. The task prompt asks chats to write `title` and `detail` in the project's language (`settings.language`), in plain words. The app marks such tasks with a red **!**, lists the problems in the task drawer and keeps each fix prompt ready to copy or send to the chat. Problems stay until the task is sent again, reported `done` without problems, approved or reopened; a report with `"issues": []` clears them. In the drawer each one can be marked **Resolved** or **Ignore**d (`POST /api/projects/:key/tasks/:task/issues` with `{index, title, state: "resolved" | "ignored" | "open"}`); a closed problem no longer counts, is listed under *Resolved and ignored* and can be opened again. With the CLI: `--issues '[{"title":"…","fix":"…"}]'`.
+
+Reports are read leniently: `null` means a field is not set, an unknown `kind` falls back to `error`, and when a chat forgets the `aitrack-report` fence, a JSON object with `task` and `status` in its final message (or in a ```` ```json ```` block) is taken as the report.
 
 | Status | Effect on the board |
 | --- | --- |

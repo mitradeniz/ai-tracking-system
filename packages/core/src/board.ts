@@ -88,7 +88,8 @@ export function reduceEvents(tasks: Task[], events: TrackEvent[], requireApprova
     r.history.push(e);
     r.updatedAt = e.ts;
     if (e.agent) r.agent = e.agent;
-    if (e.message) r.lastMessage = e.message;
+    // A note is the person's, not something the chat said.
+    if (e.message && e.type !== "note") r.lastMessage = e.message;
 
     switch (e.type) {
       case "dispatched":

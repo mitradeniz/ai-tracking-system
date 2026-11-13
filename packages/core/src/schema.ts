@@ -115,6 +115,10 @@ export const TaskIssueSchema = z.object({
   detail: z.string().max(4000).optional().describe("What happened and what is needed."),
   kind: z.enum(ISSUE_KINDS).optional().describe("error (default), missing, needs-you or warning."),
   fix: z.string().max(8000).optional().describe("A prompt that would fix it, ready to send to a chat."),
+  state: z
+    .enum(["resolved", "ignored"])
+    .optional()
+    .describe("Set by the person in the app when the problem is resolved or ignored; chats leave it out."),
 });
 
 export const EVENT_SOURCES = ["ui", "http", "file", "paste", "import", "runner", "hook"] as const;
@@ -160,7 +164,25 @@ export const ProjectFileSchema = z.object({
 /** What an agent sends when it reports progress. */
 export const REPORT_STATUSES = ["started", "progress", "blocked", "review", "done", "failed"] as const;
 
-export const ReportSchema = z.object({
+/** Drops null fields (an AI writes `"pr": null` for "none") and issue kinds the tracker does not know. */
+function cleanReport(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const drop = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null));
+  const out = drop(value as Record<string, unknown>);
+  if (typeof out.status === "string") out.status = out.status.trim().toLowerCase();
+  if (Array.isArray(out.issues)) {
+    out.issues = out.issues
+      .filter((i): i is Record<string, unknown> => Boolean(i) && typeof i === "object" && !Array.isArray(i))
+      .map((i) => {
+        const issue = drop(i);
+        if (issue.kind !== undefined && !(ISSUE_KINDS as readonly unknown[]).includes(issue.kind)) delete issue.kind;
+        return issue;
+      });
+  }
+  return out;
+}
+
+export const ReportSchema = z.preprocess(cleanReport, z.object({
   project: z.string().optional(),
   task: z.string().min(1),
   agent: z.string().optional(),
@@ -171,7 +193,7 @@ export const ReportSchema = z.object({
   pr: z.string().max(2000).optional(),
   verify: z.string().max(20000).optional(),
   issues: z.array(TaskIssueSchema).max(30).optional(),
-});
+}));
 
 export type Agent = z.infer<typeof AgentSchema>;
 export type Prompt = z.infer<typeof PromptSchema>;

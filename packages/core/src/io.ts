@@ -132,8 +132,48 @@ export interface ParsedReports {
 }
 
 /**
- * Extracts reports from free text: fenced ```aitrack-report blocks, or the whole text when it is JSON.
- * A block may hold one report object or an array of them.
+ * The JSON objects written inline in a text, outermost only, in order. Strings are respected, so
+ * braces inside them do not count.
+ */
+export function jsonObjectsIn(text: string): Array<{ start: number; end: number; value: Record<string, unknown> }> {
+  const out: Array<{ start: number; end: number; value: Record<string, unknown> }> = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let end = -1;
+    for (let j = i; j < text.length; j++) {
+      const c = text[j];
+      if (inString) {
+        if (c === "\\") j++;
+        else if (c === '"') inString = false;
+      } else if (c === '"') inString = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) {
+        end = j + 1;
+        break;
+      }
+    }
+    if (end < 0) break;
+    try {
+      const value = JSON.parse(text.slice(i, end)) as unknown;
+      if (value && typeof value === "object" && !Array.isArray(value)) {
+        out.push({ start: i, end, value: value as Record<string, unknown> });
+        i = end - 1;
+      }
+    } catch {
+      // Not JSON; look further.
+    }
+  }
+  return out;
+}
+
+const looksLikeReport = (o: Record<string, unknown>) => typeof o.task === "string" && typeof o.status === "string";
+
+/**
+ * Extracts reports from free text: fenced ```aitrack-report blocks, else the whole text when it is
+ * JSON, else ```json blocks and JSON objects written inline that have a task and a status (an AI
+ * that forgot the fence). A block may hold one report object or an array of them.
  */
 export function parseReports(text: string): ParsedReports {
   const reports: Report[] = [];
@@ -142,7 +182,17 @@ export function parseReports(text: string): ParsedReports {
   const fence = /```aitrack-report\s*\n([\s\S]*?)```/g;
   let m: RegExpExecArray | null;
   while ((m = fence.exec(text)) !== null) blocks.push(m[1] ?? "");
-  if (blocks.length === 0 && text.trim().length > 0) blocks.push(text.trim());
+  if (blocks.length === 0 && text.trim().length > 0) {
+    let whole = true;
+    try {
+      JSON.parse(text.trim());
+    } catch {
+      whole = false;
+    }
+    const inline = whole ? [] : jsonObjectsIn(text).filter((o) => looksLikeReport(o.value));
+    if (inline.length > 0) for (const o of inline) blocks.push(JSON.stringify(o.value));
+    else blocks.push(text.trim());
+  }
 
   for (const block of blocks) {
     let raw: unknown;

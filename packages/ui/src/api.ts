@@ -375,6 +375,8 @@ export const api = {
   reload: (key: string) => request<{ ok: true }>("POST", `/api/projects/${enc(key)}/reload`),
   addEvent: (key: string, event: { task: string; type: string; agent?: string; message?: string; reason?: string; pr?: string }) =>
     request<TrackEvent>("POST", `/api/projects/${enc(key)}/events`, event),
+  setIssueState: (key: string, task: string, issue: { index: number; title: string; state: "resolved" | "ignored" | "open" }) =>
+    request<TrackEvent>("POST", `/api/projects/${enc(key)}/tasks/${enc(task)}/issues`, issue),
   paste: (key: string, text: string) =>
     request<{ recorded: number; errors: string[] }>("POST", `/api/projects/${enc(key)}/paste`, { text }),
   taskPrompt: (key: string, task: string, agent?: string) =>

@@ -102,6 +102,8 @@ export function localMessage(message: string, t: T): string {
   if (m) return t("run_msg_working", { provider: m[1]! });
   m = /^Reply sent: ([\s\S]*)$/.exec(message);
   if (m) return t("run_msg_reply", { text: m[1]! });
+  m = /^Problem (resolved|ignored|reopened): ([\s\S]*)$/.exec(message);
+  if (m) return t(m[1] === "resolved" ? "msg_problemResolved" : m[1] === "ignored" ? "msg_problemIgnored" : "msg_problemReopened", { title: m[2]! });
   return message;
 }
 
@@ -229,6 +231,8 @@ export interface Problem {
   command?: string;
   /** The problem is in how the chat runs (permissions, CLI), not in the work. */
   settings?: boolean;
+  /** A problem the chat reported (not one the tracker worked out), which can be closed. */
+  issue?: { index: number; title: string };
 }
 
 function issueFix(taskId: string, title: string, issue: TaskIssue): string {
@@ -251,16 +255,19 @@ const SESSION_GONE = /no conversation found|unknown session|could not (?:find|re
 export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
   const task = model.task.get(s.id);
   const title = task?.title ?? s.id;
-  const out: Problem[] = (s.issues ?? []).map((i) => {
+  const out: Problem[] = [];
+  (s.issues ?? []).forEach((i, index) => {
+    if (i.state) return;
     const permission = i.title.startsWith("Permission denied: ");
     const tool = permission ? i.title.slice(19) : "";
-    return {
+    out.push({
       kind: i.kind ?? "error",
       title: permission ? t("issue_permission", { tool }) : i.title,
       detail: permission ? t("issue_permissionDetail", { tool }) : i.detail,
       fix: issueFix(s.id, title, i),
       settings: permission,
-    };
+      issue: { index, title: i.title },
+    });
   });
   const lastRun = lastRunOf(model, s.id);
   const runFailedNow = s.status === "failed" && s.reason && lastRun?.state === "failed" && lastRun.error === s.reason;
@@ -294,6 +301,11 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
     });
   }
   return out;
+}
+
+/** The problems a chat reported that the person resolved or ignored. */
+export function closedIssuesOf(s: TaskSnapshot): Array<TaskIssue & { index: number }> {
+  return (s.issues ?? []).map((i, index) => ({ ...i, index })).filter((i) => Boolean(i.state));
 }
 
 export function formatDuration(ms: number): string {

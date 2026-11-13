@@ -108,6 +108,23 @@ describe("server", () => {
     expect(broken.json.issues.some((i: any) => i.level === "error")).toBe(true);
   });
 
+  it("marks a reported problem resolved or ignored, and opens it again", async () => {
+    const { json } = await call("POST", "/api/projects", { filePath: file });
+    await call("POST", `/api/projects/${json.key}/events`, { task: "T1", type: "dispatched", agent: "a" });
+    const report = { project: "demo", task: "T1", agent: "a", status: "blocked", reason: "no key", pr: null, issues: [{ title: "Key missing", kind: "needs-you" }, { title: "Docker missing" }] };
+    expect((await call("POST", "/api/report", report)).status).toBe(201);
+    const issuesOf = async () => (await call("GET", `/api/projects/${json.key}`)).json.board.tasks.find((t: any) => t.id === "T1").issues;
+    expect((await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { index: 1, title: "Docker missing", state: "ignored" })).status).toBe(201);
+    expect((await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { index: 0, title: "Key missing", state: "resolved" })).status).toBe(201);
+    expect((await issuesOf()).map((i: any) => i.state)).toEqual(["resolved", "ignored"]);
+    await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { index: 1, title: "Docker missing", state: "open" });
+    expect((await issuesOf()).map((i: any) => i.state ?? null)).toEqual(["resolved", null]);
+    expect((await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { title: "Nope", state: "resolved" })).status).toBe(409);
+    expect((await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { title: "Key missing", state: "maybe" })).status).toBe(400);
+    const detail = await call("GET", `/api/projects/${json.key}`);
+    expect(detail.json.board.tasks.find((t: any) => t.id === "T1").status).toBe("blocked");
+  });
+
   it("records agent reports and returns the next task", async () => {
     const { json } = await call("POST", "/api/projects", { filePath: file });
     await call("POST", `/api/projects/${json.key}/events`, { task: "T1", type: "dispatched", agent: "a" });

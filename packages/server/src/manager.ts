@@ -480,6 +480,30 @@ export class ProjectManager extends EventEmitter {
     this.emit("changed", { key });
   }
 
+  /**
+   * Marks one of a task's reported problems resolved or ignored, or opens it again. Recorded as a
+   * note with the task's updated problem list, so the log keeps who closed what and when.
+   */
+  async setIssueState(
+    key: string,
+    taskId: string,
+    target: { index?: number; title: string; state: "resolved" | "ignored" | "open" },
+  ): Promise<TrackEvent> {
+    const { board } = this.context(key);
+    const view = board.tasks.find((t) => t.task.id === taskId);
+    if (!view) throw new HttpError(404, `Unknown task "${taskId}"`);
+    const issues = view.runtime.issues.map((i) => ({ ...i }));
+    // The index the app saw, unless the list changed since; then the first problem with that title.
+    const at =
+      target.index !== undefined && issues[target.index]?.title === target.title ? target.index : issues.findIndex((i) => i.title === target.title);
+    if (at < 0) throw new HttpError(409, "That problem is no longer reported for this task.");
+    const issue = issues[at]!;
+    if (target.state === "open") delete issue.state;
+    else issue.state = target.state;
+    const verb = target.state === "open" ? "reopened" : target.state;
+    return this.addEvent(key, { type: "note", task: taskId, message: `Problem ${verb}: ${issue.title}`, issues }, "ui");
+  }
+
   async addEvent(key: string, input: Record<string, unknown>, source: EventSource): Promise<TrackEvent> {
     const h = this.get(key);
     const project = this.requireProject(h);
