@@ -152,6 +152,13 @@ Sonuç:
 </details>
 
 <details>
+<summary><b>macOS — disk görüntüsü (.dmg) olarak</b></summary>
+
+Uygulamayı Uygulamalar'a kendin sürüklemek mi istiyorsun? Bunun yerine **`make-dmg-macos.command`** dosyasına çift tıkla. İlk üç adımı aynen yapar, sonra klonun içinde `release/AI-Tracking-System-<sürüm>-<commit>-<mimari>.dmg` dosyasını oluşturup açar: **uygulama açıksa kapat**, sonra **AI Tracking System**'i **Applications** (Uygulamalar) klasörüne sürükle. Uygulama içi güncellemeler bundan sonra da aynı şekilde çalışır. Kurulum betiği gibi, görüntü de senin Mac'inde ad hoc imzalanır ve bu bilgisayar içindir.
+
+</details>
+
+<details>
 <summary><b>Windows ve Linux</b></summary>
 
 ```bash
@@ -536,6 +543,7 @@ packages/ui         React arayüzü: paneller, düzenler, kayan pencere, görün
 packages/reporter   ajanlar için aitrack-report CLI'ı, bağımlılıksız
 apps/desktop        Electron kabuğu: izleyici, yarı saydam pencereler, kayan pencere, uygulama içi güncelleme, .aitrack ilişkilendirme
 install-macos.command / update-macos.command   çift tıklanan kurulum ve güncelleme (Güncelle düğmesi de bunları kullanır)
+make-dmg-macos.command                         çift tıkla: uygulama release/ içinde .dmg olarak
 schema/             üretilen JSON Şeması
 examples/           örnek projeler
 docs/               dosya biçimi, bildirim, ajan çalıştırıcılar, yapay zekâyla yazma, görseller

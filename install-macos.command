@@ -8,6 +8,9 @@
 # The app's "Update" button runs it unattended (AITRACK_UNATTENDED=1): no prompts, progress in
 # ~/.aitrack/update-status.json. Either way it records where it was installed from in
 # ~/.aitrack/install.json, so the app knows which folder to update.
+#
+# With AITRACK_TARGET=dmg (make-dmg-macos.command) it makes a disk image under release/ instead of
+# installing, and opens it: drag the app onto Applications.
 
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -76,6 +79,36 @@ rm -rf apps/desktop/release
 built_app="$(find apps/desktop/release -maxdepth 2 -type d -name "$APP_NAME.app" | head -1)"
 [ -n "$built_app" ] || fail "The packaged app was not found under apps/desktop/release."
 
+if [ "${AITRACK_TARGET:-app}" = "dmg" ]; then
+  bold "4/4  Making the disk image"
+  if ! codesign --force --deep --sign - "$built_app" >/dev/null 2>&1; then
+    printf '\nWarning: ad hoc signing failed; after copying, run: codesign --force --deep --sign - "/Applications/%s.app"\n' "$APP_NAME"
+  fi
+  version="$(node -p 'require("./apps/desktop/package.json").version')"
+  commit="$(git rev-parse --short HEAD 2>/dev/null || echo "local")"
+  mkdir -p release
+  dmg="$PWD/release/AI-Tracking-System-$version-$commit-$(uname -m).dmg"
+  stage="$(mktemp -d)"
+  ditto "$built_app" "$stage/$APP_NAME.app"
+  ln -s /Applications "$stage/Applications"
+  rm -f "$dmg"
+  # hdiutil sometimes finds the folder busy right after copying; try once more.
+  hdiutil create -volname "$APP_NAME" -srcfolder "$stage" -ov -format UDZO "$dmg" >/dev/null ||
+    { sleep 2; hdiutil create -volname "$APP_NAME" -srcfolder "$stage" -ov -format UDZO "$dmg" >/dev/null; }
+  rm -rf "$stage" apps/desktop/release
+  # The app will be in /Applications once it is dragged there; updates are built from this clone.
+  mkdir -p "$DATA_DIR"
+  printf '{"repo":"%s","app":"%s","commit":"%s","installedAt":"%s"}\n' \
+    "$PWD" "/Applications/$APP_NAME.app" "$commit" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$DATA_DIR/install.json"
+  AITRACK_TO="${AITRACK_TO:-$commit}"
+  status "done" "Disk image $commit"
+  trap - ERR
+  open "$dmg"
+  finish "Done: $dmg
+In the window that opened, drag \"$APP_NAME\" onto Applications (quit the app first if it is running), then open it from Applications or Launchpad."
+  exit 0
+fi
+
 bold "4/4  Installing"
 dest_dir="/Applications"
 if [ ! -w "$dest_dir" ]; then
@@ -104,7 +137,7 @@ mkdir -p "$DATA_DIR"
 printf '{"repo":"%s","app":"%s","commit":"%s","installedAt":"%s"}\n' \
   "$PWD" "$target" "$commit" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$DATA_DIR/install.json"
 AITRACK_TO="${AITRACK_TO:-$commit}"
-status done "Installed $commit"
+status "done" "Installed $commit"
 
 trap - ERR
 open "$target"

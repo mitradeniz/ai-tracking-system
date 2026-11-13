@@ -152,6 +152,13 @@ The result:
 </details>
 
 <details>
+<summary><b>macOS — as a disk image (.dmg)</b></summary>
+
+Prefer dragging the app to Applications yourself? Double-click **`make-dmg-macos.command`** instead. It does the same first three steps, then makes `release/AI-Tracking-System-<version>-<commit>-<arch>.dmg` in the clone and opens it: **quit the app if it is running**, then drag **AI Tracking System** onto **Applications**. Updates from the app work the same way afterwards. Like the installer, the image is signed ad hoc on your Mac and is meant for this computer.
+
+</details>
+
+<details>
 <summary><b>Windows and Linux</b></summary>
 
 ```bash
@@ -536,6 +543,7 @@ packages/ui         React UI: panels, layouts, floating window, appearance, upda
 packages/reporter   aitrack-report CLI for agents, zero dependencies
 apps/desktop        Electron shell: tracker, translucent windows, floating window, in-app updates, .aitrack association
 install-macos.command / update-macos.command   double-click installer and updater (also used by the Update button)
+make-dmg-macos.command                         double-click: the app as a .dmg in release/
 schema/             generated JSON Schema
 examples/           example projects
 docs/               file format, reporting, agent runners, authoring with AI, images
