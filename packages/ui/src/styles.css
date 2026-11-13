@@ -533,17 +533,6 @@ a {
   height: 7px;
   border-radius: 50%;
   background: var(--ready);
-  animation: breathe 2.6s ease-in-out infinite;
-}
-
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
 }
 
 .ready-group {
@@ -808,9 +797,6 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ready-strip .label::before {
-    animation: none;
-  }
   .btn,
   .card {
     transition: none;
@@ -2348,37 +2334,55 @@ pre.prompt {
   -webkit-app-region: no-drag;
 }
 
-/* Agent runners */
-@keyframes aitrack-pulse {
-  0% {
-    box-shadow: 0 0 0 0 var(--progress-line);
+/* Agent runners. The only moving thing in the app is the ring of a chat that is working: it is
+ * drawn with transform and opacity (no repaint), runs only while a run is going, and stops while the
+ * window is in the background (data-inactive), so an idle window produces no frames. */
+@keyframes aitrack-ring {
+  from {
+    transform: scale(1);
+    opacity: 0.5;
   }
-  70% {
-    box-shadow: 0 0 0 6px rgba(0, 0, 0, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(0, 0, 0, 0);
+  to {
+    transform: scale(2.4);
+    opacity: 0;
   }
 }
 
 .pulse {
+  position: relative;
   display: inline-block;
   width: 7px;
   height: 7px;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--progress);
-  animation: aitrack-pulse 1.6s ease-out infinite;
+}
+
+.pulse::after,
+.state-dot.pulse::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: var(--progress);
+  animation: aitrack-ring 2s ease-out infinite;
 }
 
 .state-dot.pulse {
-  animation: aitrack-pulse 1.6s ease-out infinite;
+  position: relative;
+}
+
+:root[data-inactive] *,
+:root[data-inactive] *::before,
+:root[data-inactive] *::after {
+  animation-play-state: paused !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse,
-  .state-dot.pulse {
+  .pulse::after,
+  .state-dot.pulse::after {
     animation: none;
+    display: none;
   }
 }
 

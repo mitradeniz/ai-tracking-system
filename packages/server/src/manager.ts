@@ -112,7 +112,8 @@ export class ProjectManager extends EventEmitter {
     const tick = async () => {
       try {
         await this.checkFiles();
-        if (Date.now() - this.lastInboxDiscovery > 30_000) await this.refreshInboxDirs();
+        // Worktrees are looked up with git; once a minute is enough.
+        if (Date.now() - this.lastInboxDiscovery > 60_000) await this.refreshInboxDirs();
         await this.pollInboxes();
       } catch (e) {
         this.emit("warning", e);

@@ -128,7 +128,9 @@ function openMini(): void {
     title: "AI Tracking System",
     show: false,
     ...(isMac
-      ? { vibrancy: "under-window" as const, visualEffectState: "active" as const, backgroundColor: "#00000000", roundedCorners: true }
+      ? // "followWindow": the live blur only while the window is in front. A floating window is
+        // rarely focused, and an always-live blur makes macOS redraw it whenever anything behind it moves.
+        { vibrancy: "under-window" as const, visualEffectState: "followWindow" as const, backgroundColor: "#00000000", roundedCorners: true }
       : { backgroundColor: "#2c2c2a" }),
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
