@@ -182,4 +182,110 @@ describe("server", () => {
     expect(after.agents.map((a: { id: string }) => a.id)).toEqual(["b", "c"]);
     expect(after.tasks.filter((t: { agent: string }) => t.agent === "c").map((t: { id: string }) => t.id)).toEqual(["T1", "T2"]);
   });
+
+  it("creates empty projects, and pins and orders the list", async () => {
+    const one = await call("POST", "/api/projects/create", {
+      filePath: path.join(dir, "shop"),
+      id: "shop",
+      name: "Shop",
+      language: "tr",
+      agents: [{ id: "claude-a", name: "Claude A", tool: "claude" }],
+    });
+    expect(one.status).toBe(201);
+    const onDisk = JSON.parse(await readFile(path.join(dir, "shop.aitrack"), "utf8"));
+    expect(onDisk.agents).toEqual([{ id: "claude-a", name: "Claude A", tool: "claude", capabilities: [], maxParallel: 1, bootstrapPrompts: [], quickPrompts: [] }]);
+    expect(onDisk.tasks).toEqual([]);
+    expect(JSON.stringify(onDisk)).not.toContain("Agent A");
+    const again = await call("POST", "/api/projects/create", { filePath: path.join(dir, "shop.aitrack"), id: "shop", name: "Shop" });
+    expect(again.status).toBe(409);
+    const empty = await call("POST", "/api/projects/create", { filePath: path.join(dir, "blank.aitrack"), id: "blank", name: "Blank" });
+    expect(empty.status).toBe(201);
+    const demo = await call("POST", "/api/projects", { filePath: file });
+    const keys = (await call("GET", "/api/projects")).json.projects.map((p: { key: string }) => p.key);
+    expect(keys).toEqual([one.json.key, empty.json.key, demo.json.key]);
+
+    const pinned = await call("POST", `/api/projects/${demo.json.key}/pin`, { pinned: true });
+    expect(pinned.json.projects.map((p: { key: string; pinned: boolean }) => [p.key, p.pinned])).toEqual([
+      [demo.json.key, true],
+      [one.json.key, false],
+      [empty.json.key, false],
+    ]);
+    const ordered = await call("POST", "/api/projects/order", { keys: [empty.json.key, one.json.key] });
+    expect(ordered.json.projects.map((p: { key: string }) => p.key)).toEqual([demo.json.key, empty.json.key, one.json.key]);
+    const registry = JSON.parse(await readFile(path.join(dir, "data", "registry.json"), "utf8"));
+    expect(registry.projects[0]).toMatchObject({ key: demo.json.key, pinned: true });
+
+    // The order survives a restart.
+    await running.close();
+    running = await startServer({ port: 0, dataDir: path.join(dir, "data"), watch: false });
+    const reloaded = (await call("GET", "/api/projects")).json.projects.map((p: { key: string }) => p.key);
+    expect(reloaded).toEqual([demo.json.key, empty.json.key, one.json.key]);
+    expect((await call("DELETE", `/api/projects/${empty.json.key}`)).status).toBe(200);
+    expect((await call("GET", "/api/projects")).json.projects).toHaveLength(2);
+  });
+
+  it("adds, edits and removes tasks and prompts in the project file", async () => {
+    const key = (await call("POST", "/api/projects", { filePath: file })).json.key as string;
+    const prompt = await call("POST", `/api/projects/${key}/prompts`, { prompt: { id: "ctx", title: "Context", body: "We build a demo." }, mode: "create" });
+    expect(prompt.status).toBe(200);
+    const created = await call("POST", `/api/projects/${key}/tasks`, {
+      mode: "create",
+      task: { id: "T4", title: "Four", agent: "b", dependsOn: ["T3"], prompts: ["ctx"], acceptance: "It works", estimateDays: 2 },
+    });
+    expect(created.status).toBe(200);
+    let detail = (await call("GET", `/api/projects/${key}`)).json;
+    expect(detail.project.tasks.find((t: { id: string }) => t.id === "T4")).toMatchObject({ dependsOn: ["T3"], prompts: ["ctx"], estimateDays: 2 });
+
+    const cycle = await call("POST", `/api/projects/${key}/tasks`, { mode: "update", task: { id: "T3", title: "Three", agent: "b", dependsOn: ["T4"] } });
+    expect(cycle.status).toBe(409);
+    expect(cycle.json.error).toMatch(/cycle/);
+    const unknown = await call("POST", `/api/projects/${key}/tasks`, { mode: "create", task: { id: "T5", title: "Five", agent: "zz" } });
+    expect(unknown.status).toBe(400);
+
+    const updated = await call("POST", `/api/projects/${key}/tasks`, { mode: "update", task: { id: "T4", title: "Four!", agent: "a", estimateDays: null } });
+    expect(updated.status).toBe(200);
+    detail = (await call("GET", `/api/projects/${key}`)).json;
+    const t4 = detail.project.tasks.find((t: { id: string }) => t.id === "T4");
+    expect(t4).toMatchObject({ title: "Four!", agent: "a", dependsOn: ["T3"] });
+    expect(t4.estimateDays).toBeUndefined();
+
+    // A task that is with a chat cannot be removed.
+    await call("POST", `/api/projects/${key}/events`, { task: "T3", type: "started", agent: "b" });
+    expect((await call("POST", `/api/projects/${key}/tasks/T3/remove`, {})).status).toBe(409);
+    expect((await call("POST", `/api/projects/${key}/tasks/T1/remove`, {})).status).toBe(200);
+    detail = (await call("GET", `/api/projects/${key}`)).json;
+    expect(detail.project.tasks.map((t: { id: string }) => t.id)).toEqual(["T2", "T3", "T4"]);
+    expect(detail.project.tasks.find((t: { id: string }) => t.id === "T2").dependsOn).toEqual([]);
+
+    expect((await call("POST", `/api/projects/${key}/prompts/ctx/remove`, {})).status).toBe(200);
+    detail = (await call("GET", `/api/projects/${key}`)).json;
+    expect(detail.project.prompts.ctx).toBeUndefined();
+    expect(detail.project.tasks.find((t: { id: string }) => t.id === "T4").prompts).toEqual([]);
+
+    const info = await call("POST", `/api/projects/${key}/info`, { name: "Demo 2", language: "tr" });
+    expect(info.json.name).toBe("Demo 2");
+  });
+
+  it("checks an AI's answer and tells what is in a folder", async () => {
+    const input = { projectId: "shop", projectName: "Shop", language: "en", chats: [{ id: "a", name: "A" }], plan: "Build it" };
+    const prompt = await call("POST", "/api/authoring/prompt", { input });
+    expect(prompt.json.text).toContain("- id: a, name: A");
+    const answer = "```json\n" + JSON.stringify({ format: "aitrack", version: 1, project: { id: "x", name: "x" }, agents: [{ id: "a", name: "A" }], tasks: [{ id: "T-01", title: "One", agent: "a", instructions: "x" }] }) + "\n```";
+    const ok = await call("POST", "/api/authoring/check", { answer, input });
+    expect(ok.json.errors).toEqual([]);
+    expect(ok.json.summary.tasks).toEqual([{ id: "T-01", title: "One", agent: "a", dependsOn: [] }]);
+    expect(JSON.parse(ok.json.text).project).toEqual({ id: "shop", name: "Shop" });
+    const bad = await call("POST", "/api/authoring/check", { answer: "I cannot", input });
+    expect(bad.json.errors[0]).toMatch(/JSON/);
+    const created = await call("POST", "/api/projects/create", { filePath: path.join(dir, "shop.aitrack"), text: ok.json.text });
+    expect(created.status).toBe(201);
+    const invalid = await call("POST", "/api/projects/create", { filePath: path.join(dir, "bad.aitrack"), text: "{}" });
+    expect(invalid.status).toBe(400);
+
+    const folder = await call("POST", "/api/folder", { dir });
+    expect(folder.json).toMatchObject({ exists: true, isDir: true, isGit: false });
+    expect(folder.json.projectFiles.sort()).toEqual(["demo.aitrack", "shop.aitrack"]);
+    expect((await call("POST", "/api/folder", { dir: path.join(dir, "nope") })).json.exists).toBe(false);
+    expect((await call("POST", "/api/folder", { dir: "relative/path" })).json.exists).toBe(false);
+  });
 });

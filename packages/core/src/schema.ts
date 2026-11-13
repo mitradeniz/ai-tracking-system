@@ -144,11 +144,11 @@ export const ProjectFileSchema = z.object({
     links: z.array(z.object({ label: z.string(), url: z.string() })).default([]),
   }),
   settings: SettingsSchema.default({ requireApproval: false, inboxDir: ".aitrack/inbox" }),
-  agents: z.array(AgentSchema).min(1),
+  agents: z.array(AgentSchema).default([]),
   prompts: z.record(z.string(), PromptSchema).default({}),
   templates: TemplatesSchema.default({}),
   milestones: z.array(MilestoneSchema).default([]),
-  tasks: z.array(TaskSchema),
+  tasks: z.array(TaskSchema).default([]),
   state: z
     .object({
       exportedAt: z.string(),

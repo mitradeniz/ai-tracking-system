@@ -1,10 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, desktop, type Activity } from "./api.ts";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api, desktop, type Activity, type ProjectSummary } from "./api.ts";
 import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { AddProjectDialog, AgentDialog, ExportDialog, PasteDialog } from "./components/Dialogs.tsx";
+import { Menu, type MenuItem } from "./components/Menu.tsx";
+import { NewProjectWizard, PlanWithAIDialog } from "./components/NewProject.tsx";
+import { ProjectList, ProjectSettingsDialog, RemoveProjectDialog } from "./components/Projects.tsx";
 import { AutoDispatch, RunnerDialog } from "./components/Runners.tsx";
 import { SettingsDialog } from "./components/Settings.tsx";
 import { TaskDrawer } from "./components/TaskDrawer.tsx";
+import { PromptsDialog, TaskEditorDialog } from "./components/TaskEditor.tsx";
+import { Tour } from "./components/Tour.tsx";
+import { PlanEditContext, type PlanEditing } from "./editing.ts";
 import { Workspace } from "./components/Workspace.tsx";
 import { useTracker } from "./hooks.ts";
 import { chosenLang, I18nContext, initialLang, rememberLang, translator, type Key, type Lang } from "./i18n.ts";
@@ -35,7 +41,26 @@ export function App() {
   useApplyAppearance(appearance);
   const [selected, setSelected] = usePref<string | null>("selectedProject", null);
   const [openTask, setOpenTask] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"add" | "paste" | "export" | "agent" | "settings" | "runner" | null>(null);
+  const [dialog, setDialog] = useState<
+    | "add"
+    | "wizard"
+    | "paste"
+    | "export"
+    | "agent"
+    | "settings"
+    | "runner"
+    | "task"
+    | "prompts"
+    | "planAI"
+    | "projectSettings"
+    | "removeProject"
+    | null
+  >(null);
+  const [taskEdit, setTaskEdit] = useState<{ taskId?: string; agentId?: string }>({});
+  const [promptFocus, setPromptFocus] = useState<string | undefined>(undefined);
+  const [removeTarget, setRemoveTarget] = useState<ProjectSummary | null>(null);
+  const [tourDone, setTourDone] = usePref<boolean>("tourDone", false);
+  const [touring, setTouring] = useState(false);
   const [agentToEdit, setAgentToEdit] = useState<string | undefined>(undefined);
   const [runnerAgent, setRunnerAgent] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
@@ -85,9 +110,28 @@ export function App() {
   useEffect(() => desktop?.updates?.onOpen(() => openSettings(true)), []);
   const updateReady = updates.info?.state === "available" || updates.progress?.state === "running";
 
-  // Keep a valid project selected.
+  // The intro runs once, the first time the app opens.
+  useEffect(() => {
+    if (loaded && !tourDone) setTouring(true);
+  }, [loaded, tourDone]);
+  const endTour = (openWizard: boolean) => {
+    setTouring(false);
+    setTourDone(true);
+    if (openWizard) setDialog("wizard");
+  };
+
+  // Keep a valid project selected. A project that was just added may not be in the list yet.
+  const justAdded = useRef<{ key: string; at: number } | null>(null);
+  const selectNew = (key: string) => {
+    justAdded.current = { key, at: Date.now() };
+    setSelected(key);
+    refresh();
+  };
   useEffect(() => {
     if (!loaded) return;
+    const pending = justAdded.current;
+    if (pending && projects.some((p) => p.key === pending.key)) justAdded.current = null;
+    else if (pending && pending.key === selected && Date.now() - pending.at < 10_000) return;
     if (projects.length === 0) {
       if (selected !== null) setSelected(null);
     } else if (!projects.some((p) => p.key === selected)) {
@@ -142,6 +186,48 @@ export function App() {
     setAgentToEdit(agentId);
     setDialog("agent");
   };
+  const planEditing: PlanEditing = useMemo(
+    () => ({
+      addTask: (agentId?: string) => {
+        setTaskEdit({ agentId });
+        setDialog("task");
+      },
+      editTask: (taskId: string) => {
+        setTaskEdit({ taskId });
+        setDialog("task");
+      },
+      editPrompts: (promptId?: string) => {
+        setPromptFocus(promptId);
+        setDialog("prompts");
+      },
+      planWithAI: () => setDialog("planAI"),
+    }),
+    [],
+  );
+  const current = projects.find((p) => p.key === detail?.key);
+  const noTasks = Boolean(detail?.project && detail.project.tasks.length === 0);
+  const projectMenu: MenuItem[] = detail
+    ? [
+        { label: t("pm_settings"), disabled: !detail.project, onClick: () => setDialog("projectSettings") },
+        { label: t("pe_title"), disabled: !detail.project, onClick: () => planEditing.editPrompts() },
+        ...(noTasks ? [{ label: t("np_planWithAi"), onClick: () => setDialog("planAI") }] : []),
+        "separator",
+        { label: current?.pinned ? t("pm_unpin") : t("pm_pin"), onClick: () => void api.pinProject(detail.key, !current?.pinned).then(refresh) },
+        { label: t("reload"), onClick: () => void api.reload(detail.key) },
+        ...(desktop ? [{ label: t("pm_showFile"), onClick: () => void desktop!.showInFolder(detail.filePath) }] : []),
+        "separator",
+        {
+          label: t("pm_remove"),
+          danger: true,
+          onClick: () => {
+            if (current) {
+              setRemoveTarget(current);
+              setDialog("removeProject");
+            }
+          },
+        },
+      ]
+    : [];
   const runnerSettings = (agentId?: string) => {
     const first = agentId ?? detail?.project?.agents[0]?.id;
     if (!first) return;
@@ -151,6 +237,7 @@ export function App() {
 
   return (
     <I18nContext.Provider value={{ t, lang }}>
+      <PlanEditContext.Provider value={detail?.project ? planEditing : null}>
       <div className={`app ${collapsed ? "collapsed" : ""}`}>
         <nav className="sidebar" aria-label={t("projects")}>
           <div className="brand">
@@ -170,46 +257,24 @@ export function App() {
             </button>
           </div>
           {!collapsed && <h2>{t("projects")}</h2>}
-          <ul className="project-list">
-            {projects.map((p) => {
-              const done = p.counts ? p.counts.done : 0;
-              const total = p.counts ? p.counts.total : 0;
-              const pct = total ? (done / total) * 100 : 0;
-              return (
-                <li key={p.key}>
-                  <button
-                    aria-current={p.key === selected}
-                    onClick={() => setSelected(p.key)}
-                    title={collapsed ? `${p.name} · ${done}/${total}` : p.filePath}
-                    aria-label={collapsed ? p.name : undefined}
-                  >
-                    {collapsed ? (
-                      <span className="avatar" style={{ ["--pct" as string]: `${pct}%` }}>
-                        {p.name
-                          .split(/\s+/)
-                          .filter((w) => /\w/.test(w))
-                          .slice(0, 2)
-                          .map((w) => w[0]!.toUpperCase())
-                          .join("")}
-                        {p.counts && p.counts.ready > 0 && <span className="avatar-dot" aria-hidden="true" />}
-                      </span>
-                    ) : (
-                      <>
-                        <span className="ellipsis">{p.name}</span>
-                        <span className="small muted">
-                          {p.ok ? `${done}/${total}` : `⚠ ${p.errors}`}
-                          {p.counts && p.counts.ready > 0 ? ` · ${p.counts.ready} ${t("count_ready").toLowerCase()}` : ""}
-                        </span>
-                        <span className="progress-line">
-                          <span style={{ width: `${pct}%` }} />
-                        </span>
-                      </>
-                    )}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div data-tour="projects" className="project-list-wrap">
+            <ProjectList
+              projects={projects}
+              selected={selected}
+              collapsed={collapsed}
+              onSelect={setSelected}
+              onChanged={refresh}
+              onRemove={(p) => {
+                setRemoveTarget(p);
+                setDialog("removeProject");
+              }}
+              onSettings={(key) => {
+                setSelected(key);
+                setDialog("projectSettings");
+              }}
+              onError={(m) => toast(m, "failed")}
+            />
+          </div>
           <div className="sidebar-footer">
             {updateReady && (
               <button
@@ -221,10 +286,17 @@ export function App() {
                 {!collapsed && (updates.progress?.state === "running" ? t("upd_running") : t("upd_availableShort"))}
               </button>
             )}
-            <button className="btn primary" onClick={() => setDialog("add")} title={t("addProject")} aria-label={t("addProject")}>
-              +{collapsed ? "" : ` ${t("addProject")}`}
-            </button>
-            <button className="btn" onClick={openFloating} title={t("floatingHint")} aria-label={t("floating")}>
+            <div className={collapsed ? "stack-tight" : "row new-row"} data-tour="new-project">
+              <button className="btn primary grow-btn" onClick={() => setDialog("wizard")} title={t("newProject")} aria-label={t("newProject")}>
+                +{collapsed ? "" : ` ${t("newProject")}`}
+              </button>
+              <button className="btn" onClick={() => setDialog("add")} title={t("openFile")} aria-label={t("openFile")}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                </svg>
+              </button>
+            </div>
+            <button className="btn" onClick={openFloating} title={t("floatingHint")} aria-label={t("floating")} data-tour="floating">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                 <rect x="3" y="4" width="18" height="16" rx="3" />
                 <rect x="12" y="11" width="7" height="7" rx="1.5" fill="currentColor" stroke="none" />
@@ -241,6 +313,7 @@ export function App() {
                 onClick={() => openSettings(false)}
                 aria-label={t("settings")}
                 title={t("settings")}
+                data-tour="settings"
               >
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                   <circle cx="12" cy="12" r="3" />
@@ -253,10 +326,20 @@ export function App() {
 
         <main className="main">
           {!detail ? (
-            <div className="empty">
-              <p>{t("noProjects")}</p>
-              <button className="btn primary" onClick={() => setDialog("add")}>
-                + {t("addProject")}
+            <div className="empty welcome">
+              <img src="/favicon.svg" alt="" width={44} height={44} />
+              <h2>{t("welcome_title")}</h2>
+              <p>{t("welcome_text")}</p>
+              <div className="row wrap center">
+                <button className="btn primary" onClick={() => setDialog("wizard")}>
+                  + {t("newProject")}
+                </button>
+                <button className="btn" onClick={() => setDialog("add")}>
+                  {t("openFile")}
+                </button>
+              </div>
+              <button className="btn ghost small" onClick={() => setTouring(true)}>
+                {t("tour_replay")}
               </button>
             </div>
           ) : (
@@ -265,7 +348,7 @@ export function App() {
                 <div className="header-row">
                   <h1>{detail.name}</h1>
                   {counts && (
-                    <div className="counts">
+                    <div className="counts" data-tour="counts">
                       <span className="count ready">
                         {t("count_ready")} <b>{readyCount}</b>
                       </span>
@@ -300,21 +383,9 @@ export function App() {
                     <button className="btn small" onClick={() => setDialog("export")} disabled={!detail.project}>
                       {t("export")}
                     </button>
-                    <button className="btn small ghost" onClick={() => void api.reload(detail.key)}>
-                      {t("reload")}
-                    </button>
-                    <button
-                      className="btn small ghost danger"
-                      onClick={async () => {
-                        if (window.confirm(t("removeConfirm"))) {
-                          await api.removeProject(detail.key);
-                          setSelected(null);
-                          refresh();
-                        }
-                      }}
-                    >
-                      {t("remove")}
-                    </button>
+                    <Menu label={t("pm_menu", { name: detail.name })} items={projectMenu} className="btn small ghost">
+                      ⋯
+                    </Menu>
                   </div>
                 </div>
                 <div className="header-row">
@@ -384,6 +455,16 @@ export function App() {
                       </>
                     )}
                   </button>
+                  {detail.project && !editing && (
+                    <div className="row plan-actions" data-tour="plan">
+                      <button className="btn small" onClick={() => planEditing.addTask()}>
+                        + {t("te_addShort")}
+                      </button>
+                      <button className="btn small ghost" onClick={() => planEditing.editPrompts()}>
+                        {t("pe_short")}
+                      </button>
+                    </div>
+                  )}
                   <span className="spacer" />
                   <div className="serverline">
                     <span>
@@ -412,7 +493,32 @@ export function App() {
                   </div>
                 )}
               </header>
-              <div className="content">
+              <div className="content" data-tour="board">
+                {model && noTasks && (
+                  <div className="empty-plan">
+                    <div>
+                      <h3>{t("ep_title")}</h3>
+                      <p className="small muted">{model.detail.project!.agents.length ? t("ep_text") : t("ep_textNoChats")}</p>
+                    </div>
+                    <div className="row wrap">
+                      <button className="btn primary" onClick={() => setDialog("planAI")}>
+                        ✦ {t("np_planWithAi")}
+                      </button>
+                      {model.detail.project!.agents.length > 0 ? (
+                        <button className="btn" onClick={() => planEditing.addTask()}>
+                          + {t("te_add")}
+                        </button>
+                      ) : (
+                        <button className="btn" onClick={() => editAgent()}>
+                          + {t("addAgent")}
+                        </button>
+                      )}
+                      <button className="btn ghost" onClick={() => planEditing.editPrompts()}>
+                        {t("pe_title")}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 {model && (
                   <Workspace
                     model={model}
@@ -459,8 +565,73 @@ export function App() {
       {dialog === "add" && (
         <AddProjectDialog
           onClose={() => setDialog(null)}
-          onAdded={(key) => {
-            setSelected(key);
+          onAdded={selectNew}
+          onNew={() => setDialog("wizard")}
+        />
+      )}
+      {dialog === "wizard" && (
+        <NewProjectWizard
+          onClose={() => setDialog(null)}
+          onOpenFile={() => setDialog("add")}
+          onCreated={(key, message) => {
+            selectNew(key);
+            toast(message, "done");
+          }}
+        />
+      )}
+      {dialog === "task" && model && (
+        <TaskEditorDialog
+          key={taskEdit.taskId ?? `new-${taskEdit.agentId ?? ""}`}
+          model={model}
+          taskId={taskEdit.taskId}
+          agentId={taskEdit.agentId}
+          onClose={() => setDialog(null)}
+          onDone={(message, open) => {
+            toast(message, "done");
+            refresh();
+            if (open) setOpenTask(open);
+          }}
+        />
+      )}
+      {dialog === "prompts" && model && (
+        <PromptsDialog
+          model={model}
+          promptId={promptFocus}
+          onClose={() => setDialog(null)}
+          onDone={(message) => {
+            toast(message, "done");
+            refresh();
+          }}
+        />
+      )}
+      {dialog === "planAI" && model && (
+        <PlanWithAIDialog
+          model={model}
+          onClose={() => setDialog(null)}
+          onDone={(message) => {
+            toast(message, "done");
+            refresh();
+          }}
+        />
+      )}
+      {dialog === "projectSettings" && model && (
+        <ProjectSettingsDialog
+          model={model}
+          onClose={() => setDialog(null)}
+          onDone={(message) => {
+            toast(message, "done");
+            refresh();
+          }}
+        />
+      )}
+      {dialog === "removeProject" && removeTarget && (
+        <RemoveProjectDialog
+          project={removeTarget}
+          onClose={() => setDialog(null)}
+          onRemoved={(message) => {
+            toast(message, "done");
+            if (removeTarget.key === selected) setSelected(null);
+            setRemoveTarget(null);
             refresh();
           }}
         />
@@ -491,6 +662,10 @@ export function App() {
           onClose={() => setDialog(null)}
           updates={updates.supported ? updates : undefined}
           focusUpdates={focusUpdates}
+          onTour={() => {
+            setDialog(null);
+            setTouring(true);
+          }}
         />
       )}
       {dialog === "paste" && detail && <PasteDialog projectKey={detail.key} onClose={() => setDialog(null)} />}
@@ -502,6 +677,13 @@ export function App() {
           onClose={() => setDialog(null)}
         />
       )}
+      {touring && (
+        <Tour
+          onClose={() => endTour(false)}
+          onFinish={() => endTour(projects.length === 0)}
+          finishLabel={projects.length === 0 ? t("tour_finishNew") : t("tour_finish")}
+        />
+      )}
       <div className="toasts" aria-live="polite">
         {toasts.map((x) => (
           <div key={x.id} className={`toast ${x.kind}`}>
@@ -509,6 +691,7 @@ export function App() {
           </div>
         ))}
       </div>
+      </PlanEditContext.Provider>
     </I18nContext.Provider>
   );
 }

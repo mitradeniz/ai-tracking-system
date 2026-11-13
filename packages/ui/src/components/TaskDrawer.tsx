@@ -17,6 +17,7 @@ import {
   type Model,
   type Problem,
 } from "../model.ts";
+import { usePlanEditing } from "../editing.ts";
 import { InfoTip, PromptPicker, useNow } from "./Info.tsx";
 import { RunLog } from "./Runners.tsx";
 
@@ -71,8 +72,10 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
     };
   }, [key, taskId, agent, model.detail.project]);
 
+  const planEditing = usePlanEditing();
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    // A dialog opened over the drawer closes first.
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && !e.defaultPrevented && !document.querySelector(".dialog-backdrop") && onClose();
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -184,6 +187,15 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
             <span className={`pill ${snap.dispatchable ? "sendable" : s}`}>{snap.dispatchable ? t("sendable") : t(`status_${s}`)}</span>
             {snap.critical && <span className="crit">● {t("critical")}</span>}
             <span className="spacer" />
+            {planEditing && (
+              <button className="btn small ghost" onClick={() => planEditing.editTask(task.id)} title={t("te_editHint")}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+                {t("te_editShort")}
+              </button>
+            )}
             <button className="icon-btn" onClick={onClose} aria-label={t("close")}>
               ✕
             </button>

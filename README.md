@@ -32,6 +32,8 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 - [See it move](#-see-it-move)
 - [Install](#-install)
 - [Updates](#-updates)
+- [Start a project](#-start-a-project)
+- [Edit the plan in the app](#%EF%B8%8F-edit-the-plan-in-the-app)
 - [Quick start](#-quick-start)
 - [Chats that run themselves](#-chats-that-run-themselves)
 - [Problems, run details and your own prompts](#-problems-run-details-and-your-own-prompts)
@@ -52,6 +54,8 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 
 | | |
 | --- | --- |
+| 🆕 **New project wizard** | Pick the folder, the chats (suggested from the AI CLIs on your computer) and how to plan: Claude Code or Codex writes the tasks from your plan, any other AI does it by copy and paste, or you start empty. No JSON to write. |
+| ✏️ **Plan editor** | Add, change and remove tasks and prompts in the app: which chat takes a task, what it waits for, its instructions, allowed paths and acceptance criteria. |
 | 🟢 **A board that knows what's next** | Tasks unlock when their dependencies are done and their chat has room. *Ready to send* shows the green ones at a glance; every other task says why it is waiting. |
 | 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or any command run the task in their own session, in your repository. Output streams in live; you reply and stop from the app. |
 | ⚡ **Auto-dispatch** | One switch: free chats pick up their most urgent ready task, up to *N* at once, as soon as it turns green. |
@@ -60,7 +64,8 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 | ✍️ **Your own prompts** | Add instructions when sending, write to a chat's session at any time, keep a list of saved prompts. |
 | 🪟 **Floating window** | A small always-on-top window over your editor and the AI apps: what each chat is doing, what waits for you, one-click send. |
 | 🧩 **Panels and layouts** | Build screens from panels, drag and resize them, filter by chat, keep as many layouts as you like. |
-| 🎨 **Black and white UI** | A high-contrast black theme (and a white one) where only status speaks in colour. Collapsible sidebar, ⓘ tips that explain each switch. |
+| 🎨 **Black and white UI** | A high-contrast black theme (and a white one) where only status speaks in colour. Collapsible sidebar, ⓘ tips that explain each switch, and a short intro the first time you open the app. |
+| 📌 **Your project list** | Pin projects to the top, drag them into your own order, remove them from the list or move their file to the Trash. |
 | 🔄 **One-click updates** | On macOS the app checks GitHub and updates itself: **Update and restart**, or let it install new versions when no chat is running. |
 | 🔌 **Works with any chat** | Chats you run by hand report over HTTP, a CLI, an inbox file, a pasted block or a one-line hook. |
 | 🏠 **Local first** | Runs on `127.0.0.1`, no account, no telemetry. The plan is a file you commit. |
@@ -262,9 +267,56 @@ sequenceDiagram
 
 </details>
 
+## 🆕 Start a project
+
+<table>
+<tr>
+<td width="440"><img src="docs/images/new-project.png" alt="New project wizard, step 3: Create with AI here, Use another AI or Start empty; the plan written by Claude Code is shown as four tasks with their chats and dependencies before anything is saved" width="440"></td>
+<td>
+
+Click **+ New project** in the sidebar. Three short steps:
+
+1. **Project** — a name and the folder, usually the root of the repository the chats will work in. The file `<name>.aitrack` is saved there, next to the code. If the folder already has a project file, you can open it instead. Pick the **language of the plan** (English or Türkçe): titles, prompts and the problems chats report are written in it.
+2. **Chats** — the AI chats that will work on the project. The wizard looks for Claude Code, Codex, Copilot and Gemini on your computer and suggests **Claude A** and **Codex A**; add more (**+ Claude**, **+ Codex**, **+ Cursor** …), rename them and write what each is good at. Optionally let the chats whose CLI is installed run by themselves.
+3. **Plan** — choose one:
+   - **Create with AI here** — describe what to build; Claude Code, Codex, Gemini or Copilot writes the tasks. It runs **read-only** in the folder: it may read the code and README to choose realistic tasks and paths, but cannot change anything. Usually one to five minutes.
+   - **Use another AI** — **Copy the instructions** (your plan and chats included) into ChatGPT, Claude or any chat, paste its answer back and **Check** it.
+   - **Start empty** — only the chats; add tasks yourself.
+
+Before anything is saved you see the plan: the tasks, their chats and what they wait for. Problems in an AI's answer (an unknown chat, a cycle) are listed, with **Ask … to fix it** in one click.
+
+</td>
+</tr>
+</table>
+
+> [!TIP]
+> The first time you open the app, a ten-step intro points at the main parts of the screen. **Settings → Show the intro again** replays it.
+
+## ✏️ Edit the plan in the app
+
+<table>
+<tr>
+<td width="440"><img src="docs/images/task-editor.png" alt="Task editor: title, the chat that takes it, the chats that can also take it, the tasks it waits for (tasks that would create a cycle are disabled), prompts in order, instructions, acceptance, allowed paths, estimate and tags" width="440"></td>
+<td>
+
+| | |
+| --- | --- |
+| **Add a task** | **+ Task** in the header, or **+ Task** at the bottom of a chat's lane. |
+| **Change or remove one** | Open the task → **Edit**. A task that is with a chat right now cannot be removed; tasks that waited for a removed task wait for what it waited for. |
+| **What it waits for** | Pick tasks from the list; a task that already waits for this one cannot be picked, so no cycles. |
+| **Prompts** | **Prompts** in the header opens the library: shared context, session prompts, task prompts. Removing a prompt takes it out of the tasks and chats that use it. |
+| **An empty project** | The board offers **Plan with AI**, **Add task** and **Prompts**. |
+| **Project settings** | The ⋯ menu: name, description, language of the plan, and whether finished tasks wait for your approval. |
+
+Every change is checked and written to the `.aitrack` file, keeping its formatting: fields you left out stay out and the key order stays, so the diff stays small.
+
+</td>
+</tr>
+</table>
+
 ## 🚀 Quick start
 
-1. **Open the app → Add project → Browse…** and pick `examples/landing-page.aitrack` — or a `.aitrack` file in your own repository ([write one with AI](docs/authoring-with-ai.md)).
+1. **+ New project** — [the wizard](#-start-a-project) sets up the folder, the chats and the plan. To try the app first, open `examples/landing-page.aitrack` with the folder button next to it.
 2. **Start the chats.** For a chat you run by hand, copy its **Session prompt** once into a new Claude / Codex / Cursor chat. To let a chat run itself, click its **⚙ by hand** badge and pick a CLI ([below](#-chats-that-run-themselves)).
 3. **Send the green tasks.** Click a green card → **Copy prompt and mark as sent** (by hand) or **Send ▶** (runs itself). Or switch on **Auto-dispatch** in the header.
 4. **Watch.** Chats report `started`, `done`, `blocked`; dependent tasks unlock. **Needs you** collects what waits for you: replies, approvals, blocks and problems.
@@ -439,6 +491,7 @@ Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`sch
 | --- | --- |
 | **Panels** | Ready to send · Chat lanes · Flow · List · Needs you · Recent activity · Progress. Add, drag, resize (¼ to full width, auto to full height) and limit each to some chats. |
 | **Layouts** | As many as you like — *Morning*, *Only Claude*, *Review time*. Built-in: Chats, Overview, Flow, List. |
+| **Projects** | ⋯ next to a project: pin to the top, move up or down, project settings, show the file, remove. Drag projects to reorder them; dropping one among the pinned pins it. Removing asks whether to keep the file or move it to the Trash. |
 | **Chats** | **+ Add chat** at the end of the lanes, ✏️ on a lane to edit or remove one. A new chat can take over tasks of busy chats. |
 | **Appearance** | Theme (dark, light, system), accent colour, density, text size, glass strength, language (English, Türkçe). |
 | **Black and white** | The dark theme sits on black with black-and-white components; green, amber, red and blue are kept for status only. The light theme is its white mirror. |
@@ -510,6 +563,7 @@ The tracker itself sends nothing anywhere. The prompts you give to AI chats leav
 - The tracker listens on **127.0.0.1 only**, refuses foreign `Host` headers (DNS rebinding) and cross-origin writes, and requires `application/json` for writes.
 - Windows run with context isolation and the sandbox; the native bridge is limited to file dialogs, the floating window, updates and the control token, and every call is checked in the main process.
 - Starting agents needs a **control token**; run settings live only on your computer, never in project files.
+- **Create with AI here** runs the CLI read-only in the project's folder (it can read, not change anything) and needs the control token; its answer is checked before anything is written.
 - Updates run only the clone's own `update-macos.command`, pull **fast-forward only** from the branch the clone already follows, and never touch local changes.
 - Reports are data: they change task status and are shown as text, never executed.
 - Do not put secrets in `.aitrack` files or reports — the file is meant to be committed.
@@ -522,6 +576,13 @@ More in [SECURITY.md](SECURITY.md).
 <summary><b>Does it talk to Claude or Codex for me?</b></summary>
 
 Yes, if you want. A chat set to run by itself is started through its official CLI — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or your own command — with your sign-in; the session continues across tasks and you can reply from the app. Chats you run by hand keep working with copy and paste, and can report through hooks. See [docs/agent-runners.md](docs/agent-runners.md).
+
+</details>
+
+<details>
+<summary><b>Do I have to write JSON?</b></summary>
+
+No. **New project** writes the file for you, from your plan with an AI or empty, and tasks, prompts and chats are edited in the app. The file stays readable JSON, so you can still review it in a pull request or edit it by hand; the app reloads it when it changes.
 
 </details>
 
@@ -565,6 +626,7 @@ Use the inbox file (if the chat works in a worktree on your disk) or paste the `
 - [x] Chats that run themselves, auto-dispatch, hooks
 - [x] Problems with fix prompts, run details, your own prompts
 - [x] One-click and automatic updates on macOS (from your clone)
+- [x] New project wizard with AI planning, plan editor, project list you can pin and order, first-run intro
 - [ ] Signed and notarized releases on GitHub Releases, so the app can be downloaded and updated (with `electron-updater`) without cloning or Node.js
 - [ ] One-click updates on Windows and Linux
 - [ ] Update channels: `stable` and `beta`

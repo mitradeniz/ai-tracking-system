@@ -1,6 +1,10 @@
 # Authoring a project with AI
 
-You rarely need to write an `.aitrack` file by hand. Give an AI your plan (a design doc, a roadmap, a list of prompts) together with the instructions below, and ask it to produce the file. Then validate it, open it in the app and review the graph — the **Flow** view makes wrong dependencies easy to spot.
+You rarely need to write an `.aitrack` file by hand.
+
+**In the app** this is built in: **New project** → *Plan* → **Create with AI here** runs Claude Code, Codex, Gemini or Copilot on your computer, read-only in the project's folder, with the instructions below; **Use another AI** copies the same instructions for any chat and checks the answer you paste back. A project without tasks has **Plan with AI** on its board. You see the tasks before anything is saved. The steps below are for doing it by hand.
+
+ Give an AI your plan (a design doc, a roadmap, a list of prompts) together with the instructions below, and ask it to produce the file. Then validate it, open it in the app and review the graph — the **Flow** view makes wrong dependencies easy to spot.
 
 ## Steps
 

@@ -350,4 +350,53 @@ describe("provider adapters", () => {
     expect(normalizeHook({ hook_event_name: "PreToolUse" })).toBeNull();
     expect(normalizeHook({ event: "stop", sessionId: "z" }, { tool: "cursor", chat: "a" })).toMatchObject({ tool: "cursor", chat: "a", sessionId: "z" });
   });
+
+  it("writes a project plan with an installed CLI, read-only, and can be stopped", async () => {
+    const input = { projectId: "shop", projectName: "Shop", language: "en", chats: [{ id: "claude-a", name: "Claude A" }], plan: "A landing page.", canReadRepository: true };
+    expect((await call("POST", "/api/authoring/generate", { provider: "claude", binary: FAKE, cwd: dir, input }, false)).status).toBe(401);
+    expect((await call("POST", "/api/authoring/generate", { provider: "custom", binary: FAKE, cwd: dir, input })).status).toBe(400);
+    expect((await call("POST", "/api/authoring/generate", { provider: "claude", binary: FAKE, cwd: path.join(dir, "nope"), input })).status).toBe(400);
+
+    process.env.FAKE_SCENARIO = "project";
+    process.env.FAKE_FORMAT = "claude";
+    const started = await call("POST", "/api/authoring/generate", { provider: "claude", binary: FAKE, cwd: dir, input });
+    expect(started.status).toBe(201);
+    let job = started.json;
+    for (let i = 0; i < 100 && job.state === "running"; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      job = (await call("GET", `/api/authoring/generate/${job.id}`)).json;
+    }
+    expect(job.state).toBe("done");
+    expect(job.activity.some((a: string) => a.includes("Read README.md"))).toBe(true);
+    const logged = (await readFile(fakeLog, "utf8")).trim().split("\n").map((l) => JSON.parse(l)).pop();
+    expect(logged.cwd).toBe(dir);
+    expect(logged.args[logged.args.indexOf("--permission-mode") + 1]).toBe("default");
+    expect(logged.args).toContain("--disallowedTools");
+    expect(logged.stdin).toContain("Do not change, create or delete any file");
+    const check = await call("POST", "/api/authoring/check", { answer: job.answer, input });
+    expect(check.json.errors).toEqual([]);
+    expect(check.json.summary.tasks.map((t: { id: string }) => t.id)).toEqual(["T-01", "T-02", "T-03", "T-04"]);
+
+    process.env.FAKE_SCENARIO = "sleep";
+    process.env.FAKE_FORMAT = "codex";
+    const slow = await call("POST", "/api/authoring/generate", { provider: "codex", binary: FAKE, cwd: dir, input });
+    const codexArgs = await (async () => {
+      for (let i = 0; i < 40; i++) {
+        const lines = (await readFile(fakeLog, "utf8")).trim().split("\n");
+        const last = JSON.parse(lines[lines.length - 1]!);
+        if (last.args.includes("read-only")) return last.args as string[];
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return [];
+    })();
+    expect(codexArgs).toEqual(expect.arrayContaining(["-s", "read-only"]));
+    const stopped = await call("POST", `/api/authoring/generate/${slow.json.id}/stop`, {});
+    expect(stopped.status).toBe(200);
+    let s2 = stopped.json;
+    for (let i = 0; i < 100 && s2.state === "running"; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+      s2 = (await call("GET", `/api/authoring/generate/${slow.json.id}`)).json;
+    }
+    expect(s2.state).toBe("stopped");
+  });
 });

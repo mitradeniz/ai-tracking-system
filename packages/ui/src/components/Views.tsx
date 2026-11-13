@@ -1,3 +1,4 @@
+import { usePlanEditing } from "../editing.ts";
 import { useMemo, useState } from "react";
 import type { TaskSnapshot } from "@aitrack/core";
 import { api, copyText } from "../api.ts";
@@ -87,6 +88,7 @@ export function LanesView({
   const shown = project.agents.filter((a) => !agents || agents.has(a.id));
   const anyRunning = Boolean(model.runners?.runs.some((r) => r.state === "running"));
   const now = useNow(anyRunning);
+  const planEditing = usePlanEditing();
 
   const copyPrompt = async (label: string, load: () => Promise<string>) => {
     try {
@@ -245,6 +247,11 @@ export function LanesView({
               </div>
             )}
             {empty && <div className="lane-empty small muted">{helped.length > 0 ? t("laneEmptyHelper") : t("laneEmpty")}</div>}
+            {planEditing && (
+              <button className="lane-add-task" onClick={() => planEditing.addTask(agent.id)}>
+                + {t("te_addShort")}
+              </button>
+            )}
             <div style={{ height: 8 }} />
           </section>
         );

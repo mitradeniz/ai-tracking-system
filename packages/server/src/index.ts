@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import { ensureControlToken } from "./control.ts";
 import { createHttpServer } from "./http.ts";
 import { ProjectManager } from "./manager.ts";
+import { ProjectGenerator } from "./runners/generate.ts";
 import { RunManager } from "./runners/runs.ts";
 import { RunnerStore } from "./runners/store.ts";
 import { defaultDataDir, Store } from "./store.ts";
@@ -13,6 +14,7 @@ export type { AgentSnapshot, BoardSnapshot, TaskSnapshot } from "@aitrack/core";
 export { defaultDataDir, Store } from "./store.ts";
 export { ensureControlToken } from "./control.ts";
 export { RunManager } from "./runners/runs.ts";
+export { ProjectGenerator, type GenerateJob } from "./runners/generate.ts";
 export type { RunSummary, RunnerState } from "./runners/runs.ts";
 export { PROVIDER_INFO, type ChatRunner, type ProviderId } from "./runners/providers.ts";
 
@@ -33,6 +35,7 @@ export interface RunningServer {
   port: number;
   manager: ProjectManager;
   runs: RunManager;
+  generator: ProjectGenerator;
   server: Server;
   controlToken: string;
   /** The UI address with the control token, for opening in a browser. */
@@ -65,7 +68,8 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
   const controlToken = options.controlToken ?? (await ensureControlToken(dataDir));
   const runs = new RunManager(manager, new RunnerStore(dataDir), dataDir);
 
-  const server = createHttpServer(manager, { uiDir: options.uiDir, runs, controlToken });
+  const generator = new ProjectGenerator();
+  const server = createHttpServer(manager, { uiDir: options.uiDir, runs, generator, controlToken });
   const preferred = options.port ?? 4317;
   let port = -1;
   let lastError: unknown;
@@ -90,12 +94,14 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
     port,
     manager,
     runs,
+    generator,
     server,
     controlToken,
     controlUrl: `${url}/#token=${controlToken}`,
     close: () =>
       new Promise<void>((resolve) => {
         void runs.close();
+        generator.close();
         manager.stopWatching();
         server.closeAllConnections?.();
         server.close(() => resolve());

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   agentIdFromName,
   computeBoard,
+  createEmptyProject,
   EditError,
   helpedChats,
   parseProjectFile,
   removeAgentFromFile,
+  serializeProject,
   upsertAgentInFile,
 } from "../src/index.ts";
 
@@ -122,9 +124,12 @@ describe("editing chats", () => {
     expect(noC).toBe(FILE);
   });
 
-  it("keeps at least one chat", () => {
+  it("can remove the last chat once it has no tasks", () => {
     const onlyA = removeAgentFromFile(FILE, "b", "a");
-    expect(() => removeAgentFromFile(onlyA, "a")).toThrow(/at least one chat/);
+    expect(() => removeAgentFromFile(onlyA, "a")).toThrow(/choose a chat/);
+    const empty = createEmptyProject("x", "X", { agents: [{ id: "a", name: "A" }] });
+    const none = parse(removeAgentFromFile(serializeProject(empty), "a"));
+    expect(none.agents).toEqual([]);
   });
 
   it("derives free ids from names", () => {

@@ -4,10 +4,15 @@ import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import {
   computeBoard,
-  createProjectTemplate,
+  createEmptyProject,
   EditError,
   removeAgentFromFile,
+  removePromptFromFile,
+  removeTaskFromFile,
+  updateProjectInfoInFile,
   upsertAgentInFile,
+  upsertPromptInFile,
+  upsertTaskInFile,
   EventSchema,
   FILE_EXTENSION,
   newEventId,
@@ -26,6 +31,9 @@ import {
   type EventSource,
   type Issue,
   type ProjectFile,
+  type ProjectInfoInput,
+  type PromptInput,
+  type TaskInput,
   type Report,
   type TrackEvent,
 } from "@aitrack/core";
@@ -45,6 +53,7 @@ export interface ProjectSummary {
   key: string;
   filePath: string;
   addedAt: string;
+  pinned: boolean;
   id: string | null;
   name: string;
   ok: boolean;
@@ -194,9 +203,35 @@ export class ProjectManager extends EventEmitter {
   }
 
   list(): ProjectSummary[] {
-    return [...this.handles.values()]
-      .sort((a, b) => a.addedAt.localeCompare(b.addedAt))
-      .map((h) => this.summary(h));
+    return this.ordered().map((h) => this.summary(h));
+  }
+
+  /** Pinned projects first; then the order the user chose; then the order they were added in. */
+  private ordered(): ProjectHandle[] {
+    const rank = (h: ProjectHandle) => (h.order === undefined ? Number.MAX_SAFE_INTEGER : h.order);
+    return [...this.handles.values()].sort(
+      (a, b) => Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) || rank(a) - rank(b) || a.addedAt.localeCompare(b.addedAt),
+    );
+  }
+
+  async setPinned(key: string, pinned: boolean): Promise<ProjectSummary[]> {
+    const h = this.get(key);
+    h.pinned = pinned || undefined;
+    await this.persistRegistry();
+    this.changed(key);
+    return this.list();
+  }
+
+  /** Puts the projects in the given order; keys not listed keep their place after them. */
+  async reorder(keys: string[]): Promise<ProjectSummary[]> {
+    const listed = keys.filter((k) => this.handles.has(k));
+    const rest = this.ordered()
+      .map((h) => h.key)
+      .filter((k) => !listed.includes(k));
+    [...listed, ...rest].forEach((k, i) => (this.handles.get(k)!.order = i));
+    await this.persistRegistry();
+    for (const k of listed) this.changed(k);
+    return this.list();
   }
 
   private summary(h: ProjectHandle): ProjectSummary {
@@ -205,6 +240,7 @@ export class ProjectManager extends EventEmitter {
       key: h.key,
       filePath: h.filePath,
       addedAt: h.addedAt,
+      pinned: Boolean(h.pinned),
       id: h.project?.project.id ?? null,
       name: h.project?.project.name ?? path.basename(h.filePath),
       ok: Boolean(h.project) && !h.issues.some((i) => i.level === "error"),
@@ -277,11 +313,36 @@ export class ProjectManager extends EventEmitter {
     return this.summary(this.get(key));
   }
 
-  async createProject(filePath: string, id: string, name: string): Promise<ProjectSummary> {
+  /**
+   * Writes a new project file and opens it: either the given file text (from the wizard's AI step,
+   * checked first) or an empty project with the given chats.
+   */
+  async createProject(
+    filePath: string,
+    input: { id: string; name: string; language?: "en" | "tr"; agents?: Array<{ id: string; name: string; tool?: string; role?: string }>; text?: string },
+  ): Promise<ProjectSummary> {
     let abs = path.resolve(filePath);
     if (!abs.endsWith(FILE_EXTENSION)) abs += FILE_EXTENSION;
     if (existsSync(abs)) throw new HttpError(409, `File already exists: ${abs}`);
-    await writeFileAtomic(abs, serializeProject(createProjectTemplate(id, name)));
+    let text: string;
+    if (input.text !== undefined) {
+      const { project, issues } = parseProjectFile(input.text);
+      const errors = issues.filter((i) => i.level === "error");
+      if (!project || errors.length > 0) throw new HttpError(400, `The project file has errors: ${errors.map((e) => e.message).join("; ")}`);
+      text = input.text.endsWith("\n") ? input.text : `${input.text}\n`;
+    } else {
+      let project: ProjectFile;
+      try {
+        project = createEmptyProject(input.id, input.name, { language: input.language, agents: input.agents });
+      } catch (e) {
+        throw new HttpError(400, `Invalid project: ${(e as Error).message}`);
+      }
+      const { issues } = parseProjectFile(serializeProject(project));
+      const errors = issues.filter((i) => i.level === "error");
+      if (errors.length > 0) throw new HttpError(400, errors.map((e) => e.message).join("; "));
+      text = serializeProject(project);
+    }
+    await writeFileAtomic(abs, text);
     return this.addProject(abs);
   }
 
@@ -322,6 +383,56 @@ export class ProjectManager extends EventEmitter {
     return this.summary(this.get(key));
   }
 
+  /** Adds or changes a task in the project file on disk. */
+  async saveTask(key: string, input: TaskInput, mode: "create" | "update"): Promise<ProjectSummary> {
+    await this.editFile(key, (text) => upsertTaskInFile(text, input, mode));
+    return this.summary(this.get(key));
+  }
+
+  /** Removes a task; tasks that depended on it take over its dependencies. */
+  async removeTask(key: string, taskId: string): Promise<ProjectSummary> {
+    const h = this.get(key);
+    const project = this.requireProject(h);
+    const status = computeBoard(project, h.events).byId.get(taskId)?.status;
+    if (status === "dispatched" || status === "in_progress" || status === "blocked" || status === "review") {
+      throw new HttpError(409, `${taskId} is with a chat right now. Mark it done, failed or reopen it before removing it.`);
+    }
+    await this.editFile(key, (text) => removeTaskFromFile(text, taskId));
+    return this.summary(this.get(key));
+  }
+
+  async savePrompt(key: string, input: PromptInput, mode: "create" | "update"): Promise<ProjectSummary> {
+    await this.editFile(key, (text) => upsertPromptInFile(text, input, mode));
+    return this.summary(this.get(key));
+  }
+
+  async removePrompt(key: string, promptId: string): Promise<ProjectSummary> {
+    await this.editFile(key, (text) => removePromptFromFile(text, promptId));
+    return this.summary(this.get(key));
+  }
+
+  /**
+   * Replaces the plan of a project that has no tasks yet with a new file (the "Plan with AI" step
+   * for an empty project). The project keeps its id and name.
+   */
+  async replacePlan(key: string, text: string): Promise<ProjectSummary> {
+    const h = this.get(key);
+    const current = this.requireProject(h);
+    if (current.tasks.length > 0) throw new HttpError(409, "This project already has tasks; add new ones one by one instead.");
+    const { project, issues } = parseProjectFile(text);
+    const errors = issues.filter((i) => i.level === "error");
+    if (!project || errors.length > 0) throw new HttpError(400, `The project file has errors: ${errors.map((e) => e.message).join("; ")}`);
+    if (project.project.id !== current.project.id) throw new HttpError(400, `The project id must stay "${current.project.id}".`);
+    await writeFileAtomic(h.filePath, text.endsWith("\n") ? text : `${text}\n`);
+    await this.reload(key);
+    return this.summary(this.get(key));
+  }
+
+  async saveInfo(key: string, input: ProjectInfoInput): Promise<ProjectSummary> {
+    await this.editFile(key, (text) => updateProjectInfoInFile(text, input));
+    return this.summary(this.get(key));
+  }
+
   private async editFile(key: string, edit: (text: string) => string): Promise<void> {
     const h = this.get(key);
     const text = await readFile(h.filePath, "utf8");
@@ -329,7 +440,10 @@ export class ProjectManager extends EventEmitter {
     try {
       next = edit(text);
     } catch (e) {
-      if (e instanceof EditError) throw new HttpError(e.code === "not_found" ? 404 : e.code === "invalid_agent" ? 400 : 409, e.message);
+      if (e instanceof EditError) {
+        const status = e.code === "not_found" ? 404 : e.code.startsWith("invalid_") && e.code !== "invalid_file" && e.code !== "invalid_result" ? 400 : 409;
+        throw new HttpError(status, e.message);
+      }
       throw e;
     }
     if (next !== text) await writeFileAtomic(h.filePath, next);
@@ -338,7 +452,13 @@ export class ProjectManager extends EventEmitter {
 
   private async persistRegistry(): Promise<void> {
     await this.store.writeRegistry(
-      [...this.handles.values()].map(({ key, filePath, addedAt }) => ({ key, filePath, addedAt })),
+      this.ordered().map(({ key, filePath, addedAt, pinned, order }) => ({
+        key,
+        filePath,
+        addedAt,
+        ...(pinned ? { pinned: true } : {}),
+        ...(order !== undefined ? { order } : {}),
+      })),
     );
   }
 

@@ -1,4 +1,4 @@
-import { AgentSchema, ID_PATTERN } from "./schema.ts";
+import { AgentSchema, ID_PATTERN, PromptSchema, TaskSchema } from "./schema.ts";
 import { parseProjectFile } from "./io.ts";
 
 /**
@@ -9,7 +9,15 @@ import { parseProjectFile } from "./io.ts";
 export class EditError extends Error {
   constructor(
     message: string,
-    readonly code: "invalid_file" | "invalid_agent" | "not_found" | "has_tasks" | "last_agent" | "invalid_result",
+    readonly code:
+      | "invalid_file"
+      | "invalid_agent"
+      | "invalid_task"
+      | "invalid_prompt"
+      | "not_found"
+      | "exists"
+      | "has_tasks"
+      | "invalid_result",
     readonly details: Record<string, unknown> = {},
   ) {
     super(message);
@@ -61,7 +69,7 @@ function finish(raw: Json): string {
   return text;
 }
 
-const agentsOf = (raw: Json) => raw.agents as Json[];
+const agentsOf = (raw: Json) => (Array.isArray(raw.agents) ? (raw.agents as Json[]) : []);
 const tasksOf = (raw: Json) => (Array.isArray(raw.tasks) ? (raw.tasks as Json[]) : []);
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
 
@@ -87,6 +95,7 @@ export function upsertAgentInFile(text: string, change: AgentChange): string {
     if (!(p in prompts)) throw new EditError(`Unknown prompt "${p}".`, "invalid_agent");
   }
 
+  if (!Array.isArray(raw.agents)) raw.agents = [];
   const agents = agentsOf(raw);
   let entry = agents.find((a) => a.id === id);
   if (!entry) {
@@ -138,7 +147,6 @@ export function removeAgentFromFile(text: string, agentId: string, reassignTo?: 
   const agents = agentsOf(raw);
   const index = agents.findIndex((a) => a.id === agentId);
   if (index < 0) throw new EditError(`Unknown chat "${agentId}".`, "not_found");
-  if (agents.length === 1) throw new EditError("A project needs at least one chat.", "last_agent");
   const owned = tasksOf(raw).filter((t) => t.agent === agentId);
   if (owned.length > 0) {
     if (!reassignTo) {
@@ -162,6 +170,11 @@ export function removeAgentFromFile(text: string, agentId: string, reassignTo?: 
 
 /** A free id derived from a display name, e.g. "Codex D" -> "codex-d". */
 export function agentIdFromName(name: string, taken: Iterable<string>): string {
+  return slugId(name, taken, "chat");
+}
+
+/** A free id derived from any title: lower case, ASCII, words joined with "-". */
+export function slugId(name: string, taken: Iterable<string>, fallback = "item"): string {
   const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" };
   const base =
     name
@@ -170,8 +183,254 @@ export function agentIdFromName(name: string, taken: Iterable<string>): string {
       .normalize("NFKD")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 60) || "chat";
+      .slice(0, 60) || fallback;
   const used = new Set(taken);
   if (!used.has(base)) return base;
   for (let n = 2; ; n += 1) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+/** The next task id in the style the project already uses: T-07 after T-06, API-12 after API-11; T-01 at first. */
+export function nextTaskId(ids: Iterable<string>): string {
+  const list = [...ids];
+  const used = new Set(list);
+  let best: { prefix: string; n: number; width: number } | null = null;
+  for (const id of list) {
+    const m = /^(.*?)(\d+)$/.exec(id);
+    if (!m) continue;
+    const n = Number(m[2]);
+    if (!best || n > best.n) best = { prefix: m[1]!, n, width: m[2]!.length };
+  }
+  const style = best ?? { prefix: "T-", n: 0, width: 2 };
+  for (let n = style.n + 1; ; n += 1) {
+    const id = `${style.prefix}${String(n).padStart(style.width, "0")}`;
+    if (!used.has(id)) return id;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tasks
+
+export interface TaskInput {
+  id: string;
+  title: string;
+  agent: string;
+  description?: string;
+  alsoAgents?: string[];
+  dependsOn?: string[];
+  prompts?: string[];
+  instructions?: string;
+  scope?: string;
+  allowedPaths?: string[];
+  acceptance?: string;
+  milestone?: string;
+  /** null removes the estimate. */
+  estimateDays?: number | null;
+  tags?: string[];
+}
+
+const TASK_KEY_ORDER = [
+  "id",
+  "title",
+  "description",
+  "agent",
+  "alsoAgents",
+  "dependsOn",
+  "prompts",
+  "instructions",
+  "scope",
+  "allowedPaths",
+  "acceptance",
+  "milestone",
+  "estimateDays",
+  "tags",
+];
+
+const cleanList = (v: string[] | undefined): string[] | undefined =>
+  v === undefined ? undefined : [...new Set(v.map((x) => String(x).trim()).filter(Boolean))];
+
+/**
+ * Adds a task (`mode: "create"`, appended at the end) or changes one (`mode: "update"`). Only the
+ * fields present in `input` are changed; empty values remove optional fields.
+ */
+export function upsertTaskInFile(text: string, input: TaskInput, mode: "create" | "update"): string {
+  const raw = parseRaw(text);
+  const id = String(input.id ?? "").trim();
+  if (!ID_PATTERN.test(id)) {
+    throw new EditError('The task id may contain letters, digits, ".", "_" and "-" and must start with a letter or digit.', "invalid_task");
+  }
+  const title = String(input.title ?? "").trim();
+  if (!title) throw new EditError("Give the task a title.", "invalid_task");
+  if (!Array.isArray(raw.tasks)) raw.tasks = [];
+  const tasks = raw.tasks as Json[];
+  const existing = tasks.find((t) => t.id === id);
+  if (mode === "create" && existing) throw new EditError(`A task with the id "${id}" already exists.`, "exists");
+  if (mode === "update" && !existing) throw new EditError(`Unknown task "${id}".`, "not_found");
+
+  const agentIds = new Set(agentsOf(raw).map((a) => String(a.id)));
+  const taskIds = new Set(tasks.map((t) => String(t.id)));
+  const promptIds = new Set(Object.keys((raw.prompts ?? {}) as Json));
+  const agent = String(input.agent ?? "").trim();
+  if (!agentIds.has(agent)) throw new EditError(agent ? `Unknown chat "${agent}".` : "Choose the chat that takes this task.", "invalid_task");
+  const also = cleanList(input.alsoAgents)?.filter((a) => a !== agent);
+  for (const a of also ?? []) if (!agentIds.has(a)) throw new EditError(`Unknown chat "${a}".`, "invalid_task");
+  const deps = cleanList(input.dependsOn);
+  for (const d of deps ?? []) {
+    if (d === id) throw new EditError("A task cannot depend on itself.", "invalid_task");
+    if (!taskIds.has(d)) throw new EditError(`Unknown task "${d}".`, "invalid_task");
+  }
+  const prompts = cleanList(input.prompts);
+  for (const p of prompts ?? []) if (!promptIds.has(p)) throw new EditError(`Unknown prompt "${p}".`, "invalid_task");
+  if (input.estimateDays !== undefined && input.estimateDays !== null) {
+    const n = Number(input.estimateDays);
+    if (!(n > 0 && n <= 365)) throw new EditError("The estimate must be between 0 and 365 days.", "invalid_task");
+  }
+
+  const entry: Json = existing ?? { id };
+  const nonEmpty = (v: unknown) => typeof v === "string" && v.trim() !== "";
+  const listKeeper = (key: string) => (v: unknown) => Array.isArray(v) && (v.length > 0 || (existing !== undefined && Array.isArray(existing[key])));
+  entry.title = title;
+  entry.agent = agent;
+  for (const key of ["description", "instructions", "scope", "acceptance", "milestone"] as const) {
+    if (input[key] !== undefined) setOrDelete(entry, key, String(input[key]).trim(), nonEmpty);
+  }
+  if (also !== undefined) setOrDelete(entry, "alsoAgents", also, listKeeper("alsoAgents"));
+  else if (Array.isArray(entry.alsoAgents)) {
+    // The owner changed: it cannot also be a helper.
+    const rest = strings(entry.alsoAgents).filter((a) => a !== agent);
+    setOrDelete(entry, "alsoAgents", rest, listKeeper("alsoAgents"));
+  }
+  if (deps !== undefined) setOrDelete(entry, "dependsOn", deps, listKeeper("dependsOn"));
+  if (prompts !== undefined) setOrDelete(entry, "prompts", prompts, listKeeper("prompts"));
+  if (input.allowedPaths !== undefined) setOrDelete(entry, "allowedPaths", cleanList(input.allowedPaths), listKeeper("allowedPaths"));
+  if (input.tags !== undefined) setOrDelete(entry, "tags", cleanList(input.tags), listKeeper("tags"));
+  if (input.estimateDays !== undefined) {
+    setOrDelete(entry, "estimateDays", input.estimateDays === null ? undefined : Number(input.estimateDays), (v) => typeof v === "number");
+  }
+
+  const checked = TaskSchema.safeParse(entry);
+  if (!checked.success) {
+    throw new EditError(checked.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "), "invalid_task");
+  }
+  if (!existing) {
+    // New tasks get the usual key order.
+    const ordered: Json = {};
+    for (const key of TASK_KEY_ORDER) if (key in entry) ordered[key] = entry[key];
+    tasks.push(ordered);
+  }
+  return finish(raw);
+}
+
+/**
+ * Removes a task. Tasks that depended on it now depend on what it depended on, so the order of
+ * the remaining work stays the same.
+ */
+export function removeTaskFromFile(text: string, taskId: string): string {
+  const raw = parseRaw(text);
+  const tasks = tasksOf(raw);
+  const index = tasks.findIndex((t) => t.id === taskId);
+  if (index < 0) throw new EditError(`Unknown task "${taskId}".`, "not_found");
+  const inherited = strings(tasks[index]!.dependsOn);
+  tasks.splice(index, 1);
+  for (const task of tasks) {
+    const deps = strings(task.dependsOn);
+    if (!deps.includes(taskId)) continue;
+    const next = [...new Set(deps.flatMap((d) => (d === taskId ? inherited : [d])))].filter((d) => d !== task.id);
+    if (next.length > 0) task.dependsOn = next;
+    else delete task.dependsOn;
+  }
+  return finish(raw);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Prompts
+
+export interface PromptInput {
+  id: string;
+  title?: string;
+  body: string;
+}
+
+/** Adds a prompt (`mode: "create"`) or changes its title and text (`mode: "update"`). */
+export function upsertPromptInFile(text: string, input: PromptInput, mode: "create" | "update"): string {
+  const raw = parseRaw(text);
+  const id = String(input.id ?? "").trim();
+  if (!ID_PATTERN.test(id)) {
+    throw new EditError('The prompt id may contain letters, digits, ".", "_" and "-" and must start with a letter or digit.', "invalid_prompt");
+  }
+  const body = String(input.body ?? "");
+  if (!body.trim()) throw new EditError("The prompt text is empty.", "invalid_prompt");
+  if (!raw.prompts || typeof raw.prompts !== "object" || Array.isArray(raw.prompts)) raw.prompts = {};
+  const prompts = raw.prompts as Json;
+  const existing = prompts[id] as Json | undefined;
+  if (mode === "create" && existing) throw new EditError(`A prompt with the id "${id}" already exists.`, "exists");
+  if (mode === "update" && !existing) throw new EditError(`Unknown prompt "${id}".`, "not_found");
+  const entry: Json = existing ?? {};
+  const title = input.title?.trim();
+  if (title) entry.title = title;
+  else delete entry.title;
+  entry.body = body;
+  if (!existing) prompts[id] = title ? { title, body } : { body };
+  const checked = PromptSchema.safeParse(prompts[id]);
+  if (!checked.success) throw new EditError(checked.error.issues.map((i) => i.message).join("; "), "invalid_prompt");
+  return finish(raw);
+}
+
+/** Where a prompt is used: tasks and chats (session and quick prompts). */
+export function promptUsage(
+  project: { tasks: Array<{ id: string; prompts: string[] }>; agents: Array<{ id: string; bootstrapPrompts: string[]; quickPrompts: string[] }> },
+  promptId: string,
+): { tasks: string[]; agents: string[] } {
+  return {
+    tasks: project.tasks.filter((t) => t.prompts.includes(promptId)).map((t) => t.id),
+    agents: project.agents.filter((a) => a.bootstrapPrompts.includes(promptId) || a.quickPrompts.includes(promptId)).map((a) => a.id),
+  };
+}
+
+/** Removes a prompt and every reference to it from tasks and chats. */
+export function removePromptFromFile(text: string, promptId: string): string {
+  const raw = parseRaw(text);
+  const prompts = (raw.prompts ?? {}) as Json;
+  if (!(promptId in prompts)) throw new EditError(`Unknown prompt "${promptId}".`, "not_found");
+  delete prompts[promptId];
+  const drop = (target: Json, key: string) => {
+    if (!Array.isArray(target[key])) return;
+    const rest = strings(target[key]).filter((p) => p !== promptId);
+    if (rest.length > 0 || (target[key] as unknown[]).length === 0) target[key] = rest;
+    else delete target[key];
+  };
+  for (const task of tasksOf(raw)) drop(task, "prompts");
+  for (const agent of agentsOf(raw)) {
+    drop(agent, "bootstrapPrompts");
+    drop(agent, "quickPrompts");
+  }
+  return finish(raw);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Project
+
+export interface ProjectInfoInput {
+  name?: string;
+  description?: string;
+  language?: "en" | "tr" | null;
+  requireApproval?: boolean;
+}
+
+/** Changes the project's name, description, prompt language or approval setting. */
+export function updateProjectInfoInFile(text: string, input: ProjectInfoInput): string {
+  const raw = parseRaw(text);
+  const project = raw.project as Json;
+  if (input.name !== undefined) {
+    const name = input.name.trim();
+    if (!name) throw new EditError("Give the project a name.", "invalid_file");
+    project.name = name;
+  }
+  if (input.description !== undefined) setOrDelete(project, "description", input.description.trim(), (v) => typeof v === "string" && v !== "");
+  if (input.language !== undefined || input.requireApproval !== undefined) {
+    if (!raw.settings || typeof raw.settings !== "object") raw.settings = {};
+    const settings = raw.settings as Json;
+    if (input.language !== undefined) setOrDelete(settings, "language", input.language ?? undefined, (v) => v === "en" || v === "tr");
+    if (input.requireApproval !== undefined) settings.requireApproval = input.requireApproval;
+  }
+  return finish(raw);
 }

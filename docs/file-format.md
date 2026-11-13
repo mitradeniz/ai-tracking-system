@@ -16,8 +16,8 @@ An `.aitrack` file is a UTF-8 JSON document that describes one project: the chat
 | `version` | `1` | yes | Format version. |
 | `project` | object | yes | `id`, `name`, optional `description` and `links: [{label, url}]`. |
 | `settings` | object | no | See [Settings](#settings). |
-| `agents` | array | yes, ≥ 1 | The chats. See [Agents](#agents). |
-| `tasks` | array | yes | See [Tasks](#tasks). |
+| `agents` | array | no (default `[]`) | The chats. See [Agents](#agents). A new project may start without chats or tasks. |
+| `tasks` | array | no (default `[]`) | See [Tasks](#tasks). |
 | `prompts` | object | no | Map of prompt id → `{ title?, body }`. |
 | `templates` | object | no | `dispatch` and `report` templates. See [Templates](#templates). |
 | `milestones` | array | no | `{ id, name, date?: "YYYY-MM-DD", description? }`. |
@@ -126,6 +126,23 @@ Status is not stored in the file while you work: the tracker keeps an append-onl
 Event `type` is one of `dispatched`, `started`, `progress`, `blocked`, `review`, `done`, `approved`, `failed`, `reopened`, `note`. `source` is one of `ui`, `http`, `file`, `paste`, `import`. When a file with a snapshot is opened, events whose `id` the log does not have yet are imported, so opening the same snapshot twice is harmless.
 
 Commit plan-only exports for review; commit snapshots only when you want to hand over a project's status.
+
+## Editing in the app and over HTTP
+
+The app edits the file in place and keeps the author's formatting: fields that were left out stay out, key order stays, and every change is checked before it is written (unknown ids, cycles). The same edits are available on the local tracker:
+
+| Endpoint | Body | Does |
+| --- | --- | --- |
+| `POST /api/projects/create` | `{filePath, id, name, language?, agents?}` or `{filePath, text}` | Writes a new file (empty, or a checked file) and opens it. |
+| `POST /api/projects/:key/tasks` | `{task, mode: "create" \| "update"}` | Adds or changes a task; only the fields given change, empty values remove optional fields. |
+| `POST /api/projects/:key/tasks/:task/remove` | — | Removes a task; tasks that waited for it wait for what it waited for. Refused while it is with a chat. |
+| `POST /api/projects/:key/prompts` | `{prompt: {id, title?, body}, mode}` | Adds or changes a prompt. |
+| `POST /api/projects/:key/prompts/:prompt/remove` | — | Removes a prompt and every reference to it. |
+| `POST /api/projects/:key/info` | `{name?, description?, language?, requireApproval?}` | Project name, description, language and approval. |
+| `POST /api/projects/:key/plan` | `{text}` | Replaces the plan of a project that has no tasks yet (Plan with AI). |
+| `POST /api/projects/:key/agents` · `…/agents/:chat/remove` | see the app | Adds, changes or removes a chat. |
+| `POST /api/projects/:key/pin` · `POST /api/projects/order` | `{pinned}` · `{keys}` | Pins and orders the project list (kept in `~/.aitrack/registry.json`, not in the file). |
+| `POST /api/authoring/prompt` · `POST /api/authoring/check` | `{input}` · `{answer, input}` | The instructions for an AI, and the check of its answer. See [Authoring a project with AI](authoring-with-ai.md). |
 
 ## Compatibility
 

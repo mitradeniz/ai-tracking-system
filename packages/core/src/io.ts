@@ -72,24 +72,25 @@ export function serializeProject(project: ProjectFile, options: SerializeOptions
   return JSON.stringify(ordered, null, 2) + "\n";
 }
 
-/** A new, minimal project definition. */
-export function createProjectTemplate(id: string, name: string): ProjectFile {
+/** A new project with the given chats (possibly none), no tasks and no prompts. */
+export function createEmptyProject(
+  id: string,
+  name: string,
+  options: { language?: "en" | "tr"; description?: string; agents?: Array<{ id: string; name: string; tool?: string; role?: string }> } = {},
+): ProjectFile {
   return ProjectFileSchema.parse({
     format: "aitrack",
     version: 1,
-    project: { id, name, description: "" },
-    agents: [
-      { id: "agent-a", name: "Agent A", tool: "claude", role: "Complex technical work" },
-      { id: "agent-b", name: "Agent B", tool: "codex", role: "Simple technical work" },
-    ],
-    prompts: {
-      context: { title: "Shared context", body: "Describe the project, its stack and its rules here." },
-      "first-task": { title: "First task", body: "Describe the first task here." },
-    },
-    tasks: [
-      { id: "T-01", title: "First task", agent: "agent-a", prompts: ["context", "first-task"] },
-      { id: "T-02", title: "Second task", agent: "agent-b", dependsOn: ["T-01"], instructions: "Describe it." },
-    ],
+    project: { id, name, ...(options.description ? { description: options.description } : {}) },
+    settings: options.language ? { language: options.language } : undefined,
+    agents: (options.agents ?? []).map((a) => ({
+      id: a.id,
+      name: a.name,
+      ...(a.tool ? { tool: a.tool } : {}),
+      ...(a.role ? { role: a.role } : {}),
+    })),
+    tasks: [],
+    prompts: {},
   });
 }
 

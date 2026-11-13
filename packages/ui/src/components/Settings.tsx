@@ -6,7 +6,7 @@ import type { Updates } from "../updates.ts";
 import { useEscape } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
 
-function Segmented<T extends string>({
+export function Segmented<T extends string>({
   value,
   options,
   onChange,
@@ -37,6 +37,7 @@ export function SettingsDialog({
   onClose,
   updates,
   focusUpdates,
+  onTour,
 }: {
   appearance: Appearance;
   onAppearance: (a: Appearance) => void;
@@ -47,6 +48,8 @@ export function SettingsDialog({
   updates?: Updates;
   /** Opened from "Check for updates": scroll to that section. */
   focusUpdates?: boolean;
+  /** Shows the intro again. */
+  onTour?: () => void;
 }) {
   const { t } = useI18n();
   const set = <K extends keyof Appearance>(key: K, value: Appearance[K]) => onAppearance({ ...appearance, [key]: value });
@@ -154,6 +157,11 @@ export function SettingsDialog({
           >
             {t("resetLayouts")}
           </button>
+          {onTour && (
+            <button className="btn ghost small" onClick={onTour}>
+              {t("tour_replay")}
+            </button>
+          )}
           <span className="spacer" />
           <button className="btn primary" onClick={onClose}>
             {t("close")}

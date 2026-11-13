@@ -1,11 +1,13 @@
-import { createReadStream, existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import path from "node:path";
-import { ReportSchema } from "@aitrack/core";
+import { authoringPrompt, readGeneratedProject, ReportSchema, type AuthoringInput } from "@aitrack/core";
 import { tokenMatches } from "./control.ts";
 import { HttpError, type ProjectManager } from "./manager.ts";
 import { detectProviders } from "./runners/env.ts";
 import { normalizeHook } from "./runners/hooks.ts";
+import { GENERATOR_PROVIDERS, type GeneratorProvider, type ProjectGenerator } from "./runners/generate.ts";
 import type { RunManager } from "./runners/runs.ts";
 
 export const VERSION = "0.1.0";
@@ -38,6 +40,8 @@ export interface HttpOptions {
   uiDir?: string;
   /** Agent runners; without them the run endpoints answer 404. */
   runs?: RunManager;
+  /** Writes project plans with an installed AI CLI. */
+  generator?: ProjectGenerator;
   /** Required in the X-Aitrack-Token header by the endpoints that start programs. */
   controlToken?: string;
 }
@@ -47,6 +51,43 @@ interface Ctx {
   res: ServerResponse;
   url: URL;
   port: number;
+}
+
+export interface FolderInfo {
+  path: string;
+  exists: boolean;
+  isDir: boolean;
+  /** A git repository (agents can then work in it and in its worktrees). */
+  isGit: boolean;
+  /** Project files already in the folder. */
+  projectFiles: string[];
+  name: string;
+}
+
+/** What the new-project wizard needs to know about a folder. Reads names only, never contents. */
+export function inspectFolder(dir: string): FolderInfo {
+  const raw = dir.trim();
+  const expanded = raw === "~" ? homedir() : raw.startsWith("~/") ? path.join(homedir(), raw.slice(2)) : raw;
+  const abs = expanded ? path.resolve(expanded) : "";
+  const info: FolderInfo = { path: abs, exists: false, isDir: false, isGit: false, projectFiles: [], name: path.basename(abs) };
+  if (!abs || !path.isAbsolute(expanded)) return info;
+  try {
+    const st = statSync(abs);
+    info.exists = true;
+    info.isDir = st.isDirectory();
+  } catch {
+    return info;
+  }
+  if (!info.isDir) return info;
+  info.isGit = existsSync(path.join(abs, ".git"));
+  try {
+    info.projectFiles = readdirSync(abs)
+      .filter((f) => f.endsWith(".aitrack"))
+      .slice(0, 20);
+  } catch {
+    info.projectFiles = [];
+  }
+  return info;
 }
 
 function send(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}): void {
@@ -166,9 +207,97 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
   });
   route("POST", "/api/projects/create", async (ctx) => {
     const body = await readJson(ctx.req);
-    const { filePath, id, name } = body as Record<string, string>;
-    if (!filePath || !id || !name) throw new HttpError(400, '"filePath", "id" and "name" are required.');
-    send(ctx.res, 201, await manager.createProject(filePath, id, name));
+    const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+    const filePath = str(body.filePath);
+    const id = str(body.id);
+    const name = str(body.name);
+    if (!filePath || (body.text === undefined && (!id || !name))) throw new HttpError(400, '"filePath", "id" and "name" are required.');
+    const agents = Array.isArray(body.agents)
+      ? (body.agents as Array<Record<string, unknown>>).map((a) => ({ id: str(a.id), name: str(a.name), tool: str(a.tool) || undefined, role: str(a.role) || undefined }))
+      : undefined;
+    const language = body.language === "en" || body.language === "tr" ? body.language : undefined;
+    const text = typeof body.text === "string" ? body.text : undefined;
+    send(ctx.res, 201, await manager.createProject(filePath, { id, name, language, agents, text }));
+  });
+  route("POST", "/api/projects/order", async (ctx) => {
+    const body = await readJson(ctx.req);
+    if (!Array.isArray(body.keys)) throw new HttpError(400, '"keys" is required.');
+    send(ctx.res, 200, { projects: await manager.reorder(body.keys.map(String)) });
+  });
+  route("POST", "/api/projects/:key/pin", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    send(ctx.res, 200, { projects: await manager.setPinned(key!, body.pinned === true) });
+  });
+  route("POST", "/api/projects/:key/info", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    send(
+      ctx.res,
+      200,
+      await manager.saveInfo(key!, {
+        name: typeof body.name === "string" ? body.name : undefined,
+        description: typeof body.description === "string" ? body.description : undefined,
+        language: body.language === "en" || body.language === "tr" ? body.language : body.language === null ? null : undefined,
+        requireApproval: typeof body.requireApproval === "boolean" ? body.requireApproval : undefined,
+      }),
+    );
+  });
+  route("POST", "/api/projects/:key/plan", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    if (typeof body.text !== "string") throw new HttpError(400, '"text" is required.');
+    send(ctx.res, 200, await manager.replacePlan(key!, body.text));
+  });
+  route("POST", "/api/projects/:key/tasks", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    const task = body.task as Record<string, unknown> | undefined;
+    if (!task || typeof task !== "object") throw new HttpError(400, '"task" is required.');
+    const mode = body.mode === "update" ? "update" : "create";
+    const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : undefined);
+    const text = (v: unknown) => (typeof v === "string" ? v : undefined);
+    send(
+      ctx.res,
+      200,
+      await manager.saveTask(
+        key!,
+        {
+          id: String(task.id ?? ""),
+          title: String(task.title ?? ""),
+          agent: String(task.agent ?? ""),
+          description: text(task.description),
+          alsoAgents: list(task.alsoAgents),
+          dependsOn: list(task.dependsOn),
+          prompts: list(task.prompts),
+          instructions: text(task.instructions),
+          scope: text(task.scope),
+          allowedPaths: list(task.allowedPaths),
+          acceptance: text(task.acceptance),
+          milestone: text(task.milestone),
+          estimateDays: task.estimateDays === null ? null : typeof task.estimateDays === "number" ? task.estimateDays : undefined,
+          tags: list(task.tags),
+        },
+        mode,
+      ),
+    );
+  });
+  route("POST", "/api/projects/:key/tasks/:task/remove", async (ctx, [key, task]) => {
+    send(ctx.res, 200, await manager.removeTask(key!, decodeURIComponent(task!)));
+  });
+  route("POST", "/api/projects/:key/prompts", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    const prompt = body.prompt as Record<string, unknown> | undefined;
+    if (!prompt || typeof prompt !== "object") throw new HttpError(400, '"prompt" is required.');
+    const mode = body.mode === "update" ? "update" : "create";
+    send(
+      ctx.res,
+      200,
+      await manager.savePrompt(
+        key!,
+        { id: String(prompt.id ?? ""), title: typeof prompt.title === "string" ? prompt.title : undefined, body: String(prompt.body ?? "") },
+        mode,
+      ),
+    );
+  });
+  route("POST", "/api/projects/:key/prompts/:prompt/remove", async (ctx, [key, prompt]) => {
+    send(ctx.res, 200, await manager.removePrompt(key!, decodeURIComponent(prompt!)));
   });
   route("GET", "/api/projects/:key", (ctx, [key]) => send(ctx.res, 200, manager.detail(key!)));
   route("DELETE", "/api/projects/:key", async (ctx, [key]) => {
@@ -267,6 +396,97 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
       throw new HttpError(401, "This action needs the app's control token. Open the tracker from the desktop app or from the link printed by `aitrack serve`.");
     }
   };
+  const generator = () => {
+    if (!options.generator) throw new HttpError(404, "Not available.");
+    return options.generator;
+  };
+  const authoringInput = (v: unknown): AuthoringInput => {
+    const o = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    const str = (x: unknown) => (typeof x === "string" ? x : "");
+    const chats = Array.isArray(o.chats)
+      ? (o.chats as Array<Record<string, unknown>>).slice(0, 30).map((c) => ({
+          id: str(c.id),
+          name: str(c.name),
+          tool: str(c.tool) || undefined,
+          role: str(c.role) || undefined,
+        }))
+      : [];
+    const previous =
+      o.previous && typeof o.previous === "object"
+        ? {
+            text: str((o.previous as Record<string, unknown>).text).slice(0, 300_000),
+            errors: Array.isArray((o.previous as Record<string, unknown>).errors)
+              ? ((o.previous as Record<string, unknown>).errors as unknown[]).slice(0, 40).map(String)
+              : [],
+          }
+        : undefined;
+    return {
+      projectId: str(o.projectId),
+      projectName: str(o.projectName),
+      language: o.language === "en" || o.language === "tr" ? o.language : undefined,
+      chats,
+      plan: str(o.plan).slice(0, 200_000),
+      canReadRepository: o.canReadRepository === true,
+      previous,
+    };
+  };
+  // The prompt to give another AI by hand, and the check of what it answered.
+  route("POST", "/api/authoring/prompt", async (ctx) => {
+    const body = await readJson(ctx.req);
+    send(ctx.res, 200, { text: authoringPrompt(authoringInput(body.input)) });
+  });
+  route("POST", "/api/authoring/check", async (ctx) => {
+    const body = await readJson(ctx.req);
+    const input = authoringInput(body.input);
+    const res = readGeneratedProject(String(body.answer ?? ""), {
+      projectId: input.projectId,
+      projectName: input.projectName,
+      language: input.language,
+    });
+    const p = res.project;
+    send(ctx.res, 200, {
+      text: res.text,
+      errors: res.issues.filter((i) => i.level === "error").map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)),
+      warnings: res.issues.filter((i) => i.level === "warning").map((i) => i.message),
+      summary: p
+        ? {
+            chats: p.agents.map((a) => ({ id: a.id, name: a.name, tool: a.tool ?? null })),
+            tasks: p.tasks.map((t) => ({ id: t.id, title: t.title, agent: t.agent, dependsOn: t.dependsOn })),
+            prompts: Object.keys(p.prompts).length,
+            milestones: p.milestones.map((m) => m.name),
+          }
+        : null,
+    });
+  });
+  route("POST", "/api/authoring/generate", async (ctx) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    const provider = String(body.provider ?? "") as GeneratorProvider;
+    if (!GENERATOR_PROVIDERS.includes(provider)) throw new HttpError(400, `Unknown CLI "${provider}".`);
+    if (typeof body.cwd !== "string" || !body.cwd) throw new HttpError(400, '"cwd" is required.');
+    send(
+      ctx.res,
+      201,
+      await generator().start({
+        provider,
+        model: typeof body.model === "string" ? body.model : undefined,
+        effort: typeof body.effort === "string" ? body.effort : undefined,
+        binary: typeof body.binary === "string" && body.binary ? body.binary : undefined,
+        cwd: body.cwd,
+        input: authoringInput(body.input),
+      }),
+    );
+  });
+  route("GET", "/api/authoring/generate/:id", (ctx, [id]) => send(ctx.res, 200, generator().get(decodeURIComponent(id!))));
+  route("POST", "/api/authoring/generate/:id/stop", async (ctx, [id]) => {
+    control(ctx);
+    send(ctx.res, 200, generator().stop(decodeURIComponent(id!)));
+  });
+  // What is in a folder the wizard is about to use.
+  route("POST", "/api/folder", async (ctx) => {
+    const body = await readJson(ctx.req);
+    send(ctx.res, 200, inspectFolder(String(body.dir ?? "")));
+  });
   route("GET", "/api/control", (ctx) => {
     control(ctx);
     send(ctx.res, 200, { ok: true });

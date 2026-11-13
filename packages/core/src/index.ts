@@ -5,3 +5,4 @@ export * from "./prompt.ts";
 export * from "./io.ts";
 export * from "./snapshot.ts";
 export * from "./edit.ts";
+export * from "./authoring.ts";

@@ -17,11 +17,21 @@ export function useEscape(onClose: () => void): void {
   }, []);
 }
 
-export function Dialog({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+export function Dialog({
+  title,
+  children,
+  onClose,
+  wide = false,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
   useEscape(onClose);
   return (
     <div className="dialog-backdrop" onClick={onClose}>
-      <div className="dialog" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+      <div className={`dialog ${wide ? "wide" : ""}`} role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
         <div className="row">
           <h2>{title}</h2>
           <span className="spacer" />
@@ -35,20 +45,26 @@ export function Dialog({ title, children, onClose }: { title: string; children: 
   );
 }
 
-export function AddProjectDialog({ onClose, onAdded }: { onClose: () => void; onAdded: (key: string) => void }) {
+/** Opening a project file that already exists. */
+export function AddProjectDialog({
+  onClose,
+  onAdded,
+  onNew,
+}: {
+  onClose: () => void;
+  onAdded: (key: string) => void;
+  onNew: () => void;
+}) {
   const { t } = useI18n();
-  const [mode, setMode] = useState<"open" | "new">("open");
   const [path, setPath] = useState("");
-  const [id, setId] = useState("");
-  const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const run = async (fn: () => Promise<{ key: string }>) => {
+  const add = async (filePath: string) => {
     setBusy(true);
     setError(null);
     try {
-      const res = await fn();
+      const res = await api.addProject(filePath);
       onAdded(res.key);
       onClose();
     } catch (e) {
@@ -59,20 +75,15 @@ export function AddProjectDialog({ onClose, onAdded }: { onClose: () => void; on
   };
 
   const browse = async () => {
-    const picked = mode === "open" ? await desktop?.openProjectDialog() : await desktop?.newProjectDialog();
-    if (picked) setPath(picked);
+    const picked = await desktop?.openProjectDialog();
+    if (picked) {
+      setPath(picked);
+      await add(picked);
+    }
   };
 
   return (
-    <Dialog title={t("addProject")} onClose={onClose}>
-      <div className="tabs" role="tablist">
-        <button role="tab" aria-selected={mode === "open"} onClick={() => setMode("open")}>
-          {t("openFile")}
-        </button>
-        <button role="tab" aria-selected={mode === "new"} onClick={() => setMode("new")}>
-          {t("newProject")}
-        </button>
-      </div>
+    <Dialog title={t("openFile")} onClose={onClose}>
       <div className="field">
         <label htmlFor="path">{t("filePath")}</label>
         <div className="row">
@@ -80,48 +91,30 @@ export function AddProjectDialog({ onClose, onAdded }: { onClose: () => void; on
             id="path"
             className="input mono"
             value={path}
+            autoFocus
             placeholder="/Users/me/projects/app/app.aitrack"
             onChange={(e) => setPath(e.target.value)}
           />
           {desktop && (
-            <button className="btn" onClick={browse}>
+            <button className="btn" onClick={() => void browse()}>
               {t("browse")}
             </button>
           )}
         </div>
       </div>
-      {mode === "new" && (
-        <div className="row">
-          <div className="field" style={{ flex: 1 }}>
-            <label htmlFor="pid">{t("projectId")}</label>
-            <input id="pid" className="input mono" value={id} placeholder="my-app" onChange={(e) => setId(e.target.value)} />
-          </div>
-          <div className="field" style={{ flex: 2 }}>
-            <label htmlFor="pname">{t("projectName")}</label>
-            <input id="pname" className="input" value={name} placeholder="My App" onChange={(e) => setName(e.target.value)} />
-          </div>
-        </div>
-      )}
-      <div className="small muted">{t("howToAuthor")}</div>
+      <div className="small muted">{t("openFileHint")}</div>
       {error && <div className="error">{error}</div>}
       <div className="row">
+        <button className="btn ghost small" onClick={onNew}>
+          {t("np_insteadNew")}
+        </button>
         <span className="spacer" />
         <button className="btn ghost" onClick={onClose}>
           {t("cancel")}
         </button>
-        {mode === "open" ? (
-          <button className="btn primary" disabled={busy || !path.trim()} onClick={() => run(() => api.addProject(path.trim()))}>
-            {t("add")}
-          </button>
-        ) : (
-          <button
-            className="btn primary"
-            disabled={busy || !path.trim() || !id.trim() || !name.trim()}
-            onClick={() => run(() => api.createProject(path.trim(), id.trim(), name.trim()))}
-          >
-            {t("create")}
-          </button>
-        )}
+        <button className="btn primary" disabled={busy || !path.trim()} onClick={() => void add(path.trim())}>
+          {t("add")}
+        </button>
       </div>
     </Dialog>
   );

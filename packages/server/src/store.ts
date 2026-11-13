@@ -12,6 +12,10 @@ export interface RegistryEntry {
   key: string;
   filePath: string;
   addedAt: string;
+  /** Shown at the top of the list. */
+  pinned?: boolean;
+  /** Position in the list, set when projects are reordered. */
+  order?: number;
 }
 
 /** Stable key for a project file path. */

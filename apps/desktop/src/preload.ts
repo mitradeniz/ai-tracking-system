@@ -1,8 +1,9 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
 // The UI is a plain web app served by the local tracker. These are the only native helpers it
-// gets: file dialogs, "show in folder", the floating window and the control token that lets it
-// start agents. Everything else goes through the HTTP API.
+// gets: file and folder dialogs, "show in folder", moving a project file to the Trash, the
+// floating window, updates and the control token that lets it start agents. Everything else goes
+// through the HTTP API.
 contextBridge.exposeInMainWorld("aitrackDesktop", {
   isDesktop: true,
   platform: process.platform,
@@ -25,6 +26,10 @@ contextBridge.exposeInMainWorld("aitrackDesktop", {
   saveProjectDialog: (defaultName: string): Promise<string | null> =>
     ipcRenderer.invoke("aitrack:save-dialog", String(defaultName)),
   newProjectDialog: (): Promise<string | null> => ipcRenderer.invoke("aitrack:new-dialog"),
+  chooseFolder: (defaultPath?: string): Promise<string | null> =>
+    ipcRenderer.invoke("aitrack:folder-dialog", defaultPath === undefined ? undefined : String(defaultPath)),
+  /** Removes a project from the list and moves its .aitrack file to the Trash. */
+  trashProject: (key: string): Promise<{ ok: boolean; error?: string }> => ipcRenderer.invoke("aitrack:trash-project", String(key)),
   showInFolder: (filePath: string): Promise<void> => ipcRenderer.invoke("aitrack:show-in-folder", String(filePath)),
   openMini: (): Promise<void> => ipcRenderer.invoke("aitrack:mini-open"),
   closeMini: (): Promise<void> => ipcRenderer.invoke("aitrack:mini-close"),

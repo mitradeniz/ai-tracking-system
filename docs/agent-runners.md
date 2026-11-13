@@ -135,6 +135,8 @@ The hook finds the chat by, in order: `AITRACK_CHAT` (start the session as `AITR
 | `POST /api/runs/:id/stop` 🔑 | stop a run |
 | `GET /api/runs/:id/log?after=n` | output lines |
 | `POST /api/hook?tool=claude\|codex\|…` | hook payloads |
+| `POST /api/authoring/generate` 🔑 | `{provider: claude\|codex\|gemini\|copilot, cwd, input, model?}` — write a project plan with that CLI, read-only in `cwd` |
+| `GET /api/authoring/generate/:id` · `POST …/:id/stop` 🔑 | progress and answer of a plan being written; stop it |
 
 🔑 needs the `X-Aitrack-Token` header. Live updates arrive on `GET /api/stream` as `run`, `runlog` and `runners` events.
 

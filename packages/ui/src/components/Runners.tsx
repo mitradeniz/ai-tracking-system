@@ -482,7 +482,7 @@ export function AutoDispatch({ model, onSetup, onError }: { model: Model; onSetu
     }
   };
   return (
-    <div className={`auto-dispatch ${settings.autoDispatch ? "on" : ""}`} title={runnable.length ? t("run_autoHint") : t("run_autoNone")}>
+    <div data-tour="autodispatch" className={`auto-dispatch ${settings.autoDispatch ? "on" : ""}`} title={runnable.length ? t("run_autoHint") : t("run_autoNone")}>
       <button className="switch" role="switch" aria-checked={settings.autoDispatch} onClick={toggle}>
         <span className="knob" aria-hidden="true" />
         <span>{t("run_auto")}</span>
@@ -526,6 +526,7 @@ export function RunnerBadge({ model, agentId, onClick }: { model: Model; agentId
   if (!model.runners) return null;
   return (
     <button
+      data-tour="runner"
       className={`runner-badge ${runner ? "on" : ""} ${run ? "running" : ""} ${error ? "error" : ""}`}
       title={error ?? (runner ? `${t("run_setup")} · ${PROVIDER_LABEL[runner.provider]}` : t("run_setup"))}
       aria-label={`${t("run_setup")}: ${agentName(model, agentId)}`}

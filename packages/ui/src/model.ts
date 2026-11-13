@@ -137,6 +137,11 @@ export function helpedChats(tasks: Task[], agentId: string): string[] {
 
 /** A free chat id derived from a display name, e.g. "Codex D" -> "codex-d". */
 export function agentIdFromName(name: string, taken: Iterable<string>): string {
+  return slugId(name, taken, "chat");
+}
+
+/** A free id derived from a title: lower case, ASCII, words joined with "-". */
+export function slugId(name: string, taken: Iterable<string>, fallback: string): string {
   const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" };
   const base =
     name
@@ -145,10 +150,43 @@ export function agentIdFromName(name: string, taken: Iterable<string>): string {
       .normalize("NFKD")
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 60) || "chat";
+      .slice(0, 60) || fallback;
   const used = new Set(taken);
   if (!used.has(base)) return base;
   for (let n = 2; ; n += 1) if (!used.has(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+/** The next task id in the style the project already uses: T-07 after T-06; T-01 at first. */
+export function nextTaskId(ids: string[]): string {
+  const used = new Set(ids);
+  let best: { prefix: string; n: number; width: number } | null = null;
+  for (const id of ids) {
+    const m = /^(.*?)(\d+)$/.exec(id);
+    if (!m) continue;
+    const n = Number(m[2]);
+    if (!best || n > best.n) best = { prefix: m[1]!, n, width: m[2]!.length };
+  }
+  const style = best ?? { prefix: "T-", n: 0, width: 2 };
+  for (let n = style.n + 1; ; n += 1) {
+    const id = `${style.prefix}${String(n).padStart(style.width, "0")}`;
+    if (!used.has(id)) return id;
+  }
+}
+
+/** Every task that waits, directly or through others, for the given task. */
+export function dependentsOf(tasks: Task[], taskId: string): Set<string> {
+  const out = new Set<string>();
+  const stack = [taskId];
+  while (stack.length) {
+    const current = stack.pop()!;
+    for (const t of tasks) {
+      if (t.dependsOn.includes(current) && !out.has(t.id)) {
+        out.add(t.id);
+        stack.push(t.id);
+      }
+    }
+  }
+  return out;
 }
 
 /** Session prompts every chat shares (for example the shared context), in the first chat's order. */

@@ -25,8 +25,28 @@ const issues = english
   { title: "Stripe test anahtarı yok, ödeme adımı denenmedi", kind: "needs-you", detail: "STRIPE_SECRET_KEY tanımlı değil. Ödeme akışı yazıldı ama uçtan uca test edilemedi.", fix: "STRIPE_SECRET_KEY is now set in .env.local. Run the payment flow end to end, fix what fails and report again." },
   { title: "Mobil ekran görüntüsü testleri atlandı", kind: "missing", detail: "Emülatör bu ortamda açılamadı." },
 ];
+// A project plan, as the new-project wizard asks for (scenario "project").
+const plan = {
+  format: "aitrack",
+  version: 1,
+  project: { id: "draft", name: "Draft" },
+  agents: [
+    { id: "claude-a", name: "Claude A", tool: "claude", role: "API design, backend, reviews", bootstrapPrompts: ["context"] },
+    { id: "codex-a", name: "Codex A", tool: "codex", role: "Web pages and components", bootstrapPrompts: ["context"] },
+  ],
+  milestones: [{ id: "m1", name: "Launch" }],
+  tasks: [
+    { id: "T-01", title: "Signup API contract", agent: "claude-a", prompts: ["context"], instructions: "Write contracts/signup.yaml.", allowedPaths: ["contracts/"], acceptance: "The contract validates.", estimateDays: 0.5, milestone: "m1" },
+    { id: "T-02", title: "Landing page against the mock", agent: "codex-a", dependsOn: ["T-01"], instructions: "Build the page with the mock server.", allowedPaths: ["web/"], acceptance: "npm test passes.", estimateDays: 1, milestone: "m1" },
+    { id: "T-03", title: "Signup backend", agent: "claude-a", dependsOn: ["T-01"], instructions: "Implement the endpoint.", allowedPaths: ["api/"], acceptance: "API tests pass.", estimateDays: 1.5, milestone: "m1" },
+    { id: "T-04", title: "Connect the form to the real API", agent: "codex-a", dependsOn: ["T-02", "T-03"], instructions: "Replace the mock.", allowedPaths: ["web/"], acceptance: "End-to-end test passes.", estimateDays: 0.5, milestone: "m1" },
+  ],
+  prompts: { context: { title: "Shared context", body: "We build a landing page with a signup form." } },
+};
 const final =
-  scenario === "issues"
+  scenario === "project"
+    ? "Here is the project file.\n```json\n" + JSON.stringify(plan, null, 2) + "\n```\nT-01 can start right away."
+    : scenario === "issues"
     ? "Done, with two open points.\n```aitrack-report\n" + JSON.stringify({ task, status: "done", summary: english ? "Payment form and API added" : "Ödeme formu ve API eklendi", issues }) + "\n```"
     : scenario === "done" || scenario === "steps"
     ? "All done.\n```aitrack-report\n" + JSON.stringify({ task, status: "done", summary: "fake work", verify: "npm test" }) + "\n```"
@@ -62,7 +82,12 @@ if (format === "codex") {
 } else if (format === "claude") {
   const sid = flag("--resume") ?? flag("--session-id");
   out({ type: "system", subtype: "init", session_id: sid });
-  out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }] } });
+  if (scenario === "project") {
+    for (const file of ["README.md", "package.json", "src/"]) {
+      await pause(Number(process.env.FAKE_PAUSE ?? 0));
+      out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Read", input: { file_path: file } }] } });
+    }
+  } else out({ type: "assistant", message: { content: [{ type: "tool_use", name: "Bash", input: { command: "npm test" } }] } });
   out({ type: "assistant", message: { model: "claude-fake", content: [{ type: "text", text: final }], usage: { input_tokens: 10, cache_creation_input_tokens: 2000, cache_read_input_tokens: 30000, output_tokens: 90 } } });
   out({
     type: "result",

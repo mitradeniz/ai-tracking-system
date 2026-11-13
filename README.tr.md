@@ -32,6 +32,8 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 - [Hareket halinde](#-hareket-halinde)
 - [Kurulum](#-kurulum)
 - [Güncellemeler](#-güncellemeler)
+- [Proje başlat](#-proje-başlat)
+- [Planı uygulamada düzenle](#%EF%B8%8F-planı-uygulamada-düzenle)
 - [Hızlı başlangıç](#-hızlı-başlangıç)
 - [Kendi kendine çalışan sohbetler](#-kendi-kendine-çalışan-sohbetler)
 - [Sorunlar, çalıştırma bilgileri ve kendi promptların](#-sorunlar-çalıştırma-bilgileri-ve-kendi-promptların)
@@ -52,6 +54,8 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 
 | | |
 | --- | --- |
+| 🆕 **Yeni proje sihirbazı** | Klasörü, sohbetleri (bilgisayarındaki yapay zekâ CLI'larından önerilir) ve nasıl planlanacağını seç: Claude Code ya da Codex planından görevleri yazsın, başka bir yapay zekâ kopyala-yapıştırla yazsın ya da boş başla. JSON yazmak yok. |
+| ✏️ **Plan düzenleyici** | Görevleri ve promptları uygulamada ekle, değiştir, kaldır: görevi hangi sohbetin alacağı, neyi beklediği, talimatı, izinli yolları ve kabul kriteri. |
 | 🟢 **Sırada ne olduğunu bilen pano** | Görevler, bağlı oldukları işler bitince ve sohbetlerinde yer varken açılır. *Şimdi gönderilebilir* yeşil olanları tek bakışta gösterir; diğer her görev neden beklediğini söyler. |
 | 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak ve durdurmak uygulamadan. |
 | ⚡ **Otomatik dağıtım** | Tek anahtar: boştaki sohbetler, en acil hazır görevlerini yeşile döner dönmez alır; aynı anda en fazla *N* tane. |
@@ -60,7 +64,8 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 | ✍️ **Kendi promptların** | Gönderirken talimat ekle, sohbetin oturumuna istediğin an yaz, kayıtlı promptlarını tut. |
 | 🪟 **Kayan pencere** | Editörünün ve yapay zekâ uygulamalarının üstünde duran küçük pencere: her sohbetin ne yaptığı, senden bekleyenler, tek tıkla gönder. |
 | 🧩 **Paneller ve düzenler** | Ekranları panellerden kur, sürükle, boyutlandır, sohbete göre süz, istediğin kadar düzen kaydet. |
-| 🎨 **Siyah beyaz arayüz** | Yalnızca durumların renkli olduğu yüksek kontrastlı siyah tema (ve beyazı). Katlanan kenar çubuğu, her anahtarı açıklayan ⓘ ipuçları. |
+| 🎨 **Siyah beyaz arayüz** | Yalnızca durumların renkli olduğu yüksek kontrastlı siyah tema (ve beyazı). Katlanan kenar çubuğu, her anahtarı açıklayan ⓘ ipuçları ve uygulamayı ilk açışta kısa bir tanıtım. |
+| 📌 **Proje listen** | Projeleri en üste sabitle, sürükleyerek kendi sırana koy, listeden kaldır ya da dosyasını Çöp Kutusu'na taşı. |
 | 🔄 **Tek tıkla güncelleme** | macOS'ta uygulama GitHub'ı kontrol eder ve kendini günceller: **Güncelle ve yeniden başlat**, ya da çalışan sohbet yokken yeni sürümü kendiliğinden kursun. |
 | 🔌 **Her sohbetle çalışır** | Elle yürüttüğün sohbetler HTTP, bir CLI, bir gelen kutusu dosyası, yapıştırılan bir blok ya da tek satırlık bir kanca ile bildirir. |
 | 🏠 **Önce yerel** | `127.0.0.1` üzerinde çalışır; hesap yok, telemetri yok. Plan, commit'lediğin bir dosyadır. |
@@ -262,9 +267,56 @@ sequenceDiagram
 
 </details>
 
+## 🆕 Proje başlat
+
+<table>
+<tr>
+<td width="440"><img src="docs/images/new-project.png" alt="Yeni proje sihirbazı, 3. adım: Burada yapay zekâyla oluştur, Başka bir yapay zekâ kullan ya da Boş başla; Claude Code'un yazdığı plan, kaydedilmeden önce sohbetleri ve bağımlılıklarıyla dört görev olarak gösteriliyor" width="440"></td>
+<td>
+
+Kenar çubuğunda **+ Yeni proje**'ye tıkla. Üç kısa adım:
+
+1. **Proje** — bir ad ve klasör; genelde sohbetlerin çalışacağı reponun kökü. `<ad>.aitrack` dosyası oraya, kodun yanına kaydedilir. Klasörde zaten bir proje dosyası varsa onu açabilirsin. **Planın dilini** seç (English ya da Türkçe): başlıklar, promptlar ve sohbetlerin bildirdiği sorunlar bu dilde yazılır.
+2. **Sohbetler** — projede çalışacak yapay zekâ sohbetleri. Sihirbaz bilgisayarında Claude Code, Codex, Copilot ve Gemini'yi arar ve **Claude A** ile **Codex A** önerir; daha fazlasını ekle (**+ Claude**, **+ Codex**, **+ Cursor** …), adlarını değiştir ve her birinin neyde iyi olduğunu yaz. İstersen CLI'ı kurulu sohbetler kendi kendine çalışsın.
+3. **Plan** — birini seç:
+   - **Burada yapay zekâyla oluştur** — ne yapılacağını anlat; Claude Code, Codex, Gemini ya da Copilot görevleri yazsın. Klasörde **salt okunur** çalışır: gerçekçi görevler ve yollar seçmek için kodu ve README'yi okuyabilir ama hiçbir şeyi değiştiremez. Genelde bir ile beş dakika sürer.
+   - **Başka bir yapay zekâ kullan** — **Talimatı kopyala** (planın ve sohbetlerin dahil) ve ChatGPT'ye, Claude'a ya da herhangi bir sohbete yapıştır; cevabını geri yapıştır ve **Kontrol et**.
+   - **Boş başla** — yalnızca sohbetler; görevleri kendin ekle.
+
+Hiçbir şey kaydedilmeden önce planı görürsün: görevler, sohbetleri ve neyi bekledikleri. Yapay zekânın cevabındaki sorunlar (bilinmeyen sohbet, döngü) listelenir; tek tıkla **… düzeltsin**.
+
+</td>
+</tr>
+</table>
+
+> [!TIP]
+> Uygulamayı ilk açtığında on adımlık bir tanıtım ekranın ana bölümlerini gösterir. **Ayarlar → Tanıtımı yeniden göster** ile tekrar açılır.
+
+## ✏️ Planı uygulamada düzenle
+
+<table>
+<tr>
+<td width="440"><img src="docs/images/task-editor.png" alt="Görev düzenleyici: başlık, görevi alacak sohbet, onun yerine alabilecek sohbetler, beklediği görevler (döngü yaratacak olanlar kapalı), sırasıyla promptlar, talimat, kabul kriteri, izinli yollar, tahmin ve etiketler" width="440"></td>
+<td>
+
+| | |
+| --- | --- |
+| **Görev ekle** | Başlıktaki **+ Görev** ya da bir sohbet şeridinin altındaki **+ Görev**. |
+| **Değiştir ya da kaldır** | Görevi aç → **Düzenle**. Şu an bir sohbette olan görev kaldırılamaz; kaldırılan görevi bekleyenler onun beklediklerini bekler. |
+| **Neyi bekliyor** | Listeden görev seç; bu görevi zaten bekleyen bir görev seçilemez, böylece döngü olmaz. |
+| **Promptlar** | Başlıktaki **Promptlar** kütüphaneyi açar: ortak bağlam, oturum promptları, görev promptları. Kaldırılan prompt onu kullanan görevlerden ve sohbetlerden de çıkarılır. |
+| **Boş proje** | Pano **Yapay zekâyla planla**, **Görev ekle** ve **Promptlar** sunar. |
+| **Proje ayarları** | ⋯ menüsü: ad, açıklama, planın dili ve biten görevlerin onayını bekleyip beklemeyeceği. |
+
+Her değişiklik kontrol edilip `.aitrack` dosyasına biçimi korunarak yazılır: senin yazmadığın alanlar eklenmez, anahtar sırası kalır; diff küçük kalır.
+
+</td>
+</tr>
+</table>
+
 ## 🚀 Hızlı başlangıç
 
-1. **Uygulamayı aç → Proje ekle → Seç…** ve `examples/landing-page.aitrack`'i seç — ya da kendi reponda bir `.aitrack` dosyası ([yapay zekâya yazdır](docs/authoring-with-ai.md)).
+1. **+ Yeni proje** — [sihirbaz](#-proje-başlat) klasörü, sohbetleri ve planı kurar. Uygulamayı önce denemek için yanındaki klasör düğmesiyle `examples/landing-page.aitrack`'i aç.
 2. **Sohbetleri başlat.** Elle yürüttüğün bir sohbet için **Oturum promptu**'nu bir kez yeni bir Claude / Codex / Cursor sohbetine kopyala. Bir sohbetin kendi kendine çalışması için şeridindeki **⚙ elle** rozetine tıkla ve bir CLI seç ([aşağıda](#-kendi-kendine-çalışan-sohbetler)).
 3. **Yeşil görevleri gönder.** Yeşil karta tıkla → **Promptu kopyala ve gönderildi işaretle** (elle) ya da **Gönder ▶** (kendi kendine). Ya da başlıktaki **Otomatik dağıtım**'ı aç.
 4. **İzle.** Sohbetler `started`, `done`, `blocked` bildirir; bağlı görevler açılır. **Senden bekleyenler** yanıtları, onayları, engelleri ve sorunları toplar.
@@ -439,6 +491,7 @@ Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Şeması: [`sch
 | --- | --- |
 | **Paneller** | Şimdi gönderilebilir · Sohbet şeritleri · Akış · Liste · Senden bekleyenler · Son olaylar · İlerleme. Ekle, sürükle, boyutlandır (genişlikte ¼'ten tama, yükseklikte otomatikten tama) ve her birini bazı sohbetlerle sınırla. |
 | **Düzenler** | İstediğin kadar — *Sabah*, *Yalnızca Claude*, *İnceleme zamanı*. Hazır olanlar: Sohbetler, Genel bakış, Akış, Liste. |
+| **Projeler** | Projenin yanındaki ⋯: en üste sabitle, yukarı ya da aşağı taşı, proje ayarları, dosyayı göster, kaldır. Projeleri sürükleyerek sırala; sabitlenenlerin arasına bırakılan da sabitlenir. Kaldırırken dosyanın kalacağını ya da Çöp Kutusu'na taşınacağını sorar. |
 | **Sohbetler** | Şeritlerin sonunda **+ Sohbet ekle**, düzenlemek ya da kaldırmak için şeritteki ✏️. Yeni bir sohbet, meşgul sohbetlerin görevlerini devralabilir. |
 | **Görünüm** | Tema (koyu, açık, sistem), vurgu rengi, yoğunluk, yazı boyutu, cam yoğunluğu, dil (English, Türkçe). |
 | **Siyah beyaz** | Koyu tema siyah zemin üstünde siyah beyaz bileşenlerle gelir; yeşil, sarı, kırmızı ve mavi yalnızca durumlar için. Açık tema bunun beyaz aynası. |
@@ -510,6 +563,7 @@ docs/               dosya biçimi, bildirim, ajan çalıştırıcılar, yapay ze
 - İzleyici **yalnızca 127.0.0.1**'i dinler, yabancı `Host` başlıklarını (DNS rebinding) ve başka kökenlerden gelen yazmaları reddeder, yazmalar için `application/json` ister.
 - Pencereler bağlam yalıtımı ve sandbox ile çalışır; yerel köprü dosya pencereleri, kayan pencere, güncellemeler ve denetim anahtarıyla sınırlıdır ve her çağrı ana süreçte kontrol edilir.
 - Ajan başlatmak bir **denetim anahtarı** ister; çalıştırma ayarları yalnızca senin bilgisayarında durur, proje dosyalarında asla.
+- **Burada yapay zekâyla oluştur**, CLI'ı projenin klasöründe salt okunur çalıştırır (okuyabilir, hiçbir şeyi değiştiremez) ve denetim anahtarı ister; cevabı bir şey yazılmadan önce kontrol edilir.
 - Güncellemeler yalnızca klonun kendi `update-macos.command`'ını çalıştırır, klonun zaten izlediği daldan **yalnızca ileri sararak** çeker ve yerel değişikliklere asla dokunmaz.
 - Raporlar veridir: görev durumunu değiştirir ve metin olarak gösterilir, asla çalıştırılmaz.
 - `.aitrack` dosyalarına ya da raporlara gizli bilgi koyma — dosya commit'lenmek için var.
@@ -522,6 +576,13 @@ Daha fazlası [SECURITY.md](SECURITY.md) içinde.
 <summary><b>Benim yerime Claude'la ya da Codex'le konuşuyor mu?</b></summary>
 
 İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmi CLI'ı üzerinden — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle yürüttüğün sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
+
+</details>
+
+<details>
+<summary><b>JSON yazmam gerekiyor mu?</b></summary>
+
+Hayır. **Yeni proje** dosyayı senin için yazar — planından yapay zekâyla ya da boş — ve görevler, promptlar, sohbetler uygulamada düzenlenir. Dosya okunabilir JSON olarak kalır; pull request'te inceleyebilir ya da elle düzenleyebilirsin, uygulama değişince yeniden yükler.
 
 </details>
 
@@ -565,6 +626,7 @@ Gelen kutusu dosyasını kullan (sohbet diskindeki bir worktree'de çalışıyor
 - [x] Kendi kendine çalışan sohbetler, otomatik dağıtım, kancalar
 - [x] Çözüm promptlu sorunlar, çalıştırma bilgileri, kendi promptların
 - [x] macOS'ta tek tıkla ve otomatik güncelleme (klonundan)
+- [x] Yapay zekâyla planlayan yeni proje sihirbazı, plan düzenleyici, sabitlenip sıralanabilen proje listesi, ilk açılış tanıtımı
 - [ ] GitHub Releases'ta imzalı ve noter onaylı sürümler; böylece uygulama klonlamadan ve Node.js olmadan indirilip (`electron-updater` ile) güncellenebilir
 - [ ] Windows ve Linux'ta tek tıkla güncelleme
 - [ ] Güncelleme kanalları: `stable` ve `beta`

@@ -4,6 +4,7 @@ export interface ProjectSummary {
   key: string;
   filePath: string;
   addedAt: string;
+  pinned: boolean;
   id: string | null;
   name: string;
   ok: boolean;
@@ -141,6 +142,73 @@ export interface UpdateProgress {
   log: string[];
 }
 
+export interface TaskPayload {
+  id: string;
+  title: string;
+  agent: string;
+  description?: string;
+  alsoAgents?: string[];
+  dependsOn?: string[];
+  prompts?: string[];
+  instructions?: string;
+  scope?: string;
+  allowedPaths?: string[];
+  acceptance?: string;
+  milestone?: string;
+  estimateDays?: number | null;
+  tags?: string[];
+}
+
+export interface AuthoringChat {
+  id: string;
+  name: string;
+  tool?: string;
+  role?: string;
+}
+
+export interface AuthoringInput {
+  projectId: string;
+  projectName: string;
+  language?: "en" | "tr";
+  chats: AuthoringChat[];
+  plan: string;
+  canReadRepository?: boolean;
+  previous?: { text: string; errors: string[] };
+}
+
+export interface AuthoringCheck {
+  text: string | null;
+  errors: string[];
+  warnings: string[];
+  summary: {
+    chats: { id: string; name: string; tool: string | null }[];
+    tasks: { id: string; title: string; agent: string; dependsOn: string[] }[];
+    prompts: number;
+    milestones: string[];
+  } | null;
+}
+
+export interface GenerateJob {
+  id: string;
+  provider: "claude" | "codex" | "gemini" | "copilot";
+  state: "running" | "done" | "failed" | "stopped";
+  startedAt: string;
+  endedAt?: string;
+  activity: string[];
+  tools: number;
+  answer?: string;
+  error?: string;
+}
+
+export interface FolderInfo {
+  path: string;
+  exists: boolean;
+  isDir: boolean;
+  isGit: boolean;
+  projectFiles: string[];
+  name: string;
+}
+
 export interface Activity {
   key: string;
   projectName?: string;
@@ -153,6 +221,10 @@ export interface DesktopBridge {
   openProjectDialog(): Promise<string | null>;
   saveProjectDialog(defaultName: string): Promise<string | null>;
   newProjectDialog(): Promise<string | null>;
+  /** Picks a folder (the new-project wizard). */
+  chooseFolder?(defaultPath?: string): Promise<string | null>;
+  /** Removes a project from the list and moves its .aitrack file to the Trash. */
+  trashProject?(key: string): Promise<{ ok: boolean; error?: string }>;
   showInFolder(filePath: string): Promise<void>;
   platform?: string;
   /** The window is translucent (macOS vibrancy). */
@@ -252,9 +324,36 @@ export const api = {
   projects: () => request<{ projects: ProjectSummary[] }>("GET", "/api/projects").then((r) => r.projects),
   project: (key: string) => request<ProjectDetail>("GET", `/api/projects/${enc(key)}`),
   addProject: (filePath: string) => request<ProjectSummary>("POST", "/api/projects", { filePath }),
-  createProject: (filePath: string, id: string, name: string) =>
-    request<ProjectSummary>("POST", "/api/projects/create", { filePath, id, name }),
+  createProject: (input: {
+    filePath: string;
+    id?: string;
+    name?: string;
+    language?: "en" | "tr";
+    agents?: AuthoringChat[];
+    /** A checked project file (from the AI step). */
+    text?: string;
+  }) => request<ProjectSummary>("POST", "/api/projects/create", input),
   removeProject: (key: string) => request<{ ok: true }>("DELETE", `/api/projects/${enc(key)}`),
+  pinProject: (key: string, pinned: boolean) =>
+    request<{ projects: ProjectSummary[] }>("POST", `/api/projects/${enc(key)}/pin`, { pinned }).then((r) => r.projects),
+  orderProjects: (keys: string[]) => request<{ projects: ProjectSummary[] }>("POST", "/api/projects/order", { keys }).then((r) => r.projects),
+  saveInfo: (key: string, info: { name?: string; description?: string; language?: "en" | "tr" | null; requireApproval?: boolean }) =>
+    request<ProjectSummary>("POST", `/api/projects/${enc(key)}/info`, info),
+  replacePlan: (key: string, text: string) => request<ProjectSummary>("POST", `/api/projects/${enc(key)}/plan`, { text }),
+  saveTask: (key: string, task: TaskPayload, mode: "create" | "update") =>
+    request<ProjectSummary>("POST", `/api/projects/${enc(key)}/tasks`, { task, mode }),
+  removeTask: (key: string, task: string) => request<ProjectSummary>("POST", `/api/projects/${enc(key)}/tasks/${enc(task)}/remove`, {}),
+  savePrompt: (key: string, prompt: { id: string; title?: string; body: string }, mode: "create" | "update") =>
+    request<ProjectSummary>("POST", `/api/projects/${enc(key)}/prompts`, { prompt, mode }),
+  removePrompt: (key: string, prompt: string) =>
+    request<ProjectSummary>("POST", `/api/projects/${enc(key)}/prompts/${enc(prompt)}/remove`, {}),
+  folder: (dir: string) => request<FolderInfo>("POST", "/api/folder", { dir }),
+  authoringPrompt: (input: AuthoringInput) => request<{ text: string }>("POST", "/api/authoring/prompt", { input }).then((r) => r.text),
+  checkAnswer: (answer: string, input: AuthoringInput) => request<AuthoringCheck>("POST", "/api/authoring/check", { answer, input }),
+  generate: (provider: GenerateJob["provider"], cwd: string, input: AuthoringInput, model?: string) =>
+    request<GenerateJob>("POST", "/api/authoring/generate", { provider, cwd, input, model }),
+  generateStatus: (id: string) => request<GenerateJob>("GET", `/api/authoring/generate/${enc(id)}`),
+  stopGenerate: (id: string) => request<GenerateJob>("POST", `/api/authoring/generate/${enc(id)}/stop`, {}),
   reload: (key: string) => request<{ ok: true }>("POST", `/api/projects/${enc(key)}/reload`),
   addEvent: (key: string, event: { task: string; type: string; agent?: string; message?: string; reason?: string; pr?: string }) =>
     request<TrackEvent>("POST", `/api/projects/${enc(key)}/events`, event),

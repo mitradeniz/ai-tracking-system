@@ -185,6 +185,31 @@ function registerIpc(): void {
     const res = await dialog.showSaveDialog(win, { defaultPath: "project.aitrack", filters });
     return res.canceled ? null : (res.filePath ?? null);
   });
+  ipcMain.handle("aitrack:folder-dialog", async (event, defaultPath: unknown) => {
+    if (!isOwnFrame(event) || !win) return null;
+    const res = await dialog.showOpenDialog(win, {
+      properties: ["openDirectory", "createDirectory"],
+      defaultPath: typeof defaultPath === "string" && defaultPath ? defaultPath : undefined,
+    });
+    return res.canceled ? null : (res.filePaths[0] ?? null);
+  });
+  // Removing a project and moving its file to the Trash. Only the file of a project in the list
+  // can be moved, and only one that ends in .aitrack.
+  ipcMain.handle("aitrack:trash-project", async (event, key: unknown) => {
+    if (!isOwnFrame(event) || typeof key !== "string" || !baseUrl) return { ok: false, error: "forbidden" };
+    try {
+      const list = (await (await fetch(`${baseUrl}/api/projects`)).json()) as { projects?: Array<{ key: string; filePath: string }> };
+      const project = list.projects?.find((p) => p.key === key);
+      if (!project) return { ok: false, error: "Unknown project." };
+      if (!project.filePath.endsWith(".aitrack")) return { ok: false, error: "Only .aitrack files are moved to the Trash." };
+      const res = await fetch(`${baseUrl}/api/projects/${encodeURIComponent(key)}`, { method: "DELETE" });
+      if (!res.ok) return { ok: false, error: `The project could not be removed (${res.status}).` };
+      if (existsSync(project.filePath)) await shell.trashItem(project.filePath);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: (e as Error).message };
+    }
+  });
   ipcMain.handle("aitrack:show-in-folder", (event, filePath: unknown) => {
     if (!isOwnFrame(event)) return;
     const p = String(filePath ?? "");
