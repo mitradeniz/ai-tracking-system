@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, copyText, type ChatRunner, type DetectedProvider, type RunLogEvent, type RunnerProvider, type RunSummary } from "../api.ts";
+import { api, copyText, desktop, type ChatRunner, type DetectedProvider, type RunLogEvent, type RunnerProvider, type RunSummary } from "../api.ts";
 import { RUNLOG_EVENT } from "../hooks.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import { activeRun, agentName, PROVIDER_LABEL, runnerOf, type Model } from "../model.ts";
@@ -163,14 +163,38 @@ export function RunnerDialog({
             <label htmlFor="run-workdir">
               {t("run_workdir")} <InfoTip text={t("info_workdir")} />
             </label>
-            <input
-              id="run-workdir"
-              className="input mono"
-              value={form.workdir ?? ""}
-              placeholder={defaultWorkdir}
-              onChange={(e) => set({ workdir: e.target.value })}
-            />
-            <span className="small muted">{t("run_workdirHint", { path: defaultWorkdir })}</span>
+            <div className="row">
+              <input
+                id="run-workdir"
+                className="input mono"
+                value={form.workdir ?? ""}
+                placeholder={defaultWorkdir}
+                onChange={(e) => set({ workdir: e.target.value })}
+              />
+              {desktop?.chooseFolder && (
+                <button
+                  className="btn"
+                  onClick={async () => {
+                    const picked = await desktop!.chooseFolder!(form.workdir || model.runners?.planFolder || undefined);
+                    if (picked) set({ workdir: picked });
+                  }}
+                >
+                  {t("browse")}
+                </button>
+              )}
+            </div>
+            {!form.workdir && model.runners?.defaultWorkdirExists === false ? (
+              <div className="warn-box small">
+                <span>{t("run_workdirMissing", { path: defaultWorkdir })}</span>
+                {model.runners.planFolder && (
+                  <button className="btn small" onClick={() => set({ workdir: model.runners!.planFolder! })}>
+                    {t("run_workdirUse", { path: model.runners.planFolder })}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <span className="small muted">{t("run_workdirHint", { path: defaultWorkdir })}</span>
+            )}
           </div>
           {p !== "custom" && (
             <div className="field">

@@ -5,6 +5,7 @@ import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { useTracker } from "./hooks.ts";
 import { chosenLang, I18nContext, initialLang, translator, type Lang, type T } from "./i18n.ts";
 import {
+  localError,
   activeRun,
   agentName,
   buildModel,
@@ -221,7 +222,7 @@ export function MiniApp() {
       const how = await dispatchTask(model.detail.key, s.id, agentId, model.runners);
       setFlash(how === "run" ? t("run_sent", { task: s.id, agent: agentName(model, agentId) }) : t("copiedSent", { task: s.id }));
     } catch (e) {
-      setFlash(`⚠ ${(e as Error).message}`);
+      setFlash(`⚠ ${localError((e as Error).message, t)}`);
     } finally {
       setBusy(null);
     }
@@ -233,7 +234,7 @@ export function MiniApp() {
     try {
       await api.addEvent(model.detail.key, { task: s.id, type: "approved", agent: s.agent ?? undefined });
     } catch (e) {
-      setFlash(`⚠ ${(e as Error).message}`);
+      setFlash(`⚠ ${localError((e as Error).message, t)}`);
     } finally {
       setBusy(null);
     }

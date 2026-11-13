@@ -53,6 +53,10 @@ interface Run extends RunSummary {
 export interface RunnerState {
   settings: ProjectRunners;
   defaultWorkdir: string;
+  /** False when the project's code folder (settings.repoPath) does not exist yet. */
+  defaultWorkdirExists: boolean;
+  /** The repository the project file is in: a working folder to offer when the code folder is missing. */
+  planFolder: string;
   runs: RunSummary[];
   errors: Record<string, string>;
   hooks: ReturnType<typeof hookSnippets>;
@@ -71,14 +75,27 @@ const now = () => new Date().toISOString();
 
 /** The repository a project works in: settings.repoPath, else the git root above the file, else its folder. */
 export function defaultWorkdir(filePath: string, repoPath: string | undefined): string {
+  if (repoPath) return path.resolve(path.dirname(filePath), repoPath);
+  return planFolder(filePath);
+}
+
+/** The git root above the project file, else its folder. */
+export function planFolder(filePath: string): string {
   const dir = path.dirname(filePath);
-  if (repoPath) return path.resolve(dir, repoPath);
   let cur = dir;
   for (;;) {
     if (existsSync(path.join(cur, ".git"))) return cur;
     const parent = path.dirname(cur);
     if (parent === cur) return dir;
     cur = parent;
+  }
+}
+
+function isDir(p: string): boolean {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
   }
 }
 
@@ -170,9 +187,12 @@ export class RunManager extends EventEmitter {
     const ctx = this.manager.context(key);
     const errors: Record<string, string> = {};
     for (const [k, v] of this.errors) if (k.startsWith(`${key}:`)) errors[k.slice(key.length + 1)] = v;
+    const base = defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
     return {
       settings: this.store.project(key),
-      defaultWorkdir: defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath),
+      defaultWorkdir: base,
+      defaultWorkdirExists: isDir(base),
+      planFolder: planFolder(ctx.filePath),
       runs: [...this.runs.values()].filter((r) => r.key === key).map((r) => this.summary(r)).reverse().slice(0, 50),
       errors,
       hooks: hookSnippets(this.manager.serverUrl),
@@ -303,7 +323,14 @@ export class RunManager extends EventEmitter {
     const { key, task, agent, runner, prompt, resume, kind, auto } = input;
     const ctx = this.manager.context(key);
     const workdir = runner.workdir || defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
-    if (!existsSync(workdir) || !statSync(workdir).isDirectory()) throw new HttpError(400, `Working folder not found: ${workdir}`);
+    if (!isDir(workdir)) {
+      throw new HttpError(
+        400,
+        runner.workdir
+          ? `This chat's working folder was not found: ${workdir}. Choose another one in the chat's run settings.`
+          : `The project's code folder does not exist yet: ${workdir} (settings.repoPath in the project file). Create it, or choose a working folder in this chat's run settings.`,
+      );
+    }
     const provider = runner.provider as ProviderId;
     let invocation;
     try {

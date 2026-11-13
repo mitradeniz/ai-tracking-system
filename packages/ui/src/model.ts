@@ -72,6 +72,15 @@ export function localReason(reason: string, t: T): string {
   return reason;
 }
 
+/** Errors the tracker explains in English, shown in the UI language. */
+export function localError(message: string, t: T): string {
+  let m = /^The project's code folder does not exist yet: (.+) \(settings\.repoPath in the project file\)\./.exec(message);
+  if (m) return t("err_codeFolderMissing", { path: m[1]! });
+  m = /^This chat's working folder was not found: (.+)\. Choose another one/.exec(message);
+  if (m) return t("err_workdirMissing", { path: m[1]! });
+  return message;
+}
+
 /** Messages the tracker writes itself when it runs a chat, shown in the UI language. */
 export function localMessage(message: string, t: T): string {
   let m = /^(Auto-sent|Sent) to (.+) \((r-[\w-]+)\)\.$/.exec(message);

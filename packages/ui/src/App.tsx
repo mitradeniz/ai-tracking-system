@@ -15,7 +15,7 @@ import { Workspace } from "./components/Workspace.tsx";
 import { useTracker } from "./hooks.ts";
 import { chosenLang, I18nContext, initialLang, rememberLang, translator, type Key, type Lang } from "./i18n.ts";
 import { defaultLayouts, newLayout, useLayouts, type Layout } from "./layouts.ts";
-import { buildModel } from "./model.ts";
+import { buildModel, localError } from "./model.ts";
 import { usePref } from "./prefs.ts";
 import { useUpdates } from "./updates.ts";
 
@@ -97,7 +97,7 @@ export function App() {
     [t, toast],
   );
 
-  const { projects, loaded, detail, live, refresh, runners } = useTracker(selected, onActivity, (m) => toast(m, "failed"));
+  const { projects, loaded, detail, live, refresh, runners } = useTracker(selected, onActivity, (m) => toast(localError(m, t), "failed"));
 
   const updates = useUpdates((kind, p) =>
     toast(kind === "done" ? t("upd_done", { to: p.to ?? "" }) : t("upd_failed", { message: p.message ?? "" }), kind === "done" ? "done" : "failed"),
@@ -272,7 +272,7 @@ export function App() {
                 setSelected(key);
                 setDialog("projectSettings");
               }}
-              onError={(m) => toast(m, "failed")}
+              onError={(m) => toast(localError(m, t), "failed")}
             />
           </div>
           <div className="sidebar-footer">
@@ -376,7 +376,7 @@ export function App() {
                   )}
                   <span className="spacer" />
                   <div className="header-actions">
-                    {model && <AutoDispatch model={model} onSetup={() => runnerSettings()} onError={(m) => toast(m, "failed")} />}
+                    {model && <AutoDispatch model={model} onSetup={() => runnerSettings()} onError={(m) => toast(localError(m, t), "failed")} />}
                     <button className="btn small" onClick={() => setDialog("paste")}>
                       {t("pasteReport")}
                     </button>
@@ -526,7 +526,7 @@ export function App() {
                     editing={editing}
                     onChange={saveLayout}
                     onOpen={setOpenTask}
-                    onError={(m) => toast(m, "failed")}
+                    onError={(m) => toast(localError(m, t), "failed")}
                     onInfo={(m) => toast(m, "done")}
                     onEditAgent={editAgent}
                     onRunnerSettings={runnerSettings}
@@ -544,7 +544,7 @@ export function App() {
           taskId={openTask}
           onClose={() => setOpenTask(null)}
           onOpen={setOpenTask}
-          onError={(m) => toast(m, "failed")}
+          onError={(m) => toast(localError(m, t), "failed")}
           onInfo={(m) => toast(m, "done")}
           onRunnerSettings={runnerSettings}
         />

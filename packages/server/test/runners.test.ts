@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -398,5 +398,31 @@ describe("provider adapters", () => {
       s2 = (await call("GET", `/api/authoring/generate/${slow.json.id}`)).json;
     }
     expect(s2.state).toBe("stopped");
+  });
+
+  it("explains a missing code folder and offers the plan's folder", async () => {
+    const other = path.join(dir, "plan", "docs");
+    await mkdir(other, { recursive: true });
+    const planFile = path.join(other, "p.aitrack");
+    await writeFile(planFile, serializeProject({ ...project, project: { ...project.project, id: "p2" }, settings: { ...project.settings, repoPath: "../../code" } }));
+    const added = await call("POST", "/api/projects", { filePath: planFile });
+    const k = added.json.key as string;
+    const state = (await call("GET", `/api/projects/${k}/runners`)).json;
+    expect(state.defaultWorkdir).toBe(path.join(dir, "code"));
+    expect(state.defaultWorkdirExists).toBe(false);
+    expect(state.planFolder).toBe(other);
+    await call("POST", `/api/projects/${k}/runners/a`, { runner: { provider: "codex", binary: FAKE } });
+    const res = await call("POST", `/api/projects/${k}/tasks/T1/run`, {});
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/code folder does not exist yet/);
+    expect((await call("POST", `/api/projects/${k}/runners/a`, { runner: { provider: "codex", binary: FAKE, workdir: path.join(dir, "nope") } })).status).toBe(400);
+    const gone = path.join(dir, "gone");
+    await mkdir(gone);
+    await call("POST", `/api/projects/${k}/runners/a`, { runner: { provider: "codex", binary: FAKE, workdir: gone } });
+    await rm(gone, { recursive: true });
+    const res2 = await call("POST", `/api/projects/${k}/tasks/T1/run`, {});
+    expect(res2.json.error).toMatch(/working folder was not found/);
+    await call("POST", `/api/projects/${k}/runners/a`, { runner: { provider: "codex", binary: FAKE, workdir: other } });
+    expect((await call("POST", `/api/projects/${k}/tasks/T1/run`, {})).status).toBe(201);
   });
 });

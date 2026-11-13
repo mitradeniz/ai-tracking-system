@@ -4067,3 +4067,15 @@ details.advanced[open] {
 .dialog > .segmented {
   align-self: flex-start;
 }
+
+.warn-box {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--blocked-line);
+  background: var(--blocked-bg);
+  color: var(--text);
+}

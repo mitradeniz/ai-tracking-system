@@ -634,6 +634,10 @@ const en = {
   np_nChat1: "1 chat",
   np_nPrompt1: "1 prompt",
   np_nMilestone1: "1 milestone",
+  run_workdirMissing: "The project's code folder does not exist yet: {path}. A chat needs a working folder that exists.",
+  run_workdirUse: "Use {path}",
+  err_codeFolderMissing: "The project's code folder does not exist yet: {path} (settings.repoPath in the project file). Create it, or choose a working folder in this chat's run settings.",
+  err_workdirMissing: "This chat's working folder was not found: {path}. Choose another one in its run settings.",
 };
 
 export type Key = keyof typeof en;
@@ -1270,6 +1274,10 @@ const tr: Record<Key, string> = {
   np_nChat1: "1 sohbet",
   np_nPrompt1: "1 prompt",
   np_nMilestone1: "1 kilometre taşı",
+  run_workdirMissing: "Projenin kod klasörü henüz yok: {path}. Sohbetin çalışması için var olan bir klasör gerekir.",
+  run_workdirUse: "{path} kullan",
+  err_codeFolderMissing: "Projenin kod klasörü henüz yok: {path} (proje dosyasındaki settings.repoPath). Klasörü oluştur ya da bu sohbetin çalıştırma ayarlarından bir çalışma klasörü seç.",
+  err_workdirMissing: "Bu sohbetin çalışma klasörü bulunamadı: {path}. Çalıştırma ayarlarından başka bir klasör seç.",
 };
 
 const dictionaries: Record<Lang, Record<Key, string>> = { en, tr };

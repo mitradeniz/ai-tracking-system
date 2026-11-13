@@ -84,6 +84,8 @@ export interface RunSummary {
 export interface RunnerState {
   settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner> };
   defaultWorkdir: string;
+  defaultWorkdirExists?: boolean;
+  planFolder?: string;
   runs: RunSummary[];
   errors: Record<string, string>;
   hooks: { claude: string; codex: string; generic: string };
