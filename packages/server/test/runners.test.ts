@@ -225,6 +225,32 @@ describe("agent runners", () => {
     expect(state.runs[0].state).toBe("stopped");
   });
 
+  it("leaves a chat the person stopped alone, and stops everything at once", async () => {
+    process.env.FAKE_SCENARIO = "sleep";
+    await setRunner("a", { provider: "codex" });
+    await call("POST", `/api/projects/${key}/runners`, { autoDispatch: true, maxConcurrent: 1 });
+    await waitFor("T1", "dispatched");
+    let state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    await call("POST", `/api/runs/${state.runs[0].id}/stop`, {});
+    await waitFor("T1", "blocked");
+    state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.held).toEqual(["a"]);
+    // Ready again, but automatic dispatch does not hand it back to the stopped chat.
+    await call("POST", `/api/projects/${key}/events`, { task: "T1", type: "reopened" });
+    await new Promise((r) => setTimeout(r, 1200));
+    const status = async () => (await call("GET", `/api/projects/${key}`)).json.board.tasks.find((t: { id: string }) => t.id === "T1").status;
+    expect(await status()).toBe("ready");
+    // Sending it by hand releases the chat.
+    expect((await call("POST", `/api/projects/${key}/tasks/T1/run`, {})).status).toBe(201);
+    await waitFor("T1", "dispatched");
+    expect((await call("GET", `/api/projects/${key}/runners`)).json.held).toEqual([]);
+    expect((await call("POST", `/api/projects/${key}/runs/stop`, {}, false)).status).toBe(401);
+    const all = await call("POST", `/api/projects/${key}/runs/stop`, {});
+    expect(all.json).toEqual({ stopped: 1 });
+    await waitFor("T1", "blocked");
+    expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.autoDispatch).toBe(false);
+  });
+
   it("dispatches automatically to free chats and continues down the graph", async () => {
     await setRunner("a", { provider: "codex" });
     process.env.FAKE_FORMAT = "codex";

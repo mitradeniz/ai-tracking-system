@@ -1,6 +1,6 @@
 import type { TaskSnapshot } from "@aitrack/core";
 import { useEffect, useMemo, useState } from "react";
-import { desktop, dispatchTask, api } from "./api.ts";
+import { desktop, dispatchTask, api, type RunSummary } from "./api.ts";
 import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { useTracker } from "./hooks.ts";
 import { chosenLang, I18nContext, initialLang, translator, type Lang, type T } from "./i18n.ts";
@@ -20,6 +20,7 @@ import {
   type Model,
 } from "./model.ts";
 import { Bang, useNow } from "./components/Info.tsx";
+import { StopButton, stopRun } from "./components/Runners.tsx";
 import { readJson, usePref } from "./prefs.ts";
 
 type MiniView = "overview" | "compact" | "lanes";
@@ -66,7 +67,7 @@ interface ChatRow {
   /** The task one click can send to this chat. */
   next?: TaskSnapshot;
   /** An agent run is going on now. */
-  running?: boolean;
+  running?: RunSummary;
   /** Short state label shown on the right. */
   label: string;
   startedAt?: string;
@@ -106,7 +107,7 @@ function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
       const run = activeRun(model, a.id);
       if (run) {
         row.state = "working";
-        row.running = true;
+        row.running = run;
         row.label = PROVIDER_LABEL[run.provider] ?? t("run_state_running");
         row.startedAt = run.startedAt;
         row.text = `${run.task} · ${run.lastActivity ?? model.task.get(run.task)?.title ?? ""}`;
@@ -197,7 +198,7 @@ export function MiniApp() {
   const chosen = (settings.agents[projectId] ?? []).filter((a) => known.includes(a));
   const only = chosen.length > 0 ? new Set(chosen) : null;
   const rows = model ? chatRows(model, t, only) : [];
-  const now = useNow(rows.some((r) => r.running));
+  const now = useNow(rows.some((r) => Boolean(r.running)));
   const inScope = (s: TaskSnapshot) => {
     if (!only || !model) return true;
     const owner = model.task.get(s.id)?.agent;
@@ -276,6 +277,19 @@ export function MiniApp() {
               </span>
             )}
           </button>
+          {r.running && model && (
+            <StopButton
+              tiny
+              label="■"
+              confirmLabel={t("run_stopConfirm")}
+              title={t("run_stopHint")}
+              onStop={() =>
+                void stopRun(model, r.running!, t)
+                  .then((m) => setFlash(m))
+                  .catch((e: Error) => setFlash(`⚠ ${localError(e.message, t)}`))
+              }
+            />
+          )}
           {r.next && r.state !== "working" && r.state !== "blocked" && r.state !== "sent" && (
             <button className="btn tiny primary" disabled={busy === r.next.id} onClick={() => send(r.next!, r.id)} title={r.next.id}>
               {compact ? r.next.id : `${runnerOf(model!, r.id) ? "▶" : t("copyAndSendShort")} ${r.next.id}`}

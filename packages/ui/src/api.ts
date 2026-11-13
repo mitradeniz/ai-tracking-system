@@ -85,6 +85,8 @@ export interface RunSummary {
 
 export interface RunnerState {
   settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner> };
+  /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
+  held?: string[];
   defaultWorkdir: string;
   defaultWorkdirExists?: boolean;
   planFolder?: string;
@@ -410,6 +412,7 @@ export const api = {
   reply: (key: string, agent: string, text: string, task?: string) =>
     request<RunSummary>("POST", `/api/projects/${enc(key)}/agents/${enc(agent)}/reply`, { text, task }),
   stopRun: (id: string) => request<RunSummary>("POST", `/api/runs/${enc(id)}/stop`, {}),
+  stopAll: (key: string) => request<{ stopped: number }>("POST", `/api/projects/${enc(key)}/runs/stop`, {}),
   activeRuns: () => request<{ count: number }>("GET", "/api/runs/active").then((r) => r.count),
   runLog: (id: string, after = 0) =>
     request<{ lines: string[]; next: number; run: RunSummary }>("GET", `/api/runs/${enc(id)}/log?after=${after}`),

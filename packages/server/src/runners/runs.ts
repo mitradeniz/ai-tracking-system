@@ -55,6 +55,8 @@ interface Run extends RunSummary {
 
 export interface RunnerState {
   settings: ProjectRunners;
+  /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
+  held: string[];
   defaultWorkdir: string;
   /** False when the project's code folder (settings.repoPath) does not exist yet. */
   defaultWorkdirExists: boolean;
@@ -147,6 +149,11 @@ export class RunManager extends EventEmitter {
   private autoTimers = new Map<string, NodeJS.Timeout>();
   private autoBusy = new Set<string>();
   private errors = new Map<string, string>();
+  /**
+   * Chats the person stopped ("key:agent"): automatic dispatch leaves them alone until the person
+   * sends them something again or switches automatic dispatch back on.
+   */
+  private held = new Set<string>();
   private pendingLines = new Map<string, { key: string; from: number; lines: string[] }>();
   private flushTimer: NodeJS.Timeout | null = null;
   private closed = false;
@@ -204,6 +211,7 @@ export class RunManager extends EventEmitter {
     const base = defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
     return {
       settings: this.store.project(key),
+      held: [...this.held].filter((h) => h.startsWith(`${key}:`)).map((h) => h.slice(key.length + 1)),
       defaultWorkdir: base,
       defaultWorkdirExists: isDir(base),
       planFolder: planFolder(ctx.filePath),
@@ -273,6 +281,8 @@ export class RunManager extends EventEmitter {
   async saveProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number }): Promise<ProjectRunners> {
     this.manager.context(key);
     const settings = await this.store.setProject(key, patch);
+    // Switching automatic dispatch on again releases the chats the person stopped.
+    if (patch.autoDispatch === true) for (const h of [...this.held]) if (h.startsWith(`${key}:`)) this.held.delete(h);
     this.emit("runners", { key });
     this.scheduleAuto(key);
     return settings;
@@ -307,6 +317,7 @@ export class RunManager extends EventEmitter {
       view.candidates.find(runnable) ??
       eligible.find(runnable);
     if (!agent || !project.agents.some((a) => a.id === agent)) throw new HttpError(400, "No chat with a runner can take this task.");
+    if (!options.auto) this.held.delete(`${key}:${agent}`);
     const runner = this.store.chat(key, agent);
     if (runner.provider === "manual") throw new HttpError(409, "This chat is run by hand. Set up how it runs first, or copy the prompt.");
     if ([...this.runs.values()].some((r) => r.key === key && r.task === taskId && r.state === "running")) {
@@ -341,6 +352,7 @@ export class RunManager extends EventEmitter {
     const runner = this.store.chat(key, agentId);
     if (runner.provider === "manual") throw new HttpError(409, "This chat is run by hand.");
     if (this.activeFor(key, agentId)) throw new HttpError(409, "This chat is still working.");
+    this.held.delete(`${key}:${agentId}`);
     const last = [...this.runs.values()].reverse().find((r) => r.key === key && r.agent === agentId);
     const holding = board.agents.find((a) => a.agent.id === agentId)?.holding ?? [];
     const task = taskId ?? (holding.length === 1 ? holding[0] : last?.task) ?? holding[0];
@@ -654,10 +666,22 @@ export class RunManager extends EventEmitter {
     return mine[mine.length - 1] ?? null;
   }
 
+  /** Stops every run of a project and switches its automatic dispatch off. */
+  async stopAll(key: string): Promise<{ stopped: number }> {
+    this.manager.context(key);
+    const running = [...this.runs.values()].filter((r) => r.key === key && r.state === "running");
+    for (const r of running) this.stop(r.id);
+    if (this.store.project(key).autoDispatch) await this.store.setProject(key, { autoDispatch: false });
+    this.emit("runners", { key });
+    return { stopped: running.length };
+  }
+
   stop(runId: string): RunSummary {
     const run = this.runs.get(runId);
     if (!run) throw new HttpError(404, `Unknown run "${runId}"`);
     if (run.state !== "running" || !run.child) return this.summary(run);
+    // Stopped by the person: automatic dispatch must not hand this chat the next task right away.
+    this.held.add(`${run.key}:${run.agent}`);
     run.stopRequested = true;
     this.kill(run, "SIGTERM");
     const child = run.child;
@@ -713,7 +737,7 @@ export class RunManager extends EventEmitter {
         if (this.activeCount(key) >= settings.maxConcurrent) break;
         const agent = view.agent.id;
         const runner = settings.chats[agent];
-        if (!runner || runner.provider === "manual" || !view.hasRoom || this.activeFor(key, agent)) continue;
+        if (!runner || runner.provider === "manual" || !view.hasRoom || this.activeFor(key, agent) || this.held.has(`${key}:${agent}`)) continue;
         const next = view.dispatchable.find((id) => !taken.has(id) && board.byId.get(id)?.status === "ready");
         if (!next) continue;
         taken.add(next);

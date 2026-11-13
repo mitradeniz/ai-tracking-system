@@ -16,13 +16,14 @@ import {
   type Model,
 } from "../model.ts";
 import { Bang, InfoTip, useNow } from "./Info.tsx";
-import { RunnerBadge } from "./Runners.tsx";
+import { RunnerBadge, StopButton, stopRun } from "./Runners.tsx";
 import { TaskCard } from "./TaskCard.tsx";
 
 interface ViewProps {
   model: Model;
   onOpen: (id: string) => void;
   onError: (message: string) => void;
+  onInfo?: (message: string) => void;
   /** Only these chats; null or undefined means every chat. */
   agents?: Set<string> | null;
 }
@@ -73,6 +74,7 @@ export function LanesView({
   model,
   onOpen,
   onError,
+  onInfo,
   onEditAgent,
   onRunnerSettings,
   agents,
@@ -192,14 +194,32 @@ export function LanesView({
               {agent.role && <div className="small muted clamp-2">{agent.role}</div>}
               {(() => {
                 const run = activeRun(model, agent.id);
-                return run ? (
-                  <button className="run-line" onClick={() => onOpen(run.task)} title={run.lastActivity}>
-                    <span className="pulse" aria-hidden="true" />
-                    <span className="mono">{run.task}</span>
-                    <span className="mono muted">{formatDuration(now - Date.parse(run.startedAt))}</span>
-                    <span className="ellipsis">{run.lastActivity ?? t("run_state_running")}</span>
-                  </button>
-                ) : null;
+                if (!run) {
+                  return model.runners?.settings.autoDispatch && model.runners.held?.includes(agent.id) ? (
+                    <div className="small muted held-note">⏸ {t("run_held")}</div>
+                  ) : null;
+                }
+                return (
+                  <div className="run-line-wrap">
+                    <button className="run-line" onClick={() => onOpen(run.task)} title={run.lastActivity}>
+                      <span className="pulse" aria-hidden="true" />
+                      <span className="mono">{run.task}</span>
+                      <span className="mono muted">{formatDuration(now - Date.parse(run.startedAt))}</span>
+                      <span className="ellipsis">{run.lastActivity ?? t("run_state_running")}</span>
+                    </button>
+                    <StopButton
+                      tiny
+                      label="■"
+                      confirmLabel={t("run_stopConfirm")}
+                      title={t("run_stopHint")}
+                      onStop={() =>
+                        void stopRun(model, run, t)
+                          .then((m) => onInfo?.(m))
+                          .catch((e: Error) => onError(e.message))
+                      }
+                    />
+                  </div>
+                );
               })()}
               {helped.length > 0 && (
                 <div className="small muted">{t("helpsWith", { names: helped.map((h) => agentName(model, h)).join(", ") })}</div>

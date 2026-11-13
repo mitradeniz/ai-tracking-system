@@ -47,7 +47,7 @@ export function Workspace({ model, layout, editing, onChange, onOpen, onError, o
 
   const content = (p: Panel) => {
     const agents = panelAgents(p, projectId, known);
-    const common = { model, onOpen, onError, agents };
+    const common = { model, onOpen, onError, onInfo, agents };
     switch (p.kind) {
       case "ready":
         return <ReadyStrip {...common} />;

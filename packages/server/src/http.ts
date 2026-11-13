@@ -537,6 +537,10 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     const task = typeof body.task === "string" && body.task ? body.task : undefined;
     send(ctx.res, 201, await runs().reply(key!, decodeURIComponent(agent!), String(body.text ?? ""), task));
   });
+  route("POST", "/api/projects/:key/runs/stop", async (ctx, [key]) => {
+    control(ctx);
+    send(ctx.res, 200, await runs().stopAll(key!));
+  });
   route("POST", "/api/runs/:id/stop", async (ctx, [id]) => {
     control(ctx);
     send(ctx.res, 200, runs().stop(decodeURIComponent(id!)));

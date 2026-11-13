@@ -376,7 +376,14 @@ export function App() {
                   )}
                   <span className="spacer" />
                   <div className="header-actions">
-                    {model && <AutoDispatch model={model} onSetup={() => runnerSettings()} onError={(m) => toast(localError(m, t), "failed")} />}
+                    {model && (
+                      <AutoDispatch
+                        model={model}
+                        onSetup={() => runnerSettings()}
+                        onError={(m) => toast(localError(m, t), "failed")}
+                        onInfo={(m) => toast(m, "done")}
+                      />
+                    )}
                     <button className="btn small" onClick={() => setDialog("paste")}>
                       {t("pasteReport")}
                     </button>

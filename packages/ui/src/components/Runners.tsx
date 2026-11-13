@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, copyText, desktop, type ChatRunner, type DetectedProvider, type RunLogEvent, type RunnerProvider, type RunSummary } from "../api.ts";
 import { RUNLOG_EVENT } from "../hooks.ts";
-import { useI18n, type Key } from "../i18n.ts";
+import { useI18n, type Key, type T } from "../i18n.ts";
 import { activeRun, agentName, INSTALL, PROVIDER_LABEL, runnerOf, type Model } from "../model.ts";
 import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
@@ -510,7 +510,17 @@ export function RunLog({ run }: { run: RunSummary }) {
 }
 
 /** Header switch: send ready tasks to free chats automatically. */
-export function AutoDispatch({ model, onSetup, onError }: { model: Model; onSetup: () => void; onError: (m: string) => void }) {
+export function AutoDispatch({
+  model,
+  onSetup,
+  onError,
+  onInfo,
+}: {
+  model: Model;
+  onSetup: () => void;
+  onError: (m: string) => void;
+  onInfo?: (m: string) => void;
+}) {
   const { t } = useI18n();
   const settings = model.runners?.settings;
   if (!settings) return null;
@@ -559,8 +569,68 @@ export function AutoDispatch({ model, onSetup, onError }: { model: Model; onSetu
           {running}
         </span>
       )}
+      {running > 0 && (
+        <StopButton
+          label={`■ ${t("run_stopAll")}`}
+          confirmLabel={t("run_stopAllConfirm", { n: running })}
+          title={t("run_stopAllHint")}
+          onStop={() =>
+            void api
+              .stopAll(model.detail.key)
+              .then((r) => onInfo?.(t("run_stoppedAll", { n: r.stopped })))
+              .catch((e: Error) => onError(e.message))
+          }
+        />
+      )}
     </div>
   );
+}
+
+/**
+ * A stop button that asks once more before it stops: the first click arms it for three seconds,
+ * the second stops. Small buttons on busy screens are easy to hit by mistake.
+ */
+export function StopButton({
+  onStop,
+  label,
+  confirmLabel,
+  title,
+  tiny,
+}: {
+  onStop: () => void;
+  label: string;
+  confirmLabel: string;
+  title: string;
+  tiny?: boolean;
+}) {
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!armed) return;
+    const id = window.setTimeout(() => setArmed(false), 3000);
+    return () => window.clearTimeout(id);
+  }, [armed]);
+  return (
+    <button
+      type="button"
+      className={`btn ${tiny ? "tiny" : "small"} stop-btn ${armed ? "armed" : ""}`}
+      title={title}
+      aria-label={armed ? confirmLabel : title}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (!armed) return setArmed(true);
+        setArmed(false);
+        onStop();
+      }}
+    >
+      {armed ? `■ ${confirmLabel}` : label}
+    </button>
+  );
+}
+
+/** Stops a run and says what happens next. */
+export async function stopRun(model: Model, run: RunSummary, t: T): Promise<string> {
+  await api.stopRun(run.id);
+  return t("run_stoppedToast", { task: run.task, agent: agentName(model, run.agent) });
 }
 
 /** Small lane badge: which CLI runs the chat and whether it is running now. */

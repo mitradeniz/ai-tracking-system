@@ -4287,3 +4287,30 @@ details.advanced[open] {
 .closed-problem .pill.closed-ignored {
   color: var(--muted);
 }
+
+/* Stopping a run. */
+.run-line-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  min-width: 0;
+}
+
+.run-line-wrap .run-line {
+  flex: 1;
+}
+
+.stop-btn {
+  color: var(--blocked);
+  flex-shrink: 0;
+}
+
+.stop-btn.armed {
+  background: var(--blocked);
+  border-color: var(--blocked);
+  color: var(--ink);
+}
+
+.held-note {
+  font-size: 12px;
+}

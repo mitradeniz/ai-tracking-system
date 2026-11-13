@@ -82,7 +82,7 @@ sequenceDiagram
     end
 ```
 
-**Stop** ends a run; the task stays with the chat as blocked, so you can reply or send it again. Runs that were going when the app quit are marked blocked on the next start.
+**Stop** ends a run; the task stays with the chat as blocked, so you can reply or send it again. It is on the running line of the chat's lane, in the floating window, in the task drawer and its live output, and as **Stop all** next to automatic dispatch; the small buttons ask once more before they stop. Automatic dispatch gives a chat you stopped nothing new until you send it something (or switch automatic dispatch off and on); **Stop all** also switches automatic dispatch off. Runs that were going when the app quit are marked blocked on the next start.
 
 ## Auto-dispatch
 
@@ -142,6 +142,7 @@ The hook finds the chat by, in order: `AITRACK_CHAT` (start the session as `AITR
 | `POST /api/projects/:key/tasks/:task/run` 🔑 | `{agent?}` — send the task |
 | `POST /api/projects/:key/agents/:chat/reply` 🔑 | `{text, task?}` — continue the chat's session |
 | `POST /api/runs/:id/stop` 🔑 | stop a run |
+| `POST /api/projects/:key/runs/stop` 🔑 | stop every run of the project and switch its automatic dispatch off |
 | `GET /api/runs/:id/log?after=n` | output lines |
 | `POST /api/hook?tool=claude\|codex\|…` | hook payloads |
 | `POST /api/authoring/generate` 🔑 | `{provider: claude\|codex\|gemini\|copilot, cwd, input, model?}` — write a project plan with that CLI, read-only in `cwd` |

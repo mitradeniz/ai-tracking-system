@@ -22,7 +22,7 @@ import {
 import { usePlanEditing } from "../editing.ts";
 import { InfoTip, PromptPicker, useNow } from "./Info.tsx";
 import { Markdown, splitReport } from "./Markdown.tsx";
-import { RunLog } from "./Runners.tsx";
+import { RunLog, StopButton, stopRun } from "./Runners.tsx";
 
 interface Props {
   model: Model;
@@ -153,9 +153,9 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
     }
   };
 
-  const stopRun = async (id: string) => {
+  const stop = async (r: RunSummary) => {
     try {
-      await api.stopRun(id);
+      onInfo?.(await stopRun(model, r, t));
     } catch (e) {
       onError((e as Error).message);
     }
@@ -327,7 +327,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                   {running.lastActivity ? ` · ${running.lastActivity}` : ""}
                 </span>
                 <span className="mono small">{formatDuration(now - Date.parse(running.startedAt))}</span>
-                <button className="btn small danger" onClick={() => void stopRun(running.id)}>
+                <button className="btn small danger" title={t("run_stopHint")} onClick={() => void stop(running)}>
                   ■ {t("run_stop")}
                 </button>
               </div>
@@ -514,6 +514,9 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                 <h3 style={{ margin: 0 }}>{t("run_log")}</h3>
                 <InfoTip text={t("info_runLog")} />
                 <span className={`pill run-${run.state}`}>{t(`run_state_${run.state}` as Key)}</span>
+                {run.state === "running" && (
+                  <StopButton label={`■ ${t("run_stop")}`} confirmLabel={t("run_stopConfirm")} title={t("run_stopHint")} onStop={() => void stop(run)} />
+                )}
                 <span className="small muted ellipsis">
                   {PROVIDER_LABEL[run.provider]} · {formatTime(run.startedAt, lang)}
                 </span>
