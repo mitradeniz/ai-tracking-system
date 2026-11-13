@@ -4314,3 +4314,101 @@ details.advanced[open] {
 .held-note {
   font-size: 12px;
 }
+
+/* Floating window: a task's actions, opened under the row that was clicked. */
+.mini-chat.open,
+.mini-task.open {
+  border-color: var(--edge-strong);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  margin-bottom: 0;
+}
+
+.mini-quick {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px;
+  margin: 0 0 6px;
+  border: 1px solid var(--edge-strong);
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: var(--glass-2);
+  font-size: 12.5px;
+}
+
+.mini-lane .mini-quick {
+  border-top: 1px solid var(--edge-strong);
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+.mini-quick-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mini-quick-head .mono {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.mini-quick-head .icon-btn {
+  width: 22px;
+  height: 22px;
+}
+
+.mini-quick-run {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--progress-line);
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.mini-says {
+  max-height: 160px;
+}
+
+.mini-problem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--blocked-line);
+  background: var(--blocked-bg);
+}
+
+.mini-problem.warning {
+  border-color: var(--edge);
+  background: var(--glass);
+}
+
+.mini-problem-title {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  font-weight: 500;
+}
+
+.mini-reply {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.mini-reply textarea {
+  min-height: 44px;
+  font-size: 12.5px;
+  resize: vertical;
+}
+
+.mini-quick-actions:empty {
+  display: none;
+}

@@ -107,7 +107,7 @@ Otomatik dağıtım açılıyor: boştaki sohbetler hazır görevlerine başlıy
 - her sohbetin şu an ne yaptığı, canlı komutu ve sayacıyla
 - **senden bekleyenler**: gönderilecek görevler, yanıtlar, onaylar, engeller ve sorunlar (**!**)
 - **tek tıkla** sıradaki görevi gönder — sohbetin çalıştırmasını başlatır, elle yürüttüğün sohbetlerde promptu kopyalar
-- sohbete ya da göreve tıkla, ana pencerede açılsın
+- sohbete ya da göreve tıkla, işlemi orada yap: sohbete yanıt ver ya da planını onayla, sorunun çözümünü gönder, reddedilen komuta izin ver, sorunu çözüldü ya da yoksayıldı işaretle, çalışmayı durdur, onayla, bitti işaretle, yeniden aç — **↗** ana pencerede açar
 - görünümler: **Genel**, **Kompakt liste**, **Mini şeritler**; bölümleri ve sohbetleri seç, üstte tut, saydamlığı ayarla
 
 Kenar çubuğundan, *Pencere* menüsünden ya da <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd> ile açılır.

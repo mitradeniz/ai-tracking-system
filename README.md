@@ -107,7 +107,7 @@ A small window that **stays on top of every app** — your editor, the Codex app
 - what each chat is doing right now, with its live command and timer
 - what **waits for you**: tasks to send, replies, approvals, blocks and problems (**!**)
 - **one click** sends the next task — it starts the chat's run, or copies the prompt for chats you run by hand
-- click a chat or task to jump to it in the main window
+- click a chat or task to act on it right there: answer the chat or approve its plan, send a problem's fix, allow a refused command, mark a problem resolved or ignored, stop a run, approve, mark done or reopen — **↗** opens it in the main window
 - views: **overview**, **compact list**, **mini lanes**; choose sections and chats, pin it, change its opacity
 
 Open it from the sidebar, the *Window* menu, or <kbd>⇧</kbd><kbd>⌘</kbd><kbd>F</kbd>.

@@ -20,6 +20,7 @@ import {
   type Model,
 } from "./model.ts";
 import { Bang, useNow } from "./components/Info.tsx";
+import { QuickTask } from "./components/QuickTask.tsx";
 import { StopButton, stopRun } from "./components/Runners.tsx";
 import { readJson, usePref } from "./prefs.ts";
 
@@ -157,6 +158,16 @@ export function MiniApp() {
   const [showSettings, setShowSettings] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** The task whose actions are open, and where: "chat:<id>", "needs", "active", "done" or "lane". */
+  const [quick, setQuick] = useState<{ task: string; at: string } | null>(null);
+  const toggleQuick = (task: string | undefined, at: string) => {
+    if (!task) return open();
+    setQuick((q) => (q && q.task === task && q.at === at ? null : { task, at }));
+  };
+  const quickPanel = (task: string, at: string) =>
+    model && quick && quick.task === task && quick.at === at ? (
+      <QuickTask model={model} taskId={task} onClose={() => setQuick(null)} onOpenMain={desktop?.focusMain ? () => open(task) : undefined} onInfo={setFlash} />
+    ) : null;
 
   const selected = settings.project ?? mainSelected;
   const { projects, loaded, detail, live, runners } = useTracker(selected, undefined, (m) => setFlash(`⚠ ${m}`));
@@ -241,21 +252,31 @@ export function MiniApp() {
     }
   };
 
-  const taskLine = (s: TaskSnapshot, action?: React.ReactNode) => (
-    <div className={`mini-task ${s.dispatchable ? "sendable" : s.status}`} key={s.id}>
-      <button type="button" className="mini-task-main" onClick={() => open(s.id)} title={model?.task.get(s.id)?.title}>
-        <span className="mono">{s.id}</span>
-        <span className="ellipsis">{model?.task.get(s.id)?.title}</span>
-      </button>
-      {action}
+  const taskLine = (at: string) => (s: TaskSnapshot, action?: React.ReactNode) => (
+    <div key={s.id}>
+      <div className={`mini-task ${s.dispatchable ? "sendable" : s.status} ${quick?.task === s.id && quick.at === at ? "open" : ""}`}>
+        <button
+          type="button"
+          className="mini-task-main"
+          onClick={() => toggleQuick(s.id, at)}
+          title={model?.task.get(s.id)?.title}
+          aria-expanded={quick?.task === s.id && quick.at === at}
+        >
+          <span className="mono">{s.id}</span>
+          <span className="ellipsis">{model?.task.get(s.id)?.title}</span>
+        </button>
+        {action}
+      </div>
+      {quickPanel(s.id, at)}
     </div>
   );
 
   const chatList = (compact: boolean) => (
     <div className={`mini-chats ${compact ? "compact" : ""}`}>
       {rows.map((r) => (
-        <div className={`mini-chat ${r.state}`} key={r.id}>
-          <button type="button" className="mini-chat-main" onClick={() => open(r.focus)}>
+        <div key={r.id}>
+        <div className={`mini-chat ${r.state} ${r.focus && quick?.task === r.focus && quick.at === `chat:${r.id}` ? "open" : ""}`}>
+          <button type="button" className="mini-chat-main" onClick={() => toggleQuick(r.focus, `chat:${r.id}`)}>
             <span className={`state-dot ${r.state} ${r.running ? "pulse" : ""}`} aria-hidden="true" />
             <span className="mini-chat-name ellipsis">{r.name}</span>
             <span className="mini-chat-state">
@@ -295,6 +316,8 @@ export function MiniApp() {
               {compact ? r.next.id : `${runnerOf(model!, r.id) ? "▶" : t("copyAndSendShort")} ${r.next.id}`}
             </button>
           )}
+        </div>
+        {r.focus && quickPanel(r.focus, `chat:${r.id}`)}
         </div>
       ))}
     </div>
@@ -461,7 +484,7 @@ export function MiniApp() {
                 {settings.sections.chats && chatList(false)}
                 {settings.sections.needsYou &&
                   section(t("sec_needsYou"), needsYou, (s) =>
-                    taskLine(
+                    taskLine("needs")(
                       s,
                       problemsOf(model, s, t).length > 0 && !s.dispatchable && s.status !== "review" ? (
                         <span className="bang" title={problemsOf(model, s, t).map((p) => p.title).join("\n")}>
@@ -482,9 +505,9 @@ export function MiniApp() {
                   )}
                 {settings.sections.active &&
                   section(t("sec_active"), active, (s) =>
-                    taskLine(s, <span className={`pill ${s.status}`}>{t(`status_${s.status}`)}</span>),
+                    taskLine("active")(s, <span className={`pill ${s.status}`}>{t(`status_${s.status}`)}</span>),
                   )}
-                {settings.sections.done && section(t("sec_done"), done, (s) => taskLine(s))}
+                {settings.sections.done && section(t("sec_done"), done, (s) => taskLine("done")(s))}
               </>
             )}
 
@@ -508,11 +531,18 @@ export function MiniApp() {
                       </div>
                       {items.length === 0 && <div className="small muted">{t("idle")}</div>}
                       {items.map((s) => (
-                        <button key={s.id} className={`mini-card ${s.dispatchable ? "sendable" : s.status}`} onClick={() => open(s.id)}>
-                          <span className="mono small">{s.id}</span>
-                          <span className="mini-card-title">{model.task.get(s.id)?.title}</span>
-                          {cardNote(model, s, t) && <span className="small muted ellipsis">{cardNote(model, s, t)}</span>}
-                        </button>
+                        <div key={s.id}>
+                          <button
+                            className={`mini-card ${s.dispatchable ? "sendable" : s.status}`}
+                            onClick={() => toggleQuick(s.id, "lane")}
+                            aria-expanded={quick?.task === s.id && quick.at === "lane"}
+                          >
+                            <span className="mono small">{s.id}</span>
+                            <span className="mini-card-title">{model.task.get(s.id)?.title}</span>
+                            {cardNote(model, s, t) && <span className="small muted ellipsis">{cardNote(model, s, t)}</span>}
+                          </button>
+                          {quickPanel(s.id, "lane")}
+                        </div>
                       ))}
                     </div>
                   );
