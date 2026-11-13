@@ -144,6 +144,7 @@ function openMini(): void {
   mini.setAlwaysOnTop(true, "floating");
   mini.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   guardNavigation(mini);
+  reportActivity(mini);
   mini.once("ready-to-show", () => mini?.show());
   const persist = () => {
     if (!mini) return;
@@ -159,6 +160,15 @@ function openMini(): void {
     mini = null;
   });
   void mini.loadURL(`${baseUrl}/?mini=1`);
+}
+
+/** Tells the page whether its window is in front, so it can pause its animations in the background. */
+function reportActivity(w: BrowserWindow): void {
+  const send = () => {
+    if (!w.isDestroyed()) w.webContents.send("aitrack:active", w.isFocused() && w.isVisible() && !w.isMinimized());
+  };
+  for (const name of ["focus", "blur", "show", "hide", "minimize", "restore"] as const) w.on(name as "focus", send);
+  w.webContents.on("did-finish-load", send);
 }
 
 function showMain(): BrowserWindow {
@@ -409,6 +419,7 @@ function createWindow(): void {
 
   // Keep the window on the local tracker; open other links in the default browser.
   guardNavigation(win);
+  reportActivity(win);
 
   void win.loadURL(`${baseUrl}/`);
   win.on("closed", () => {

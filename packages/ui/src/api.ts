@@ -248,6 +248,8 @@ export interface DesktopBridge {
   };
   /** The tracker's control token, needed to start agents. */
   controlToken?(): Promise<string | null>;
+  /** Whether this window is in front (focused and visible); called when it changes. */
+  onActive?(callback: (active: boolean) => void): () => void;
   /** Main window: called when the floating window asks to show a task. Returns an unsubscribe function. */
   onOpenTask?(callback: (projectKey: string | undefined, taskId: string | undefined) => void): () => void;
 }

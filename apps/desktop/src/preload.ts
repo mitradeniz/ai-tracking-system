@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld("aitrackDesktop", {
     }),
   focusMain: (projectKey?: string, taskId?: string): Promise<void> =>
     ipcRenderer.invoke("aitrack:focus-main", projectKey === undefined ? undefined : String(projectKey), taskId === undefined ? undefined : String(taskId)),
+  /** Whether this window is in front; called when it changes. */
+  onActive: (callback: (active: boolean) => void): (() => void) => {
+    const listener = (_event: IpcRendererEvent, active: unknown) => callback(active === true);
+    ipcRenderer.on("aitrack:active", listener);
+    return () => ipcRenderer.removeListener("aitrack:active", listener);
+  },
   onOpenTask: (callback: (projectKey: string | undefined, taskId: string | undefined) => void): (() => void) => {
     const listener = (_event: IpcRendererEvent, projectKey: unknown, taskId: unknown) =>
       callback(typeof projectKey === "string" ? projectKey : undefined, typeof taskId === "string" ? taskId : undefined);
