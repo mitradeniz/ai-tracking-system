@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, copyText, desktop, type ChatRunner, type DetectedProvider, type RunLogEvent, type RunnerProvider, type RunSummary } from "../api.ts";
 import { RUNLOG_EVENT } from "../hooks.ts";
 import { useI18n, type Key } from "../i18n.ts";
-import { activeRun, agentName, PROVIDER_LABEL, runnerOf, type Model } from "../model.ts";
+import { activeRun, agentName, INSTALL, PROVIDER_LABEL, runnerOf, type Model } from "../model.ts";
 import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
 
@@ -140,6 +140,19 @@ export function RunnerDialog({
             <button className="btn tiny ghost" onClick={() => void detect(true)}>
               {t("run_test")}
             </button>
+          </div>
+        )}
+        {p !== "manual" && p !== "custom" && providers && !form.binary && !found?.path && INSTALL[p] && (
+          <div className="install-box small">
+            <span>{t("run_installHow")}</span>
+            <code className="mono">{INSTALL[p]!.install}</code>
+            <span>{t("run_installLogin", { login: INSTALL[p]!.login })}</span>
+            <div className="row">
+              <button className="btn tiny" onClick={() => void copyText(INSTALL[p]!.install)}>
+                {t("run_installCopy")}
+              </button>
+              <span className="muted">{t("run_installAfter")}</span>
+            </div>
           </div>
         )}
       </div>

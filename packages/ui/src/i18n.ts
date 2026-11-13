@@ -638,6 +638,12 @@ const en = {
   run_workdirUse: "Use {path}",
   err_codeFolderMissing: "The project's code folder does not exist yet: {path} (settings.repoPath in the project file). Create it, or choose a working folder in this chat's run settings.",
   err_workdirMissing: "This chat's working folder was not found: {path}. Choose another one in its run settings.",
+  run_installHow: "Install it in Terminal:",
+  run_installLogin: "Then run `{login}` once in Terminal and sign in with your account.",
+  run_installCopy: "Copy the command",
+  run_installAfter: "When done, press Check again.",
+  err_cliMissing: "{name} is not installed on this computer. Install it, sign in once in Terminal, or set the program path in the chat's run settings.",
+  err_cliMissingHow: "{name} is not installed on this computer. Install it in Terminal with: {install} — then run “{login}” once to sign in. The chat's run settings have the command to copy.",
 };
 
 export type Key = keyof typeof en;
@@ -1278,6 +1284,12 @@ const tr: Record<Key, string> = {
   run_workdirUse: "{path} kullan",
   err_codeFolderMissing: "Projenin kod klasörü henüz yok: {path} (proje dosyasındaki settings.repoPath). Klasörü oluştur ya da bu sohbetin çalıştırma ayarlarından bir çalışma klasörü seç.",
   err_workdirMissing: "Bu sohbetin çalışma klasörü bulunamadı: {path}. Çalıştırma ayarlarından başka bir klasör seç.",
+  run_installHow: "Terminal'de kur:",
+  run_installLogin: "Sonra Terminal'de bir kez `{login}` çalıştırıp hesabınla giriş yap.",
+  run_installCopy: "Komutu kopyala",
+  run_installAfter: "Bitince Yeniden kontrol et'e bas.",
+  err_cliMissing: "{name} bu bilgisayarda kurulu değil. Kur ve bir kez Terminal'de giriş yap, ya da sohbetin çalıştırma ayarlarından program yolunu gir.",
+  err_cliMissingHow: "{name} bu bilgisayarda kurulu değil. Terminal'de şununla kur: {install} — sonra bir kez “{login}” çalıştırıp giriş yap. Komut, sohbetin çalıştırma ayarlarında kopyalanmaya hazır.",
 };
 
 const dictionaries: Record<Lang, Record<Key, string>> = { en, tr };

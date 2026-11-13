@@ -4079,3 +4079,26 @@ details.advanced[open] {
   background: var(--blocked-bg);
   color: var(--text);
 }
+
+.install-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid var(--edge-strong);
+  background: var(--glass);
+}
+
+.install-box code {
+  display: block;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--glass-solid);
+  border: 1px solid var(--edge);
+  font-size: 12px;
+  user-select: all;
+  overflow-x: auto;
+  white-space: nowrap;
+}
