@@ -4102,3 +4102,12 @@ details.advanced[open] {
   overflow-x: auto;
   white-space: nowrap;
 }
+
+.problem-command {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--edge);
+  background: var(--glass-solid);
+  font-size: 12px;
+  user-select: all;
+}

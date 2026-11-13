@@ -68,6 +68,12 @@ if ((scenario === "slow" || scenario === "steps") && format === "codex") {
   }
   if (scenario === "slow") await pause(60_000);
 }
+if (scenario === "noauth" && format === "claude") {
+  // Claude Code without a sign-in: an error result, no conversation.
+  out({ type: "assistant", message: { content: [{ type: "text", text: "Not logged in · Please run /login" }] } });
+  out({ type: "result", subtype: "success", is_error: true, result: "Not logged in · Please run /login", usage: { input_tokens: 0, output_tokens: 0 } });
+  process.exit(1);
+}
 if (scenario === "fail") {
   process.stderr.write("boom: not signed in\n");
   process.exit(1);

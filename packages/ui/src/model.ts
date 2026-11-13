@@ -223,8 +223,10 @@ export interface Problem {
   kind: "error" | "missing" | "needs-you" | "warning";
   title: string;
   detail?: string;
-  /** Prompt to give the chat, ready to send. */
+  /** Prompt to give the chat, ready to send; empty when the chat cannot fix it (a sign-in, say). */
   fix: string;
+  /** A command for the person to run in Terminal. */
+  command?: string;
   /** The problem is in how the chat runs (permissions, CLI), not in the work. */
   settings?: boolean;
 }
@@ -239,6 +241,11 @@ function issueFix(taskId: string, title: string, issue: TaskIssue): string {
     .filter(Boolean)
     .join("\n");
 }
+
+/** A CLI that is installed but not signed in. */
+const SIGN_IN = /not logged in|please run \/login|not authenticated|unauthori[sz]ed|authentication (?:failed|required|error)|invalid (?:x-)?api[- ]key|codex login|please log ?in/i;
+/** A CLI that was asked to continue a session it no longer has. */
+const SESSION_GONE = /no conversation found|unknown session|could not (?:find|resume) (?:the )?session/i;
 
 /** Problems of a task: what the chat reported, plus failures and blocks the tracker knows about. */
 export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
@@ -256,7 +263,19 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
     };
   });
   const lastRun = lastRunOf(model, s.id);
-  if (s.status === "failed" && s.reason && !out.some((p) => p.detail === s.reason)) {
+  const runFailedNow = s.status === "failed" && s.reason && lastRun?.state === "failed" && lastRun.error === s.reason;
+  if (runFailedNow && SIGN_IN.test(s.reason!)) {
+    const how = INSTALL[lastRun!.provider];
+    out.unshift({
+      kind: "needs-you",
+      title: t("issue_signIn", { cli: PROVIDER_LABEL[lastRun!.provider] || lastRun!.provider }),
+      detail: t("issue_signInDetail", { login: how?.login ?? lastRun!.provider }),
+      fix: "",
+      command: how?.login,
+    });
+  } else if (runFailedNow && SESSION_GONE.test(s.reason!)) {
+    out.unshift({ kind: "warning", title: t("issue_sessionGone"), detail: t("issue_sessionGoneDetail"), fix: "" });
+  } else if (s.status === "failed" && s.reason && !out.some((p) => p.detail === s.reason)) {
     const runFailed = lastRun?.state === "failed" && lastRun.error === s.reason;
     out.unshift({
       kind: "error",

@@ -425,4 +425,23 @@ describe("provider adapters", () => {
     await call("POST", `/api/projects/${k}/runners/a`, { runner: { provider: "codex", binary: FAKE, workdir: other } });
     expect((await call("POST", `/api/projects/${k}/tasks/T1/run`, {})).status).toBe(201);
   });
+
+  it("starts a new session after a run that never got going", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_SCENARIO = "noauth";
+    await setRunner("a", { provider: "claude" });
+    await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+    await waitFor("T1", "failed");
+    let state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.settings.chats.a.sessionId).toBeUndefined();
+    process.env.FAKE_SCENARIO = "done";
+    await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+    await waitFor("T1", "done");
+    const calls = (await readFile(fakeLog, "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+    const second = calls[calls.length - 1].args as string[];
+    expect(second).toContain("--session-id");
+    expect(second).not.toContain("--resume");
+    state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.settings.chats.a.sessionId).toBe(second[second.indexOf("--session-id") + 1]);
+  });
 });

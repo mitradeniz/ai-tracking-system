@@ -678,31 +678,50 @@ function ProblemCard({
         <span className={`pill kind-${problem.kind}`}>{t(`problem_kind_${problem.kind}` as Key)}</span>
       </div>
       <div className="row wrap">
-        <button className="btn small" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? "▾" : "▸"} {t("fixPrompt")}
-        </button>
-        {canSend && (
+        {problem.command && (
+          <>
+            <code className="mono problem-command">{problem.command}</code>
+            <button
+              className="btn small"
+              onClick={async () => {
+                await copyText(problem.command!);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? `✓ ${t("copied")}` : t("problem_copyCommand")}
+            </button>
+          </>
+        )}
+        {problem.fix && (
+          <button className="btn small" aria-expanded={open} onClick={() => setOpen(!open)}>
+            {open ? "▾" : "▸"} {t("fixPrompt")}
+          </button>
+        )}
+        {problem.fix && canSend && (
           <button className="btn small primary" disabled={busy} onClick={() => onSend(text)}>
             {t("fixSend")}
           </button>
         )}
-        <button
-          className="btn small ghost"
-          onClick={async () => {
-            await copyText(text);
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1500);
-          }}
-        >
-          {copied ? `✓ ${t("copied")}` : t("copy")}
-        </button>
+        {problem.fix && (
+          <button
+            className="btn small ghost"
+            onClick={async () => {
+              await copyText(text);
+              setCopied(true);
+              window.setTimeout(() => setCopied(false), 1500);
+            }}
+          >
+            {copied ? `✓ ${t("copied")}` : t("copy")}
+          </button>
+        )}
         {onSettings && (
           <button className="btn small ghost" onClick={onSettings}>
             ⚙ {t("run_setup")}
           </button>
         )}
       </div>
-      {open && <textarea className="input mono small" style={{ minHeight: 110 }} value={text} onChange={(e) => setText(e.target.value)} />}
+      {open && problem.fix && <textarea className="input mono small" style={{ minHeight: 110 }} value={text} onChange={(e) => setText(e.target.value)} />}
     </div>
   );
 }

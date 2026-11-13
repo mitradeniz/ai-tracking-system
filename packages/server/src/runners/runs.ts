@@ -46,6 +46,9 @@ interface Run extends RunSummary {
   file: WriteStream | null;
   stopRequested: boolean;
   stopNote?: string;
+  /** The session this run started (not resumed), and the chat's session before it. */
+  freshSession?: string;
+  priorSession?: string;
   lastProgressAt: number;
   lastUsageEmit: number;
 }
@@ -370,6 +373,8 @@ export class RunManager extends EventEmitter {
       stopRequested: false,
       lastProgressAt: Date.now(),
       lastUsageEmit: 0,
+      freshSession: !resume && runner.session === "keep" ? invocation.sessionId : undefined,
+      priorSession: runner.sessionId,
     };
     this.runs.set(id, run);
     this.trimRuns();
@@ -550,6 +555,7 @@ export class RunManager extends EventEmitter {
         run.state = "failed";
         run.error = outcome.error;
         this.append(run, `✗ ${outcome.error ?? "failed"}`);
+        await this.forgetDeadSession(run, outcome.error ?? "");
         if (status !== "done" && status !== "review") {
           await this.manager.addEvent(key, { type: "failed", task, agent, reason: outcome.error ?? `${name} failed.`, issues: withDenied(undefined) }, "runner");
         }
@@ -580,6 +586,24 @@ export class RunManager extends EventEmitter {
     await this.persistActive();
     this.emit("run", { key, run: this.summary(run) });
     this.scheduleAuto(key);
+  }
+
+  /**
+   * A run that failed before the model answered (not signed in, CLI error) leaves no conversation
+   * behind, so the next message must start a new session instead of resuming one that does not
+   * exist. The same when the CLI says the session it was asked to resume is gone.
+   */
+  private async forgetDeadSession(run: Run, error: string): Promise<void> {
+    const stored = this.store.chat(run.key, run.agent).sessionId;
+    if (!stored || stored !== run.sessionId) return;
+    const silent = !run.tools && !run.usage?.output;
+    if (run.freshSession && silent) {
+      await this.store.setSession(run.key, run.agent, run.priorSession === run.freshSession ? undefined : run.priorSession);
+      this.append(run, "  (no conversation was started; the next message starts a new session)");
+    } else if (/no conversation found|session[^\n]{0,40}not found|unknown session|could not (?:find|resume) (?:the )?session/i.test(error)) {
+      await this.store.setSession(run.key, run.agent, undefined);
+      this.append(run, "  (the session is gone; the next message starts a new session)");
+    }
   }
 
   /** The report in the agent's final message for this task, unless it is the template's example. */

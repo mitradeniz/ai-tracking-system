@@ -644,6 +644,11 @@ const en = {
   run_installAfter: "When done, press Check again.",
   err_cliMissing: "{name} is not installed on this computer. Install it, sign in once in Terminal, or set the program path in the chat's run settings.",
   err_cliMissingHow: "{name} is not installed on this computer. Install it in Terminal with: {install} — then run “{login}” once to sign in. The chat's run settings have the command to copy.",
+  issue_signIn: "{cli} is not signed in",
+  issue_signInDetail: "Open Terminal, run `{login}` and sign in with your account (type /login if it does not ask). Then send the task again; it starts a new session.",
+  issue_sessionGone: "The chat's earlier session was not found",
+  issue_sessionGoneDetail: "Send the task again; it starts a new session with the session prompt.",
+  problem_copyCommand: "Copy the command",
 };
 
 export type Key = keyof typeof en;
@@ -1290,6 +1295,11 @@ const tr: Record<Key, string> = {
   run_installAfter: "Bitince Yeniden kontrol et'e bas.",
   err_cliMissing: "{name} bu bilgisayarda kurulu değil. Kur ve bir kez Terminal'de giriş yap, ya da sohbetin çalıştırma ayarlarından program yolunu gir.",
   err_cliMissingHow: "{name} bu bilgisayarda kurulu değil. Terminal'de şununla kur: {install} — sonra bir kez “{login}” çalıştırıp giriş yap. Komut, sohbetin çalıştırma ayarlarında kopyalanmaya hazır.",
+  issue_signIn: "Giriş yapılmamış: {cli}",
+  issue_signInDetail: "Terminal'i aç, `{login}` çalıştır ve hesabınla giriş yap (sormazsa /login yaz). Sonra görevi yeniden gönder; yeni bir oturumla başlar.",
+  issue_sessionGone: "Sohbetin önceki oturumu bulunamadı",
+  issue_sessionGoneDetail: "Görevi yeniden gönder; oturum promptuyla yeni bir oturum başlar.",
+  problem_copyCommand: "Komutu kopyala",
 };
 
 const dictionaries: Record<Lang, Record<Key, string>> = { en, tr };
