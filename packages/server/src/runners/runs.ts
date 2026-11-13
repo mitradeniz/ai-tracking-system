@@ -94,6 +94,17 @@ export function planFolder(filePath: string): string {
   }
 }
 
+/** True when a folder is inside a git work tree. */
+function insideGit(dir: string): boolean {
+  let cur = dir;
+  for (;;) {
+    if (existsSync(path.join(cur, ".git"))) return true;
+    const parent = path.dirname(cur);
+    if (parent === cur) return false;
+    cur = parent;
+  }
+}
+
 function isDir(p: string): boolean {
   try {
     return statSync(p).isDirectory();
@@ -200,6 +211,32 @@ export class RunManager extends EventEmitter {
       errors,
       hooks: hookSnippets(this.manager.serverUrl),
     };
+  }
+
+  /**
+   * Creates the project's code folder when it does not exist yet, as an empty git repository
+   * (unless it is inside one already), so the chats have somewhere to work.
+   */
+  async createCodeFolder(key: string): Promise<{ path: string; created: boolean; git: boolean }> {
+    const ctx = this.manager.context(key);
+    const dir = defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
+    if (isDir(dir)) return { path: dir, created: false, git: false };
+    try {
+      await mkdir(dir, { recursive: true });
+    } catch (e) {
+      throw new HttpError(409, `The folder could not be created: ${(e as Error).message}`);
+    }
+    let git = false;
+    const gitBin = insideGit(dir) ? null : which("git", await agentPath());
+    if (gitBin) {
+      git = await new Promise<boolean>((resolve) => {
+        const child = spawn(gitBin, ["init", "-q"], { cwd: dir, stdio: "ignore", timeout: 15_000 });
+        child.on("error", () => resolve(false));
+        child.on("close", (code) => resolve(code === 0));
+      });
+    }
+    this.emit("runners", { key });
+    return { path: dir, created: true, git };
   }
 
   private summary(r: Run): RunSummary {

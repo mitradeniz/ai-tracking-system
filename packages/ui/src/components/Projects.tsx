@@ -7,6 +7,97 @@ import { InfoTip } from "./Info.tsx";
 import { Menu, type MenuItem } from "./Menu.tsx";
 import { Segmented } from "./Settings.tsx";
 
+/** True when a chat runs itself in the project's code folder (it has no folder of its own). */
+function usesCodeFolder(model: Model): boolean {
+  return Object.values(model.runners?.settings.chats ?? {}).some((c) => !c.workdir);
+}
+
+/**
+ * Shown above the board when the plan's code folder (settings.repoPath) is not on this computer:
+ * create it, pick another folder, or use the repository the plan is in.
+ */
+export function CodeFolderBanner({
+  model,
+  onDone,
+  onError,
+}: {
+  model: Model;
+  onDone: (message: string) => void;
+  onError: (message: string) => void;
+}) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const runners = model.runners;
+  if (!runners || runners.defaultWorkdirExists !== false || !usesCodeFolder(model)) return null;
+  const key = model.detail.key;
+  const act = async (work: () => Promise<string | null>) => {
+    setBusy(true);
+    try {
+      const message = await work();
+      if (message) onDone(message);
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const planFolder = runners.planFolder;
+  return (
+    <div className="code-folder" role="status">
+      <div>
+        <strong>{t("cf_title")}</strong>
+        <p className="small">{t("cf_text", { path: runners.defaultWorkdir })}</p>
+      </div>
+      <div className="row wrap">
+        <button
+          className="btn small primary"
+          disabled={busy}
+          title={t("cf_createHint")}
+          onClick={() =>
+            void act(async () => {
+              const res = await api.createCodeFolder(key);
+              return t(res.git ? "cf_createdGit" : "cf_created", { path: res.path });
+            })
+          }
+        >
+          {t("cf_create")}
+        </button>
+        {desktop?.chooseFolder && (
+          <button
+            className="btn small"
+            disabled={busy}
+            onClick={() =>
+              void act(async () => {
+                const picked = await desktop!.chooseFolder!(planFolder);
+                if (!picked) return null;
+                await api.saveInfo(key, { repoPath: picked });
+                return t("cf_saved", { path: picked });
+              })
+            }
+          >
+            {t("cf_choose")}
+          </button>
+        )}
+        {planFolder && planFolder !== runners.defaultWorkdir && (
+          <button
+            className="btn small ghost"
+            disabled={busy}
+            title={planFolder}
+            onClick={() =>
+              void act(async () => {
+                await api.saveInfo(key, { repoPath: null });
+                return t("cf_saved", { path: planFolder });
+              })
+            }
+          >
+            {t("cf_usePlan")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const initials = (name: string) =>
   name
     .split(/\s+/)
@@ -239,6 +330,8 @@ export function ProjectSettingsDialog({ model, onClose, onDone }: { model: Model
   const [description, setDescription] = useState(project.project.description ?? "");
   const [language, setLanguage] = useState<"en" | "tr" | "none">(project.settings.language ?? "none");
   const [approval, setApproval] = useState(project.settings.requireApproval);
+  const savedRepoPath = project.settings.repoPath ?? "";
+  const [repoPath, setRepoPath] = useState(savedRepoPath);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const save = async () => {
@@ -250,6 +343,7 @@ export function ProjectSettingsDialog({ model, onClose, onDone }: { model: Model
         description,
         language: language === "none" ? null : language,
         requireApproval: approval,
+        ...(repoPath.trim() !== savedRepoPath ? { repoPath: repoPath.trim() || null } : {}),
       });
       onDone(t("ps_saved"));
       onClose();
@@ -283,6 +377,37 @@ export function ProjectSettingsDialog({ model, onClose, onDone }: { model: Model
           ]}
           onChange={setLanguage}
         />
+      </div>
+      <div className="field">
+        <label htmlFor="ps-code">
+          {t("ps_code")} <InfoTip text={t("ps_codeHint")} />
+        </label>
+        <div className="row">
+          <input
+            id="ps-code"
+            className="input mono"
+            value={repoPath}
+            placeholder={model.runners?.planFolder ?? ""}
+            onChange={(e) => setRepoPath(e.target.value)}
+          />
+          {desktop?.chooseFolder && (
+            <button
+              className="btn"
+              onClick={async () => {
+                const picked = await desktop!.chooseFolder!(model.runners?.defaultWorkdir || model.runners?.planFolder || undefined);
+                if (picked) setRepoPath(picked);
+              }}
+            >
+              {t("browse")}
+            </button>
+          )}
+        </div>
+        {model.runners && repoPath.trim() === savedRepoPath && (
+          <span className={`small ${model.runners.defaultWorkdirExists === false ? "warn-text" : "muted"}`}>
+            {model.runners.defaultWorkdirExists === false ? `${t("ps_codeMissing")} ` : ""}
+            {t("ps_codeNow", { path: model.runners.defaultWorkdir })}
+          </span>
+        )}
       </div>
       <label className="check wide-check">
         <input type="checkbox" checked={approval} onChange={(e) => setApproval(e.target.checked)} />

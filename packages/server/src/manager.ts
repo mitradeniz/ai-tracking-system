@@ -436,6 +436,13 @@ export class ProjectManager extends EventEmitter {
   }
 
   async saveInfo(key: string, input: ProjectInfoInput): Promise<ProjectSummary> {
+    // A folder picked in the app is absolute; the file keeps it relative to itself, so the plan
+    // still works from another clone or another computer.
+    const repoPath = input.repoPath?.trim();
+    if (repoPath && path.isAbsolute(repoPath)) {
+      const rel = path.relative(path.dirname(this.get(key).filePath), repoPath);
+      input = { ...input, repoPath: path.isAbsolute(rel) ? repoPath : (rel || ".").split(path.sep).join("/") };
+    }
     await this.editFile(key, (text) => updateProjectInfoInFile(text, input));
     return this.summary(this.get(key));
   }

@@ -414,9 +414,11 @@ export interface ProjectInfoInput {
   description?: string;
   language?: "en" | "tr" | null;
   requireApproval?: boolean;
+  /** The code folder, relative to the project file's folder; null or "" removes it. */
+  repoPath?: string | null;
 }
 
-/** Changes the project's name, description, prompt language or approval setting. */
+/** Changes the project's name, description, prompt language, approval setting or code folder. */
 export function updateProjectInfoInFile(text: string, input: ProjectInfoInput): string {
   const raw = parseRaw(text);
   const project = raw.project as Json;
@@ -426,11 +428,16 @@ export function updateProjectInfoInFile(text: string, input: ProjectInfoInput): 
     project.name = name;
   }
   if (input.description !== undefined) setOrDelete(project, "description", input.description.trim(), (v) => typeof v === "string" && v !== "");
-  if (input.language !== undefined || input.requireApproval !== undefined) {
+  if (input.repoPath !== undefined && input.repoPath !== null) {
+    const repoPath = input.repoPath.trim();
+    if (repoPath.length > 1000 || /[\u0000-\u001f]/.test(repoPath)) throw new EditError("That is not a folder path.", "invalid_file");
+  }
+  if (input.language !== undefined || input.requireApproval !== undefined || input.repoPath !== undefined) {
     if (!raw.settings || typeof raw.settings !== "object") raw.settings = {};
     const settings = raw.settings as Json;
     if (input.language !== undefined) setOrDelete(settings, "language", input.language ?? undefined, (v) => v === "en" || v === "tr");
     if (input.requireApproval !== undefined) settings.requireApproval = input.requireApproval;
+    if (input.repoPath !== undefined) setOrDelete(settings, "repoPath", input.repoPath?.trim() || undefined, (v) => typeof v === "string" && v !== "");
   }
   return finish(raw);
 }

@@ -46,6 +46,10 @@ The run settings offer the models each CLI knows: Codex's own catalog (`codex de
 
 One chat runs one thing at a time. When several chats edit code at once, give each its own **git worktree** as working folder.
 
+### Where the chats work
+
+A chat without a working folder of its own works in the project's **code folder**: `settings.repoPath` (relative to the project file) when the plan sets one, otherwise the git repository the project file is in. Change it under **Project settings → Code folder**. When a plan points at a folder that is not on this computer yet (a repository you have not created or cloned), the board says so and offers to **create the folder** as an empty git repository, choose another folder, or use the plan's own repository.
+
 ### What the agent is told
 
 Before the task prompt, the tracker adds a short note: nobody watches the session live, end the final message with the `aitrack-report` block (no HTTP call or report file needed), and stop with status `blocked` and a question when a person must decide. With **Don't wait for plan approval**, the agent goes ahead without waiting for you to approve its plan, but still stops before anything involving payments, legal terms, identity checks, credentials, publishing or deleting data.
@@ -129,6 +133,7 @@ The hook finds the chat by, in order: `AITRACK_CHAT` (start the session as `AITR
 | `GET /api/providers` | installed CLIs, paths, versions, models and effort levels |
 | `GET /api/projects/:key/runners` | run settings, recent runs, hook snippets |
 | `POST /api/projects/:key/runners` 🔑 | `{autoDispatch, maxConcurrent}` |
+| `POST /api/projects/:key/code-folder` 🔑 | create the project's code folder (`settings.repoPath`) as an empty git repository when it does not exist |
 | `POST /api/projects/:key/runners/:chat` 🔑 | `{runner: {provider, workdir, access, session, sessionId, unattended, network, allowedTools, extraArgs, binary, command, model, effort}}` |
 | `POST /api/projects/:key/tasks/:task/run` 🔑 | `{agent?}` — send the task |
 | `POST /api/projects/:key/agents/:chat/reply` 🔑 | `{text, task?}` — continue the chat's session |

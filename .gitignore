@@ -10,3 +10,5 @@ coverage/
 !.env.example
 # runtime data written by agents when the local server is unreachable
 .aitrack/inbox/
+# files an AI assistant's desktop app saves into a connected folder; never part of the repo
+Claude outputs/

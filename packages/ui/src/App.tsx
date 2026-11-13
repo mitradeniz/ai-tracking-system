@@ -4,7 +4,7 @@ import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { AddProjectDialog, AgentDialog, ExportDialog, PasteDialog } from "./components/Dialogs.tsx";
 import { Menu, type MenuItem } from "./components/Menu.tsx";
 import { NewProjectWizard, PlanWithAIDialog } from "./components/NewProject.tsx";
-import { ProjectList, ProjectSettingsDialog, RemoveProjectDialog } from "./components/Projects.tsx";
+import { CodeFolderBanner, ProjectList, ProjectSettingsDialog, RemoveProjectDialog } from "./components/Projects.tsx";
 import { AutoDispatch, RunnerDialog } from "./components/Runners.tsx";
 import { SettingsDialog } from "./components/Settings.tsx";
 import { TaskDrawer } from "./components/TaskDrawer.tsx";
@@ -494,6 +494,16 @@ export function App() {
                 )}
               </header>
               <div className="content" data-tour="board">
+                {model && (
+                  <CodeFolderBanner
+                    model={model}
+                    onDone={(m) => {
+                      toast(m, "done");
+                      refresh();
+                    }}
+                    onError={(m) => toast(localError(m, t), "failed")}
+                  />
+                )}
                 {model && noTasks && (
                   <div className="empty-plan">
                     <div>

@@ -4111,3 +4111,22 @@ details.advanced[open] {
   font-size: 12px;
   user-select: all;
 }
+
+/* The plan's code folder is missing on this computer. */
+.code-folder {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--blocked-line);
+  background: var(--blocked-bg);
+  display: flex;
+  gap: 12px 16px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.code-folder p {
+  margin: 2px 0 0;
+  overflow-wrap: anywhere;
+}

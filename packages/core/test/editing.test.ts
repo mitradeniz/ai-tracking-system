@@ -136,6 +136,15 @@ describe("editing prompts", () => {
     expect(p.project.name).toBe("Shop 2");
     expect(p.settings).toMatchObject({ language: "en", requireApproval: true });
   });
+
+  it("sets and removes the code folder", () => {
+    const set = updateProjectInfoInFile(base(), { repoPath: " ../platform " });
+    expect(parse(set).settings.repoPath).toBe("../platform");
+    expect(parse(set).project.name).toBe(parse(base()).project.name);
+    expect(parse(updateProjectInfoInFile(set, { repoPath: null })).settings.repoPath).toBeUndefined();
+    expect(parse(updateProjectInfoInFile(set, { repoPath: "" })).settings.repoPath).toBeUndefined();
+    expect(() => updateProjectInfoInFile(base(), { repoPath: "a\nb" })).toThrow();
+  });
 });
 
 describe("authoring with AI", () => {

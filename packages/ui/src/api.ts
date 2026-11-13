@@ -351,8 +351,12 @@ export const api = {
   pinProject: (key: string, pinned: boolean) =>
     request<{ projects: ProjectSummary[] }>("POST", `/api/projects/${enc(key)}/pin`, { pinned }).then((r) => r.projects),
   orderProjects: (keys: string[]) => request<{ projects: ProjectSummary[] }>("POST", "/api/projects/order", { keys }).then((r) => r.projects),
-  saveInfo: (key: string, info: { name?: string; description?: string; language?: "en" | "tr" | null; requireApproval?: boolean }) =>
-    request<ProjectSummary>("POST", `/api/projects/${enc(key)}/info`, info),
+  saveInfo: (
+    key: string,
+    info: { name?: string; description?: string; language?: "en" | "tr" | null; requireApproval?: boolean; repoPath?: string | null },
+  ) => request<ProjectSummary>("POST", `/api/projects/${enc(key)}/info`, info),
+  createCodeFolder: (key: string) =>
+    request<{ path: string; created: boolean; git: boolean }>("POST", `/api/projects/${enc(key)}/code-folder`, {}),
   replacePlan: (key: string, text: string) => request<ProjectSummary>("POST", `/api/projects/${enc(key)}/plan`, { text }),
   saveTask: (key: string, task: TaskPayload, mode: "create" | "update") =>
     request<ProjectSummary>("POST", `/api/projects/${enc(key)}/tasks`, { task, mode }),

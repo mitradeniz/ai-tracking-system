@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
@@ -424,6 +425,32 @@ describe("provider adapters", () => {
     expect(res2.json.error).toMatch(/working folder was not found/);
     await call("POST", `/api/projects/${k}/runners/a`, { runner: { provider: "codex", binary: FAKE, workdir: other } });
     expect((await call("POST", `/api/projects/${k}/tasks/T1/run`, {})).status).toBe(201);
+  });
+
+  it("creates a missing code folder or points the plan at another one", async () => {
+    const docs = path.join(dir, "site", "docs");
+    await mkdir(docs, { recursive: true });
+    const planFile = path.join(docs, "p.aitrack");
+    await writeFile(planFile, serializeProject({ ...project, project: { ...project.project, id: "p3" }, settings: { ...project.settings, repoPath: "../../platform" } }));
+    const k = (await call("POST", "/api/projects", { filePath: planFile })).json.key as string;
+    expect((await call("POST", `/api/projects/${k}/code-folder`, {}, false)).status).toBe(401);
+    const made = await call("POST", `/api/projects/${k}/code-folder`, {});
+    expect(made.status).toBe(200);
+    expect(made.json).toMatchObject({ path: path.join(dir, "platform"), created: true, git: true });
+    expect(existsSync(path.join(dir, "platform", ".git"))).toBe(true);
+    expect((await call("GET", `/api/projects/${k}/runners`)).json.defaultWorkdirExists).toBe(true);
+    expect((await call("POST", `/api/projects/${k}/code-folder`, {})).json.created).toBe(false);
+
+    // A folder picked in the app is kept relative to the project file.
+    const elsewhere = path.join(dir, "elsewhere");
+    await mkdir(elsewhere);
+    await call("POST", `/api/projects/${k}/info`, { repoPath: elsewhere });
+    expect(JSON.parse(await readFile(planFile, "utf8")).settings.repoPath).toBe("../../elsewhere");
+    expect((await call("GET", `/api/projects/${k}/runners`)).json.defaultWorkdir).toBe(elsewhere);
+    // No code folder: the git repository the plan is in, else its folder.
+    await call("POST", `/api/projects/${k}/info`, { repoPath: null });
+    expect(JSON.parse(await readFile(planFile, "utf8")).settings.repoPath).toBeUndefined();
+    expect((await call("GET", `/api/projects/${k}/runners`)).json.defaultWorkdir).toBe(docs);
   });
 
   it("starts a new session after a run that never got going", async () => {

@@ -138,7 +138,7 @@ The app edits the file in place and keeps the author's formatting: fields that w
 | `POST /api/projects/:key/tasks/:task/remove` | — | Removes a task; tasks that waited for it wait for what it waited for. Refused while it is with a chat. |
 | `POST /api/projects/:key/prompts` | `{prompt: {id, title?, body}, mode}` | Adds or changes a prompt. |
 | `POST /api/projects/:key/prompts/:prompt/remove` | — | Removes a prompt and every reference to it. |
-| `POST /api/projects/:key/info` | `{name?, description?, language?, requireApproval?}` | Project name, description, language and approval. |
+| `POST /api/projects/:key/info` | `{name?, description?, language?, requireApproval?, repoPath?}` | Project name, description, language, approval and code folder (an absolute `repoPath` is stored relative to the file; `null` removes it). |
 | `POST /api/projects/:key/plan` | `{text}` | Replaces the plan of a project that has no tasks yet (Plan with AI). |
 | `POST /api/projects/:key/agents` · `…/agents/:chat/remove` | see the app | Adds, changes or removes a chat. |
 | `POST /api/projects/:key/pin` · `POST /api/projects/order` | `{pinned}` · `{keys}` | Pins and orders the project list (kept in `~/.aitrack/registry.json`, not in the file). |

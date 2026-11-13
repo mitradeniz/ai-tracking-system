@@ -238,6 +238,7 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
         description: typeof body.description === "string" ? body.description : undefined,
         language: body.language === "en" || body.language === "tr" ? body.language : body.language === null ? null : undefined,
         requireApproval: typeof body.requireApproval === "boolean" ? body.requireApproval : undefined,
+        repoPath: typeof body.repoPath === "string" ? body.repoPath : body.repoPath === null ? null : undefined,
       }),
     );
   });
@@ -493,6 +494,11 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
   });
   route("GET", "/api/providers", async (ctx) => send(ctx.res, 200, { providers: await detectProviders(ctx.url.searchParams.get("refresh") === "1") }));
   route("GET", "/api/projects/:key/runners", (ctx, [key]) => send(ctx.res, 200, runs().state(key!)));
+  // Creates the project's code folder (settings.repoPath) as an empty git repository.
+  route("POST", "/api/projects/:key/code-folder", async (ctx, [key]) => {
+    control(ctx);
+    send(ctx.res, 200, await runs().createCodeFolder(key!));
+  });
   route("POST", "/api/projects/:key/runners", async (ctx, [key]) => {
     control(ctx);
     const body = await readJson(ctx.req);
