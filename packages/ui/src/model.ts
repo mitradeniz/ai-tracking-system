@@ -233,6 +233,26 @@ export interface Problem {
   settings?: boolean;
   /** A problem the chat reported (not one the tracker worked out), which can be closed. */
   issue?: { index: number; title: string };
+  /** For a permission the CLI refused: what it tried, e.g. "Bash git push". */
+  tool?: string;
+}
+
+/**
+ * The Claude Code permission rules that would have allowed a refused step: one Bash rule per
+ * command in a command line ("cd x && find . | wc -l" → cd, find, wc), the tool name otherwise.
+ */
+export function permissionRules(tool: string): string[] {
+  const m = /^Bash\s+([\s\S]*)$/.exec(tool);
+  if (!m) return [tool.split(/\s/)[0]!];
+  const rules = new Set<string>();
+  for (const part of m[1]!.replace(/…$/, "").split(/&&|\|\||[;|]/)) {
+    const words = part.trim().replace(/^(\w+=\S*\s+)+/, "").split(/\s+/).filter(Boolean);
+    const cmd = words[0]?.replace(/^["']|["']$/g, "");
+    if (!cmd || !/^[\w./+-]+$/.test(cmd)) continue;
+    const name = cmd.split("/").pop()!;
+    rules.add(name === "git" && words[1] && /^[a-z-]+$/.test(words[1]) ? `Bash(git ${words[1]}:*)` : `Bash(${name}:*)`);
+  }
+  return [...rules];
 }
 
 function issueFix(taskId: string, title: string, issue: TaskIssue): string {
@@ -267,6 +287,7 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
       fix: issueFix(s.id, title, i),
       settings: permission,
       issue: { index, title: i.title },
+      tool: permission ? tool : undefined,
     });
   });
   const lastRun = lastRunOf(model, s.id);

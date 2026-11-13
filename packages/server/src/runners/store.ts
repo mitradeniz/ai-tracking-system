@@ -58,6 +58,7 @@ export function normalizeRunner(input: unknown, base: ChatRunner = DEFAULT_RUNNE
     sessionId,
     unattended: typeof o.unattended === "boolean" ? o.unattended : base.unattended,
     network: typeof o.network === "boolean" ? o.network : base.network,
+    workCommands: typeof o.workCommands === "boolean" ? o.workCommands : base.workCommands,
     allowedTools: pick("allowedTools", 2000),
     extraArgs: pick("extraArgs", 2000),
     binary,

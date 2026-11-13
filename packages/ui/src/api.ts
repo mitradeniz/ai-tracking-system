@@ -36,6 +36,8 @@ export type RunnerProvider = ProviderId | "manual";
 /** How a chat is run on this computer. Kept by the local tracker, never in the project file. */
 export interface ChatRunner {
   provider: RunnerProvider;
+  /** Claude Code with "edit files": the usual work commands run without asking (default on). */
+  workCommands?: boolean;
   workdir?: string;
   model?: string;
   effort?: string;

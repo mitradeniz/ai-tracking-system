@@ -29,10 +29,14 @@ The custom command is plain text output: everything it prints is the final messa
 | Access | Codex | Claude Code | Copilot | Gemini |
 | --- | --- | --- | --- | --- |
 | Read only | `-s read-only` | `--permission-mode plan` | no extra permissions | `--approval-mode plan` |
-| **Edit files** (default) | `-s workspace-write` (+ optional network) | `--permission-mode acceptEdits` | `--allow-tool write` | `--approval-mode auto_edit` |
+| **Edit files** (default) | `-s workspace-write` (+ optional network) | `--permission-mode acceptEdits` + the usual work commands | `--allow-tool write` | `--approval-mode auto_edit` |
 | Full access | `--dangerously-bypass-approvals-and-sandbox` | `--permission-mode bypassPermissions` | `--allow-all-tools` | `--approval-mode yolo` |
 
-A headless run cannot ask for permission, so anything outside its access is refused and the refusal shows up in the output. With **Edit files**, Claude Code and Copilot cannot run shell commands unless you allow them under **Extra allowed tools**, for example `Bash(npm test:*)`, `Bash(git commit:*)` or `shell(npm:*)`, `shell(git:*)`. Use **Full access** only in a disposable worktree or a container.
+A headless run cannot ask for permission, so anything outside its access is refused and the refusal shows up in the output and as a problem on the task.
+
+With **Edit files**, Claude Code also runs the usual work commands without asking (on by default, *Run the usual work commands without asking* in the run settings): reading and searching (`ls`, `cat`, `grep`, `find`, `sed`, `jq`…), folders and files (`mkdir`, `cp`, `mv`), local git (`status`, `diff`, `log`, `add`, `commit`, `switch`, `worktree`…) and build and test (`node`, `npm`, `npx`, `pnpm`, `make`, `go`, `python`, `pytest`, `cargo`…). These run the project's own code, so keep the option on only for projects you trust. `git push`, `rm` and anything else still need a rule under **Extra allowed tools** — a refused step shows **Allow …** on its problem, which adds the rule for that chat in one click. When the chat works outside the plan's repository, that repository is added with `--add-dir`, so the plan and its documents can be read.
+
+Copilot cannot run shell commands with **Edit files** unless you allow them, for example `shell(npm:*)`, `shell(git:*)`. Use **Full access** only in a disposable worktree or a container.
 
 ### Model and reasoning
 

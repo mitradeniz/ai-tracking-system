@@ -169,7 +169,9 @@ describe("agent runners", () => {
     const first = (await invocations())[0]!;
     expect(first.args).toContain("--session-id");
     expect(first.args).toContain("acceptEdits");
-    expect(first.args.slice(-3)).toEqual(["--allowedTools", "Bash(npm test:*)", "Bash(git status)"]);
+    expect(first.args).toContain("--allowedTools");
+    expect(first.args.slice(-2)).toEqual(["Bash(npm test:*)", "Bash(git status)"]);
+    expect(first.args).toContain("Bash(grep:*)");
     const session = first.args[first.args.indexOf("--session-id") + 1];
 
     process.env.FAKE_SCENARIO = "done";
@@ -287,6 +289,21 @@ describe("provider adapters", () => {
     const copilot = buildInvocation({ runner: { ...base, provider: "copilot", access: "edit", allowedTools: "shell(git:*)" }, prompt: "P", cwd: "/w", resume: "s", newSessionId: "u" });
     expect(copilot.args).toEqual(["-p", "P", "-s", "--no-color", "--no-ask-user", "--session-id", "s", "--allow-tool", "write", "--allow-tool", "shell(git:*)", "--model", "m1"]);
     expect(() => buildInvocation({ runner: { ...base, provider: "manual" }, prompt: "P", cwd: "/w", newSessionId: "u" })).toThrow();
+  });
+
+  it("lets Claude Code run the usual work commands when it may edit files", () => {
+    const base = { ...DEFAULT_RUNNER, provider: "claude" as const };
+    const edit = buildInvocation({ runner: { ...base, allowedTools: "WebFetch" }, prompt: "P", cwd: "/w", newSessionId: "u", addDirs: ["/plan", "/w"] });
+    const tools = edit.args.slice(edit.args.indexOf("--allowedTools") + 1);
+    expect(tools).toEqual(expect.arrayContaining(["Bash(grep:*)", "Bash(find:*)", "Bash(node:*)", "Bash(git commit:*)", "WebFetch"]));
+    expect(tools).not.toContain("Bash(rm:*)");
+    expect(tools).not.toContain("Bash(git push:*)");
+    expect(edit.args.join(" ")).toContain("--add-dir /plan --allowedTools");
+    const off = buildInvocation({ runner: { ...base, workCommands: false }, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(off.args).not.toContain("--allowedTools");
+    const readonly = buildInvocation({ runner: { ...base, access: "readonly" }, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(readonly.args).not.toContain("--allowedTools");
+    expect(readonly.args).toContain("plan");
   });
 
   it("passes the model and reasoning effort to each CLI", () => {

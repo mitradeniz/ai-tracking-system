@@ -31,6 +31,11 @@ export interface ChatRunner {
   network: boolean;
   /** Claude Code and Copilot: extra tool permissions, e.g. "Bash(npm test:*)" or "shell(git:*)". */
   allowedTools?: string;
+  /**
+   * Claude Code with "edit files": also allow the commands work needs (read and search, make
+   * folders, local git, build and test). On unless turned off.
+   */
+  workCommands?: boolean;
   /** Extra command line arguments, appended as written (quotes are respected). */
   extraArgs?: string;
   /** Full path of the CLI when it is not found on PATH. */
@@ -38,6 +43,25 @@ export interface ChatRunner {
   /** Custom provider: the command line. {{prompt}}, {{sessionId}} and {{workdir}} are replaced. */
   command?: string;
 }
+
+/**
+ * Commands a chat that may edit files is allowed to run without asking (Claude Code, "edit files"):
+ * reading and searching, making folders and moving files, local git (no push, no history rewrite),
+ * building and testing. Deleting, pushing, installing system packages and network tools still ask.
+ */
+export const WORK_COMMANDS = [
+  // read and search
+  "ls", "cat", "head", "tail", "wc", "find", "grep", "rg", "sort", "uniq", "cut", "tr", "diff", "cmp", "tree",
+  "pwd", "cd", "echo", "printf", "which", "file", "stat", "du", "jq", "sed", "awk", "basename", "dirname",
+  "realpath", "date", "test", "true",
+  // files
+  "mkdir", "touch", "cp", "mv",
+  // local git
+  "git status", "git diff", "git log", "git show", "git branch", "git add", "git commit", "git switch",
+  "git checkout", "git restore", "git worktree", "git rev-parse", "git ls-files", "git stash", "git blame", "git grep",
+  // build and test
+  "node", "npm", "npx", "pnpm", "yarn", "bun", "tsc", "make", "go", "python", "python3", "pytest", "cargo",
+] as const;
 
 export const DEFAULT_RUNNER: ChatRunner = {
   provider: "manual",
@@ -204,6 +228,8 @@ export interface BuildInput {
   resume?: string;
   /** Fresh UUID to use when a new session starts. */
   newSessionId: string;
+  /** Other folders the chat may read (and, when it may edit, write): the plan's repository. */
+  addDirs?: string[];
 }
 
 function fill(template: string, vars: Record<string, string>): string {
@@ -212,6 +238,7 @@ function fill(template: string, vars: Record<string, string>): string {
 
 export function buildInvocation(input: BuildInput): Invocation {
   const { runner, prompt, cwd, resume, newSessionId } = input;
+  const addDirs = (input.addDirs ?? []).filter((d) => d && d !== cwd);
   const extra = runner.extraArgs ? splitArgs(runner.extraArgs) : [];
   const model = runner.model?.trim();
   const effort = runner.effort?.trim();
@@ -240,8 +267,12 @@ export function buildInvocation(input: BuildInput): Invocation {
       );
       if (model) args.push("--model", model);
       if (effort) args.push("--effort", effort);
+      if (addDirs.length) args.push("--add-dir", ...addDirs);
       args.push(...extra);
-      const tools = splitTools(runner.allowedTools);
+      const tools = [
+        ...(runner.access === "edit" && runner.workCommands !== false ? WORK_COMMANDS.map((c) => `Bash(${c}:*)`) : []),
+        ...splitTools(runner.allowedTools),
+      ];
       if (tools.length) args.push("--allowedTools", ...tools);
       return { command: runner.binary || "claude", args, stdin: prompt, sessionId: resume ?? newSessionId, format: "claude" };
     }

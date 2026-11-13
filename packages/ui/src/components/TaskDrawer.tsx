@@ -11,6 +11,7 @@ import {
   lastRunOf,
   localMessage,
   localReason,
+  permissionRules,
   problemsOf,
   PROVIDER_LABEL,
   reasonText,
@@ -189,6 +190,18 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
           }),
         ),
       )
+      .catch((e: Error) => onError(e.message));
+  };
+  // A step Claude Code refused: allow it for this chat from here.
+  const allow = (problem: Problem) => {
+    if (!msgAgent || !msgRunner || !problem.tool || !problem.issue) return;
+    const rules = permissionRules(problem.tool);
+    const have = (msgRunner.allowedTools ?? "").split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
+    const next = [...have, ...rules.filter((r) => !have.includes(r))];
+    api
+      .saveRunner(model.detail.key, msgAgent, { allowedTools: next.join("\n") })
+      .then(() => api.setIssueState(model.detail.key, task.id, { ...problem.issue!, state: "resolved" }))
+      .then(() => onInfo?.(t("problem_allowed", { agent: agentName(model, msgAgent), rules: rules.join(", ") })))
       .catch((e: Error) => onError(e.message));
   };
   const said = snap.lastMessage ? splitReport(localMessage(snap.lastMessage, t)) : null;
@@ -472,6 +485,8 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                   onSend={(text) => void sendMessage(text)}
                   onSettings={p.settings && onRunnerSettings && msgAgent ? () => onRunnerSettings(msgAgent) : undefined}
                   onState={p.issue ? (state) => setIssue(p.issue!, state) : undefined}
+                  allowRules={p.tool && msgRunner?.provider === "claude" ? permissionRules(p.tool) : undefined}
+                  onAllow={() => allow(p)}
                 />
               ))}
               {closed.length > 0 && (
@@ -712,6 +727,8 @@ function ProblemCard({
   onSend,
   onSettings,
   onState,
+  allowRules,
+  onAllow,
 }: {
   problem: Problem;
   canSend: boolean;
@@ -720,6 +737,9 @@ function ProblemCard({
   onSettings?: () => void;
   /** Marks a problem the chat reported resolved or ignored. */
   onState?: (state: "resolved" | "ignored") => void;
+  /** Permission rules that would allow a refused step, and the action that adds them. */
+  allowRules?: string[];
+  onAllow?: () => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -773,6 +793,11 @@ function ProblemCard({
             }}
           >
             {copied ? `✓ ${t("copied")}` : t("copy")}
+          </button>
+        )}
+        {allowRules && allowRules.length > 0 && onAllow && (
+          <button className="btn small primary" title={t("problem_allowHint")} onClick={onAllow}>
+            {t("problem_allow", { rules: allowRules.map((r) => r.replace(/^Bash\((.*):\*\)$/, "$1")).join(", ") })}
           </button>
         )}
         {onSettings && (

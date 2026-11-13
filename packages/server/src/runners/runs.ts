@@ -374,7 +374,10 @@ export class RunManager extends EventEmitter {
     const provider = runner.provider as ProviderId;
     let invocation;
     try {
-      invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId: randomUUID() });
+      // The plan's repository, when the chat works elsewhere: the plan and its docs live there.
+      const plan = planFolder(ctx.filePath);
+      const addDirs = plan !== workdir && isDir(plan) ? [plan] : [];
+      invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId: randomUUID(), addDirs });
     } catch (e) {
       throw new HttpError(400, (e as Error).message);
     }

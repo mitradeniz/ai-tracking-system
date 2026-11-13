@@ -228,6 +228,15 @@ export function RunnerDialog({
                   {t("run_network")}
                 </label>
               )}
+              {p === "claude" && form.access === "edit" && (
+                <label className="check plain">
+                  <input type="checkbox" checked={form.workCommands !== false} onChange={(e) => set({ workCommands: e.target.checked })} />
+                  <span>
+                    {t("run_workCommands")}
+                    <span className="small muted block">{t("run_workCommandsHint")}</span>
+                  </span>
+                </label>
+              )}
             </div>
           )}
           {p !== "custom" && <ModelPicker provider={found} fallback={p} form={form} set={set} />}
