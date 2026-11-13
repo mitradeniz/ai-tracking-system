@@ -138,11 +138,18 @@ function openMini(): void {
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
+      // Without this, macOS marks a covered or hidden window's page as hidden and drops its
+      // frame; bringing the window back then shows an empty, translucent window for a moment
+      // while the whole page is drawn again. Nothing animates in the background (see
+      // reportActivity), so keeping the page "visible" costs nothing while idle.
+      backgroundThrottling: false,
       additionalArguments: isMac ? ["--aitrack-vibrancy"] : [],
     },
   });
   mini.setAlwaysOnTop(true, "floating");
-  mini.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // skipTransformProcessType: without it, macOS turns the app into a background app and back,
+  // which hides every window and the Dock icon for a moment: the whole screen flickers.
+  mini.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
   guardNavigation(mini);
   reportActivity(mini);
   mini.once("ready-to-show", () => mini?.show());
@@ -230,7 +237,9 @@ function registerIpc(): void {
   // Native materials follow the app's theme, not only the system's.
   ipcMain.handle("aitrack:set-theme", (event, theme: unknown) => {
     if (!isOwnFrame(event)) return;
-    if (theme === "dark" || theme === "light" || theme === "system") nativeTheme.themeSource = theme;
+    // Setting it, even to the same value, makes macOS redraw every window of the app; both windows
+    // send it when they load.
+    if ((theme === "dark" || theme === "light" || theme === "system") && nativeTheme.themeSource !== theme) nativeTheme.themeSource = theme;
   });
   // Updates: check the clone the app was built from, and run the updater in the background.
   const repo = () => findRepo(defaultDataDir(), app.isPackaged ? undefined : path.resolve(__dirname, "..", "..", ".."));
@@ -412,6 +421,11 @@ function createWindow(): void {
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
+      // Without this, macOS marks a covered or hidden window's page as hidden and drops its
+      // frame; bringing the window back then shows an empty, translucent window for a moment
+      // while the whole page is drawn again. Nothing animates in the background (see
+      // reportActivity), so keeping the page "visible" costs nothing while idle.
+      backgroundThrottling: false,
       additionalArguments: isMac ? ["--aitrack-vibrancy"] : [],
     },
   });

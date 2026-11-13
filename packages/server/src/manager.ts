@@ -356,7 +356,13 @@ export class ProjectManager extends EventEmitter {
 
   async reload(key: string): Promise<void> {
     const h = this.get(key);
-    const next = await this.load(h, h.events);
+    let next = await this.load(h, h.events);
+    // An editor or another program may still be writing the file: read it again a moment later
+    // before replacing a good plan with errors, so the board does not vanish for a second.
+    if (h.project && !next.project) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      next = await this.load(h, h.events);
+    }
     next.inboxDirs = h.inboxDirs;
     this.handles.set(key, next);
     if (next.project) {

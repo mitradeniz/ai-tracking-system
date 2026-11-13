@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, type Activity, type ProjectDetail, type ProjectSummary, type RunLogEvent, type RunnerState } from "./api.ts";
+import { api, ApiError, type Activity, type ProjectDetail, type ProjectSummary, type RunLogEvent, type RunnerState } from "./api.ts";
 
 /** Live run output, for components that show a run's log. */
 export const RUNLOG_EVENT = "aitrack:runlog";
@@ -38,8 +38,12 @@ export function useTracker(selected: string | null, onActivity?: (a: Activity) =
     try {
       const d = await api.project(key);
       if (selectedRef.current === key) setDetail(d);
-    } catch {
-      if (selectedRef.current === key) setDetail(null);
+    } catch (e) {
+      // Only a project that is gone clears the screen. A failed request (the tracker busy for a
+      // moment, a connection dropped while the Mac woke up) keeps what is shown; the next change
+      // or poll fills it in. Clearing it made the whole page fall back to the welcome screen and
+      // come back.
+      if (selectedRef.current === key && e instanceof ApiError && e.status === 404) setDetail(null);
     }
   }, []);
 
@@ -51,8 +55,8 @@ export function useTracker(selected: string | null, onActivity?: (a: Activity) =
     try {
       const r = await api.runners(key);
       if (selectedRef.current === key) setRunners(r);
-    } catch {
-      if (selectedRef.current === key) setRunners(null);
+    } catch (e) {
+      if (selectedRef.current === key && e instanceof ApiError && e.status === 404) setRunners(null);
     }
   }, []);
 

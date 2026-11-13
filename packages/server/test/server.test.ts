@@ -87,6 +87,27 @@ describe("server", () => {
     expect(ready).toEqual(["T1", "T3"]);
   });
 
+  it("waits for a project file that is still being written", async () => {
+    const { json } = await call("POST", "/api/projects", { filePath: file });
+    const good = serializeProject(project);
+    // Half a file, as an editor that writes in place leaves it for a moment.
+    await writeFile(file, good.slice(0, good.length / 2));
+    const reloading = call("POST", `/api/projects/${json.key}/reload`);
+    await new Promise((r) => setTimeout(r, 80));
+    await writeFile(file, good);
+    await reloading;
+    const detail = await call("GET", `/api/projects/${json.key}`);
+    expect(detail.json.project).not.toBeNull();
+    expect(detail.json.issues.filter((i: any) => i.level === "error")).toEqual([]);
+
+    // A file that stays broken still shows its errors.
+    await writeFile(file, "{ broken");
+    await call("POST", `/api/projects/${json.key}/reload`);
+    const broken = await call("GET", `/api/projects/${json.key}`);
+    expect(broken.json.project).toBeNull();
+    expect(broken.json.issues.some((i: any) => i.level === "error")).toBe(true);
+  });
+
   it("records agent reports and returns the next task", async () => {
     const { json } = await call("POST", "/api/projects", { filePath: file });
     await call("POST", `/api/projects/${json.key}/events`, { task: "T1", type: "dispatched", agent: "a" });

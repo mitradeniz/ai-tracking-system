@@ -299,6 +299,16 @@ export function controlToken(): Promise<string | null> {
   return tokenPromise;
 }
 
+/** An error answer from the tracker, with its HTTP status (0 when the tracker could not be reached). */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 async function request<T>(method: string, url: string, body?: unknown): Promise<T> {
   const token = await controlToken();
   const headers: Record<string, string> = body === undefined ? {} : { "content-type": "application/json" };
@@ -317,7 +327,7 @@ async function request<T>(method: string, url: string, body?: unknown): Promise<
   }
   if (!res.ok) {
     const message = data && typeof data === "object" && "error" in data ? String((data as { error: unknown }).error) : res.statusText;
-    throw new Error(message);
+    throw new ApiError(message, res.status);
   }
   return data as T;
 }

@@ -2372,10 +2372,10 @@ pre.prompt {
   position: relative;
 }
 
-:root[data-inactive] *,
-:root[data-inactive] *::before,
-:root[data-inactive] *::after {
-  animation-play-state: paused !important;
+/* Only the ring: a rule on every element would restyle the whole page each time the window
+ * gains or loses focus. */
+:root[data-inactive] .pulse::after {
+  animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {
