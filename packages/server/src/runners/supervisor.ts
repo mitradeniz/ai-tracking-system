@@ -56,6 +56,8 @@ interface Options {
 }
 
 const STOPPED = "Stopped from the tracker.";
+/** Not a setting: only a guard against a loop, when every run of the manager causes another. */
+const SAFETY_RUNS_PER_HOUR = 30;
 const clip = (s: string, n: number) => {
   const one = s.replace(/\s+/g, " ").trim();
   return one.length > n ? `${one.slice(0, n - 1)}…` : one;
@@ -86,6 +88,8 @@ export class Supervisor extends EventEmitter {
   private logs = new Map<string, ManagerRun[]>();
   /** What the last run looked at, so the same situation is not sent twice. */
   private handled = new Map<string, string>();
+  /** Tasks the manager left for the person, and how they looked then: not shown to it again until they change. */
+  private leftFor = new Map<string, string>();
   private closed = false;
   private readonly delayMs: number;
   private readonly retryMs: number[];
@@ -207,7 +211,8 @@ export class Supervisor extends EventEmitter {
       return null;
     }
     const { project, board, filePath } = this.manager.context(key);
-    const attention = this.attention(key, board, settings);
+    // A look the person asked for also shows what was left for them.
+    const attention = this.attention(key, board, settings, trigger === "manual");
     const proposals = board.proposals.filter((p) => p.state === "open");
     const notes = openNotes(board);
     if (!attention.length && !proposals.length && !notes.length) {
@@ -227,7 +232,7 @@ export class Supervisor extends EventEmitter {
       if (this.handled.get(key) === fingerprint) return null;
       const hourAgo = Date.now() - 3_600_000;
       const recent = this.log(key).filter((r) => Date.parse(r.startedAt) > hourAgo);
-      if (recent.length >= settings.maxRunsPerHour) {
+      if (recent.length >= SAFETY_RUNS_PER_HOUR) {
         // Wake up once when the oldest of them is an hour old.
         const oldest = Math.min(...recent.map((r) => Date.parse(r.startedAt)));
         this.schedule(key, oldest + 3_600_000 - Date.now() + 1000);
@@ -283,9 +288,10 @@ export class Supervisor extends EventEmitter {
   }
 
   /** Tasks that wait for the person and that the manager may act on. */
-  private attention(key: string, board: Board, settings: ManagerSettings): Attention[] {
+  private attention(key: string, board: Board, settings: ManagerSettings, withLeft = false): Attention[] {
     const out: Attention[] = [];
     for (const view of board.tasks) {
+      if (!withLeft && this.leftFor.get(`${key}\u0000${view.task.id}`) === taskPrint(view)) continue;
       // Finished work that waits for approval, when the person let the manager approve it.
       if (view.status === "review") {
         if (!settings.approveDone) continue;
@@ -330,6 +336,7 @@ export class Supervisor extends EventEmitter {
         if (type === "leave") {
           const message = String(a.message ?? "").trim();
           if (!message) continue;
+          if (task && listed.has(task)) this.leftFor.set(`${key}\u0000${task}`, taskPrint(listed.get(task)!.view));
           run.forYou.push(task ? `${task}: ${message}` : message);
           if (task && this.manager.context(key).board.byId.has(task)) await note(task, `left for you — ${message}`);
           done(type, task, true, message);
@@ -444,7 +451,9 @@ export class Supervisor extends EventEmitter {
         }
         acted.add(task);
       } catch (e) {
-        done(type, task, false, (e as Error).message);
+        const message = (e as Error).message;
+        if (task && listed.has(task) && message.includes("left for the person")) this.leftFor.set(`${key}\u0000${task}`, taskPrint(listed.get(task)!.view));
+        done(type, task, false, message);
       }
     }
 
@@ -537,6 +546,11 @@ export function parseAnswer(text: string): ManagerAnswer {
     }
   }
   return { actions: actions.slice(0, 40), ...(plan && { plan }), ...(typeof last.summary === "string" && { summary: clip(last.summary, 1000) }) };
+}
+
+/** How a task looks to the manager: when this changes, a task left for the person comes back to it. */
+function taskPrint(v: TaskView): string {
+  return createHash("sha1").update(JSON.stringify([v.status, v.runtime.reason, v.runtime.lastMessage, v.runtime.issues])).digest("hex");
 }
 
 function attentionText(a: Attention): string {

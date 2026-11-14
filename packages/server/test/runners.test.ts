@@ -316,7 +316,8 @@ describe("agent runners", () => {
       await setRunner("b", { provider: "claude" });
       const settings = await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "claude", binary: FAKE });
       expect(settings.status).toBe(200);
-      expect(settings.json.settings).toMatchObject({ enabled: true, provider: "claude", maxRunsPerHour: 6 });
+      expect(settings.json.settings).toMatchObject({ enabled: true, provider: "claude", resumeStopped: true, approveDone: false });
+      expect(settings.json.settings.maxRunsPerHour).toBeUndefined();
       // Turning the manager on turns automatic dispatch on.
       expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.autoDispatch).toBe(true);
       expect((await call("POST", `/api/projects/${key}/manager/run`, {}, false)).status).toBe(401);
@@ -388,6 +389,9 @@ describe("agent runners", () => {
       expect(log[0].forYou[0]).toContain("T3: waits for your approval");
       expect(await status("T1")).toBe("done");
       expect(await status("T3")).toBe("review");
+      // T3 is the person's now: the approval of T1 changed the board, but the manager is not called about T3 again.
+      await new Promise((r) => setTimeout(r, 500));
+      expect(await managerCalls()).toBe(1);
       const events = (await call("GET", `/api/projects/${key}`)).json.events;
       expect(events.some((e: { type: string; source: string; message?: string }) => e.type === "approved" && e.source === "manager" && e.message?.includes("tests pass"))).toBe(true);
     } finally {

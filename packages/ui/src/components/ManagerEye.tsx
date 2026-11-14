@@ -1,8 +1,8 @@
 import type { TrackEvent } from "@aitrack/core";
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { desktop } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
-import { agentName, formatDuration, localMessage, problemsOf, PROVIDER_LABEL, type Model } from "../model.ts";
+import { agentName, formatDuration, formatTime, localMessage, localReason, problemsOf, PROVIDER_LABEL, type Model } from "../model.ts";
 import { usePref } from "../prefs.ts";
 import { useNow } from "./Info.tsx";
 import { CLI_NAME } from "./NewProject.tsx";
@@ -28,6 +28,50 @@ function ago(iso: string, now: number, lang: string): string {
   if (s < 3600) return tr ? `${Math.floor(s / 60)} dk` : `${Math.floor(s / 60)}m`;
   if (s < 86_400) return tr ? `${Math.floor(s / 3600)} sa` : `${Math.floor(s / 3600)}h`;
   return tr ? `${Math.floor(s / 86_400)} g` : `${Math.floor(s / 86_400)}d`;
+}
+
+/** A line of the projection: a click opens it in place; only its button goes to the app. */
+function Item({
+  id,
+  open,
+  onToggle,
+  style,
+  className,
+  head,
+  more,
+  action,
+}: {
+  id: string;
+  open: string | null;
+  onToggle: (id: string) => void;
+  style: CSSProperties;
+  className: string;
+  head: ReactNode;
+  more: ReactNode;
+  action: ReactNode;
+}) {
+  const expanded = open === id;
+  return (
+    <div className={`holo-item ${expanded ? "expanded" : ""}`} style={style}>
+      <button className={className} aria-expanded={expanded} onClick={() => onToggle(id)}>
+        {head}
+      </button>
+      {expanded && (
+        <div className="holo-more">
+          {more}
+          {action}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShowInApp({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button className="holo-go" onClick={onClick}>
+      <span aria-hidden="true">↗</span> {label}
+    </button>
+  );
 }
 
 /** The eye itself: looks around, blinks, spins faster while the manager is looking, turns red on errors. */
@@ -87,6 +131,8 @@ export function ManagerEye({
   const [hidden, setHidden] = useEyeHidden(key);
   const [open, setOpen] = useState(false);
   const [apex, setApex] = useState<number | null>(null);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const toggle = (id: string) => setExpanded((cur) => (cur === id ? null : id));
   const dock = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const now = useNow(on && !hidden && open, 1000);
@@ -249,20 +295,40 @@ export function ManagerEye({
               </div>
             ) : (
               running.map((r) => (
-                <button key={r.id} className="holo-row" style={line()} onClick={() => onOpenTask(r.task)}>
-                  <span className="holo-pulse" aria-hidden="true" />
-                  <span className="holo-who">
-                    {agentName(model, r.agent)}
-                    <small>
-                      {PROVIDER_LABEL[r.provider] ?? r.provider}
-                      {r.usage?.model ? ` · ${r.usage.model}` : ""}
-                    </small>
-                  </span>
-                  <span className="holo-what">
-                    <b>{r.task}</b> {clip(r.lastActivity ?? model.task.get(r.task)?.title ?? "", 70)}
-                  </span>
-                  <span className="holo-time">{formatDuration(now - Date.parse(r.startedAt))}</span>
-                </button>
+                <Item
+                  key={r.id}
+                  id={`run:${r.id}`}
+                  open={expanded}
+                  onToggle={toggle}
+                  style={line()}
+                  className="holo-row"
+                  head={
+                    <>
+                      <span className="holo-pulse" aria-hidden="true" />
+                      <span className="holo-who">
+                        {agentName(model, r.agent)}
+                        <small>
+                          {PROVIDER_LABEL[r.provider] ?? r.provider}
+                          {r.usage?.model ? ` · ${r.usage.model}` : ""}
+                        </small>
+                      </span>
+                      <span className="holo-what">
+                        <b>{r.task}</b> {clip(r.lastActivity ?? model.task.get(r.task)?.title ?? "", 70)}
+                      </span>
+                      <span className="holo-time">{formatDuration(now - Date.parse(r.startedAt))}</span>
+                    </>
+                  }
+                  more={
+                    <>
+                      <p>
+                        <b>{r.task}</b> {model.task.get(r.task)?.title}
+                      </p>
+                      {r.lastActivity && <p className="holo-quote">{r.lastActivity}</p>}
+                      {r.lastMessage && <p className="holo-quote">{clip(r.lastMessage, 600)}</p>}
+                    </>
+                  }
+                  action={<ShowInApp label={t("eye_showInApp")} onClick={() => onOpenTask(r.task)} />}
+                />
               ))
             )}
 
@@ -271,13 +337,39 @@ export function ManagerEye({
                 <h4 className="alert" style={line()}>
                   {t("eye_errors", { n: errors.length })}
                 </h4>
-                {errors.map(({ s, list }) => (
-                  <button key={s.id} className="holo-row alert" style={line()} onClick={() => onOpenTask(s.id)}>
-                    <span className="holo-bang">!</span>
-                    <span className="holo-what">
-                      <b>{s.id}</b> {clip(list[0]?.title ?? s.reason ?? t(`status_${s.status}` as Key), 90)}
-                    </span>
-                  </button>
+                {errors.map(({ s: snap, list }) => (
+                  <Item
+                    key={snap.id}
+                    id={`err:${snap.id}`}
+                    open={expanded}
+                    onToggle={toggle}
+                    style={line()}
+                    className="holo-row alert"
+                    head={
+                      <>
+                        <span className="holo-bang">!</span>
+                        <span className="holo-what">
+                          <b>{snap.id}</b> {clip(list[0]?.title ?? (snap.reason ? localReason(snap.reason, t) : t(`status_${snap.status}` as Key)), 90)}
+                        </span>
+                      </>
+                    }
+                    more={
+                      <>
+                        <p>
+                          <b>{snap.id}</b> {model.task.get(snap.id)?.title}
+                        </p>
+                        {list.length > 0
+                          ? list.slice(0, 5).map((p, n) => (
+                              <p key={n} className="holo-quote">
+                                <strong>{p.title}</strong>
+                                {p.detail ? ` — ${clip(p.detail, 400)}` : ""}
+                              </p>
+                            ))
+                          : snap.reason && <p className="holo-quote">{localReason(snap.reason, t)}</p>}
+                      </>
+                    }
+                    action={<ShowInApp label={t("eye_showInApp")} onClick={() => onOpenTask(snap.id)} />}
+                  />
                 ))}
               </>
             )}
@@ -288,24 +380,74 @@ export function ManagerEye({
                 {t("eye_noNews")}
               </div>
             ) : (
-              news.map((e) => (
-                <button key={e.id} className={`holo-news ${e.type}`} style={line()} onClick={() => onOpenTask(e.task)}>
-                  <span className="holo-ago">{ago(e.ts, now, lang)}</span>
-                  <b>{e.task}</b>
-                  <span className="holo-type">{t(`type_${e.type}` as Key)}</span>
-                  {(e.message || e.reason) && <span className="holo-msg">{clip(localMessage(e.message ?? e.reason ?? "", t), 80)}</span>}
-                </button>
-              ))
+              news.map((e) => {
+                const text = e.message ? localMessage(e.message, t) : e.reason ? localReason(e.reason, t) : "";
+                return (
+                  <Item
+                    key={e.id}
+                    id={`news:${e.id}`}
+                    open={expanded}
+                    onToggle={toggle}
+                    style={line()}
+                    className={`holo-news ${e.type}`}
+                    head={
+                      <>
+                        <span className="holo-ago">{ago(e.ts, now, lang)}</span>
+                        <b>{e.task}</b>
+                        <span className="holo-type">{t(`type_${e.type}` as Key)}</span>
+                        {text && <span className="holo-msg">{clip(text, 80)}</span>}
+                      </>
+                    }
+                    more={
+                      <>
+                        <p>
+                          <b>{e.task}</b> {model.task.get(e.task)?.title}
+                          <span className="holo-when"> · {formatTime(e.ts, lang)}</span>
+                        </p>
+                        {text && <p className="holo-quote">{text}</p>}
+                        {e.reason && e.message && <p className="holo-quote">{localReason(e.reason, t)}</p>}
+                        {e.pr && <p className="holo-quote">PR: {e.pr}</p>}
+                      </>
+                    }
+                    action={<ShowInApp label={t("eye_showInApp")} onClick={() => onOpenTask(e.task)} />}
+                  />
+                );
+              })
             )}
 
             {lastRun && (
-              <button className="holo-foot" style={line()} onClick={onOpenManager}>
-                <span>
-                  {t("eye_lastRun", { ago: ago(lastRun.startedAt, now, lang) })}
-                  {lastRun.summary ? ` — ${clip(lastRun.summary, 110)}` : ""}
-                </span>
-                {forYou > 0 && <span className="holo-foryou">{t("eye_forYou", { n: forYou })}</span>}
-              </button>
+              <Item
+                id="foot"
+                open={expanded}
+                onToggle={toggle}
+                style={line()}
+                className="holo-foot"
+                head={
+                  <>
+                    <span className="holo-what">
+                      {t("eye_lastRun", { ago: ago(lastRun.startedAt, now, lang) })}
+                      {lastRun.summary ? ` — ${clip(lastRun.summary, 60)}` : ""}
+                    </span>
+                    {forYou > 0 && <span className="holo-foryou">{t("eye_forYou", { n: forYou })}</span>}
+                  </>
+                }
+                more={
+                  <>
+                    {lastRun.summary && <p className="holo-quote">{lastRun.summary}</p>}
+                    {lastRun.forYou.length > 0 && (
+                      <>
+                        <p className="holo-foryou">{t("mgr_forYou")}</p>
+                        <ul className="holo-list">
+                          {lastRun.forYou.map((item, n) => (
+                            <li key={n}>{item}</li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </>
+                }
+                action={<ShowInApp label={t("eye_openManager")} onClick={onOpenManager} />}
+              />
             )}
           </section>
         </>

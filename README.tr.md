@@ -132,6 +132,21 @@ Kenar çubuğundan, *Pencere* menüsünden ya da <kbd>⇧</kbd><kbd>⌘</kbd><kb
 </tr>
 </table>
 
+### Yönetici gözü
+
+`>_ sen uyu, anahtarlar yöneticide.`
+
+**Yönetici**'yi aç, kayan pencere gibi bütün uygulamaların üstünde bir göz belirsin; istediğin yere sürükle. Ortalık sakinken etrafa bakar, yönetici karar verirken hızlanır, bir şey bozulunca kırmızıya döner. Tıkla, gördüklerini aşağıya yansıtsın:
+
+<img src="docs/images/eye-tr.gif" alt="Yönetici anahtarı açılıyor ve panonun üstünde yeşil bir göz beliriyor; göze tıklayınca bir ışık konisi ve hologram panel açılıyor: projenin yüzde 11'i bitmiş, görevleri ve sayaçlarıyla çalışan üç model ve son gelişmeler" width="100%">
+
+- **Çalışan modeller**: çalışan her sohbet; CLI'ı, görevi, son adımı ve süresiyle
+- **İlerleme**: projenin ne kadarı bitti, ne çalışıyor, ne hazır, ne incelemede
+- **Hatalar ve sorunlar**: başarısız olan ya da seni bekleyen görevler, kırmızıyla
+- **Son gelişmeler**: az önce ne oldu, yönetici ne yaptı ve sana ne bıraktı
+- bir satıra tıkla, yerinde açılsın ve tamamını oku; altındaki **Uygulamada göster** görevi ana pencerede açar
+- gözün üzerine gelip gizleyebilirsin; Yönetici anahtarının yanındaki göz geri getirir
+
 ### Kendine göre ayarla
 
 Ekranlar **panellerden** oluşur. Ekle, sürükle, boyutlandır, sohbete göre süz, birden çok düzen kaydet; temayı ve vurgu rengini seç, kenar çubuğunu katla.
@@ -373,7 +388,7 @@ Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — art
 | **Canlı** | Komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur** — şeritten, görev panelinden ya da kayan pencereden — ya da **Tümünü durdur**. Durdurduğun sohbete sen bir şey gönderene kadar otomatik dağıtım yeni görev vermez. |
 | **Kurulum yardımı** | Kurulu olmayan bir CLI, onu kuran komutu gösterir; giriş yapılmamış olan, giriş komutunu gösterir. |
 | **Otomatik dağıtım** | Başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* çalıştırma. |
-| **Yönetici** | Yanındaki anahtar projeyi seçtiğin bir CLI'a devreder (örneğin gece için). Sürekli kontrol etmez: bir sohbet soru sorduğunda, onay beklediğinde, başarısız olduğunda ya da sonraya iş bıraktığında uyanır, saatte en fazla *N* kez; güvenle verebileceği kararları verir, gerisini sana bırakır; *Biten işleri de onaylasın* açıksa, onay isteyen projelerde raporu işin bittiğini gösteren görevleri de onaylar. Bu sırada uygulama bilgisayarı uyanık tutar. Ayrıntılar: [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
+| **Yönetici** | Yanındaki anahtar projeyi seçtiğin bir CLI'a devreder (örneğin gece için). Sürekli kontrol etmez: bir sohbet soru sorduğunda, onay beklediğinde, başarısız olduğunda ya da sonraya iş bıraktığında uyanır; güvenle verebileceği kararları verir, gerisini sana bırakır; *Biten işleri de onaylasın* açıksa, onay isteyen projelerde raporu işin bittiğini gösteren görevleri de onaylar. Bu sırada uygulama bilgisayarı uyanık tutar. Ayrıntılar: [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
 | **Kendi açtığın oturumlar** | Claude Code ve Codex için tek satırlık bir kanca, kendi açtığın bir oturumda çalışırken görevleri *çalışıyor* ve *yanıtını bekliyor* olarak işaretler. |
 
 > [!IMPORTANT]

@@ -132,6 +132,21 @@ Open it from the sidebar, the *Window* menu, or <kbd>⇧</kbd><kbd>⌘</kbd><kbd
 </tr>
 </table>
 
+### The manager's eye
+
+`>_ sleep. the manager has the keys.`
+
+Turn on the **Manager** and an eye pops up above every app, like the floating window — drag it anywhere. It looks around while all is calm, spins up while the manager decides, and turns red when something breaks. Click it and it projects what it sees:
+
+<img src="docs/images/eye.gif" alt="The Manager switch is turned on and a green eye pops up over the board; clicking it opens a cone of light and a hologram panel: 11% of the project done, three models at work with their tasks and timers, and the latest news" width="100%">
+
+- **Models at work**: every running chat with its CLI, task, last step and time
+- **Progress**: how much of the project is done, what runs, what is ready or in review
+- **Errors and problems**: the tasks that failed or need you, in red
+- **Latest**: what just happened, what the manager did and what it left for you
+- click a line to open it in place and read it whole; **Show in the app** under it opens the task in the main window
+- hover the eye to hide it; the eye next to the Manager switch brings it back
+
 ### Make it yours
 
 Screens are built from **panels**. Add, drag, resize, filter them by chat, keep several layouts, pick the theme and accent, and fold the sidebar away.
@@ -373,7 +388,7 @@ Set a chat up once — click the **⚙ by hand** badge on its lane — and **Sen
 | **Live** | Commands, edits and messages stream into the task drawer; **Stop** at any time — from the lane, the drawer or the floating window — or **Stop all**. A chat you stopped gets nothing new from auto-dispatch until you send it something. |
 | **Setup help** | A CLI that is not installed shows the command that installs it; one that is not signed in shows the command to sign in. |
 | **Auto-dispatch** | The switch in the header: free chats get their most urgent ready task, up to *N* runs at once. |
-| **Manager** | The switch next to it hands the project to a CLI you choose (for the night, say). It does not poll: it wakes up when a chat asks a question, waits for approval or fails, or leaves work for later, at most *N* times an hour, answers what it safely can and leaves the rest for you; with *Also approve finished work* it also approves finished tasks whose report shows them done, in projects that ask for approval. The app keeps the computer awake meanwhile. See [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
+| **Manager** | The switch next to it hands the project to a CLI you choose (for the night, say). It does not poll: it wakes up when a chat asks a question, waits for approval or fails, or leaves work for later, answers what it safely can and leaves the rest for you; with *Also approve finished work* it also approves finished tasks whose report shows them done, in projects that ask for approval. The app keeps the computer awake meanwhile. See [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
 | **Your own sessions** | A one-line hook for Claude Code and Codex marks tasks *in progress* and *waiting for your reply* while you work in a session you opened yourself. |
 
 > [!IMPORTANT]

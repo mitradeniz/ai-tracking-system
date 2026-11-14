@@ -159,7 +159,6 @@ export function ManagerDialog({
   const settingsPatch = (): Partial<ManagerSettings> => ({
     provider: draft.provider,
     model: draft.model ?? "",
-    maxRunsPerHour: draft.maxRunsPerHour,
     resumeStopped: draft.resumeStopped,
     approveDone: draft.approveDone,
   });
@@ -202,18 +201,6 @@ export function ManagerDialog({
             {models.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="field">
-          <label htmlFor="mgr-rate">
-            {t("mgr_perHour")} <InfoTip text={t("mgr_perHourHint")} />
-          </label>
-          <select id="mgr-rate" className="input" value={draft.maxRunsPerHour} disabled={busy} onChange={(e) => setDraft({ ...draft, maxRunsPerHour: Number(e.target.value) })}>
-            {[2, 4, 6, 10, 20].map((n) => (
-              <option key={n} value={n}>
-                {t("mgr_runs", { n })}
               </option>
             ))}
           </select>

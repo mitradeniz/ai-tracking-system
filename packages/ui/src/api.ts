@@ -96,7 +96,6 @@ export interface ManagerSettings {
   model?: string;
   effort?: string;
   binary?: string;
-  maxRunsPerHour: number;
   /** Also continue tasks the person stopped. */
   resumeStopped: boolean;
   /** Also approve finished tasks that wait in review. */

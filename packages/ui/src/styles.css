@@ -5104,6 +5104,82 @@ details.advanced[open] {
   padding: 2px 0;
 }
 
+/* A line opened in place: the whole text, and the one button that goes to the app. */
+.holo-item.expanded > button {
+  background: color-mix(in srgb, var(--eye-main) 10%, transparent);
+}
+
+.holo-more {
+  margin: 2px 0 8px;
+  padding: 8px 10px;
+  border-left: 2px solid var(--eye-main);
+  border-radius: 0 4px 4px 0;
+  background: color-mix(in srgb, var(--eye-main) 6%, transparent);
+  animation: eye-more 0.25s ease both;
+}
+
+.holo-more p {
+  margin: 0 0 6px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.holo-more b {
+  color: var(--eye-main);
+}
+
+.holo-quote {
+  color: #eaffef;
+}
+
+.holo-when {
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+.holo-list {
+  margin: 0 0 6px;
+  padding-left: 16px;
+}
+
+.holo-list li {
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+
+.holo-go {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  padding: 4px 10px;
+  border: 1px solid var(--eye-main);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--eye-main);
+  font: inherit;
+  cursor: pointer;
+}
+
+.holo-go:hover {
+  background: var(--eye-main);
+  color: #000;
+}
+
+@keyframes eye-more {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
 .holo-foot {
   margin-top: 10px;
   padding-top: 8px;

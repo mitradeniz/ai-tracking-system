@@ -791,9 +791,6 @@ const en = {
   mgr_title: "Manager",
   mgr_hint: "A CLI you choose makes the decisions while you are away: it answers waiting chats, picks options, sends failed tasks again, parks tasks that wait for others, and adds work left for later to the plan. Payments, accounts, legal terms, publishing, deleting and risky steps stay with you.",
   mgr_cli: "Manager CLI",
-  mgr_perHour: "At most, per hour",
-  mgr_perHourHint: "It does not poll: it runs when a chat asks something, waits for approval, fails or leaves work for later. This caps how often it may run.",
-  mgr_runs: "{n} runs",
   mgr_resume: "Also continue tasks I stopped",
   mgr_resumeHint: "Off: a task you stopped stays stopped until you send it again.",
   mgr_on: "Hand over to the manager",
@@ -852,6 +849,8 @@ const en = {
   eye_noNews: "Nothing has happened yet.",
   eye_lastRun: "Manager looked {ago} ago",
   eye_forYou: "{n} left for you",
+  eye_showInApp: "Show in the app",
+  eye_openManager: "Open the manager",
 };
 
 export type Key = keyof typeof en;
@@ -1645,9 +1644,6 @@ const tr: Record<Key, string> = {
   mgr_title: "Yönetici",
   mgr_hint: "Seçtiğin bir CLI sen yokken kararları verir: bekleyen sohbetlere yanıt verir, seçenek seçer, başarısız görevleri yeniden gönderir, başka görevi bekleyenleri beklemeye alır, sonraya bırakılan işleri plana ekler. Ödeme, hesap, yasal şartlar, yayınlama, silme ve riskli adımlar sende kalır.",
   mgr_cli: "Yönetici CLI",
-  mgr_perHour: "Saatte en fazla",
-  mgr_perHourHint: "Sürekli kontrol etmez: bir sohbet soru sorduğunda, onay beklediğinde, başarısız olduğunda ya da sonraya iş bıraktığında çalışır. Bu, en sık ne kadar çalışabileceğini sınırlar.",
-  mgr_runs: "{n} kez",
   mgr_resume: "Durdurduğum görevleri de sürdürsün",
   mgr_resumeHint: "Kapalıyken durdurduğun görev, sen yeniden gönderene kadar durur.",
   mgr_on: "Yönetimi devret",
@@ -1706,6 +1702,8 @@ const tr: Record<Key, string> = {
   eye_noNews: "Henüz bir şey olmadı.",
   eye_lastRun: "Yönetici {ago} önce baktı",
   eye_forYou: "sana {n} şey bıraktı",
+  eye_showInApp: "Uygulamada göster",
+  eye_openManager: "Yöneticiyi aç",
 };
 
 const dictionaries: Record<Lang, Record<Key, string>> = { en, tr };
