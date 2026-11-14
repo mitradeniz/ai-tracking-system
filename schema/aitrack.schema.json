@@ -403,6 +403,34 @@
                       "type": "string",
                       "maxLength": 8000
                     },
+                    "choices": {
+                      "description": "For a decision only the person can make: the options to pick from, the recommended one first.",
+                      "maxItems": 5,
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "label": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 200,
+                            "description": "The option in plain words, shown as a button."
+                          },
+                          "reply": {
+                            "description": "What the chat is told when the person picks it; the label when left out.",
+                            "type": "string",
+                            "maxLength": 4000
+                          },
+                          "recommended": {
+                            "description": "The option the chat recommends.",
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "label"
+                        ]
+                      }
+                    },
                     "state": {
                       "description": "Set by the person in the app when the problem is resolved or ignored; chats leave it out.",
                       "type": "string",

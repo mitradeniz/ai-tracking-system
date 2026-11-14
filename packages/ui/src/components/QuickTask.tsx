@@ -9,19 +9,22 @@ import {
   localError,
   localMessage,
   localReason,
-  permissionRules,
   problemsOf,
   runnerOf,
+  type IssueChoice,
   type Model,
   type Problem,
 } from "../model.ts";
+import { allowSteps, choiceReply, continueAfterAllow, setProblemState } from "../problemActions.ts";
 import { useNow } from "./Info.tsx";
 import { Markdown, splitReport } from "./Markdown.tsx";
 import { StopButton, stopRun } from "./Runners.tsx";
+import { StepList } from "./StepList.tsx";
 
 /**
  * What can be done with a task without the main window: send it, stop it, answer the chat,
- * approve, send a problem's fix, allow a refused step, close a problem, mark it done or reopen it.
+ * approve, send a problem's fix, pick an option the chat offered, allow refused steps, close a
+ * problem, mark it done or reopen it.
  * Used by the floating window.
  */
 export function QuickTask({
@@ -73,44 +76,56 @@ export function QuickTask({
     }
   };
 
-  /** Continues the chat's session with the text, or starts the task with it. */
-  const say = (text: string) =>
-    run(async () => {
-      const body = text.trim();
-      if (!body || !owner) return;
-      if (canReply) {
-        await api.reply(key, owner, body, taskId);
-        setReply("");
-        return t("run_replySent", { agent: agentName(model, owner) });
-      }
-      if (sendable && runnerOf(model, target)) {
-        await api.runTask(key, taskId, target, body);
-        return t("run_sent", { task: taskId, agent: agentName(model, target) });
-      }
-      await copyText(body);
-      return t("copied");
-    });
+  /** Continues the chat's session with the text, or starts the task with it, or copies it. */
+  const deliver = async (text: string): Promise<{ how: "sent" | "copied"; message: string } | null> => {
+    const body = text.trim();
+    if (!body || !owner) return null;
+    if (canReply) {
+      await api.reply(key, owner, body, taskId);
+      setReply("");
+      return { how: "sent", message: t("run_replySent", { agent: agentName(model, owner) }) };
+    }
+    if (sendable && runnerOf(model, target)) {
+      await api.runTask(key, taskId, target, body);
+      return { how: "sent", message: t("run_sent", { task: taskId, agent: agentName(model, target) }) };
+    }
+    await copyText(body);
+    return { how: "copied", message: t("copied") };
+  };
+  const say = (text: string) => run(async () => (await deliver(text))?.message);
 
   const event = (type: string) =>
     run(async () => {
       await api.addEvent(key, { task: taskId, type, agent: snap.agent ?? undefined });
     });
 
-  const allow = (p: Problem) =>
+  /** Allows the refused steps (the risky ones only when asked) and lets the chat go on. */
+  const allow = (p: Problem, risky: boolean) =>
     run(async () => {
-      if (!owner || !runner || !p.tool || !p.issue) return;
-      const rules = permissionRules(p.tool);
-      const have = (runner.allowedTools ?? "").split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
-      await api.saveRunner(key, owner, { allowedTools: [...have, ...rules.filter((r) => !have.includes(r))].join("\n") });
-      await api.setIssueState(key, taskId, { ...p.issue, state: "resolved" });
-      return t("problem_allowed", { agent: agentName(model, owner), rules: rules.join(", ") });
+      if (!owner || !runner || !p.steps || !p.issues) return;
+      const picked = p.steps.map((step, i) => ({ step, issue: p.issues![i]! })).filter((x) => risky || x.step.risk !== "risky");
+      if (!picked.length) return;
+      const steps = picked.map((x) => x.step);
+      await allowSteps(key, owner, runner, steps);
+      await setProblemState(key, taskId, { ...p, issues: picked.map((x) => x.issue) }, "resolved");
+      const done = await deliver(continueAfterAllow(steps, t));
+      return done?.how === "sent" ? t("problem_allowedContinue", { agent: agentName(model, owner) }) : done?.message;
+    });
+
+  /** Answers a decision with one of the chat's options and closes the question. */
+  const choose = (p: Problem, choice: IssueChoice) =>
+    run(async () => {
+      const done = await deliver(choiceReply(p, choice, t));
+      if (!done) return;
+      await setProblemState(key, taskId, p, "resolved");
+      return done.how === "sent" ? t("choice_sent", { label: choice.label }) : done.message;
     });
 
   const close = (p: Problem, state: "resolved" | "ignored") =>
     run(async () => {
-      if (!p.issue) return;
-      await api.setIssueState(key, taskId, { ...p.issue, state });
-      return t(state === "resolved" ? "problem_resolvedToast" : "problem_ignoredToast", { title: p.issue.title });
+      if (!p.issues?.length) return;
+      await setProblemState(key, taskId, p, state);
+      return t(state === "resolved" ? "problem_resolvedToast" : "problem_ignoredToast", { title: p.title });
     });
 
   return (
@@ -180,14 +195,36 @@ export function QuickTask({
             </span>
             <span className="grow">{p.title}</span>
           </div>
-          {p.detail && <div className="small muted clamp-2">{p.detail}</div>}
+          {p.detail && !p.steps && <div className="small muted clamp-2">{p.detail}</div>}
+          {p.steps && <StepList steps={p.steps} compact />}
+          {p.choices && (
+            <div className="problem-choices">
+              {p.choices.map((c, i) => (
+                <button
+                  key={`${c.label}-${i}`}
+                  className={`btn tiny${c.recommended ? " primary" : ""}`}
+                  disabled={busy || Boolean(runHere)}
+                  title={c.reply?.trim() || t("choice_pickHint")}
+                  onClick={() => void choose(p, c)}
+                >
+                  {c.label}
+                  {c.recommended && <span className="choice-rec"> · {t("choice_recommended")}</span>}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="row wrap">
-            {p.tool && runner?.provider === "claude" && p.issue && (
-              <button className="btn tiny primary" disabled={busy} title={t("problem_allowHint")} onClick={() => void allow(p)}>
-                {t("problem_allow", { rules: permissionRules(p.tool).map((r) => r.replace(/^Bash\((.*):\*\)$/, "$1")).join(", ") })}
+            {p.steps && runner?.provider === "claude" && !runHere && p.steps.some((x) => x.risk !== "risky") && (
+              <button className="btn tiny primary" disabled={busy} title={t("problem_allowContinueHint")} onClick={() => void allow(p, false)}>
+                {t("problem_allowContinue")}
               </button>
             )}
-            {p.fix && (canReply || (sendable && runnerOf(model, target))) && (
+            {p.steps && runner?.provider === "claude" && !runHere && p.steps.some((x) => x.risk === "risky") && (
+              <button className="btn tiny ghost danger" disabled={busy} title={t("problem_allowRiskyHint")} onClick={() => void allow(p, true)}>
+                {t("problem_allowRisky")}
+              </button>
+            )}
+            {p.fix && !p.choices && !p.steps && (canReply || (sendable && runnerOf(model, target))) && (
               <button className="btn tiny" disabled={busy} onClick={() => void say(p.fix)}>
                 {t("fixSend")}
               </button>
@@ -197,7 +234,7 @@ export function QuickTask({
                 {t("problem_copyCommand")}
               </button>
             )}
-            {p.issue && (
+            {p.issues && p.issues.length > 0 && (
               <>
                 <span className="spacer" />
                 <button className="btn tiny ghost" disabled={busy} title={t("problem_resolveHint")} onClick={() => void close(p, "resolved")}>

@@ -192,6 +192,15 @@ describe("reports", () => {
     expect(parseReports("Not a report at all.").reports).toEqual([]);
   });
 
+  it("keeps the options a chat offers for a decision, and drops broken ones", () => {
+    const text =
+      '```aitrack-report\n{"task":"T1","status":"blocked","reason":"Which repository?","issues":[{"title":"Where does the code go?","kind":"needs-you","choices":[{"label":"Separate repo","reply":"I move the commits there.","recommended":true},{"label":"Same repo","reply":null},null,{"label":""},"x"]}]}\n```';
+    const issue = parseReports(text).reports[0]!.issues![0]!;
+    expect(issue.choices).toEqual([{ label: "Separate repo", reply: "I move the commits there.", recommended: true }, { label: "Same repo" }]);
+    const none = parseReports('{"task":"T1","status":"blocked","issues":[{"title":"Q","choices":[]}]}').reports[0]!.issues![0]!;
+    expect(none.choices).toBeUndefined();
+  });
+
   it("closes problems with a note that keeps the chat's last message", () => {
     const p = project();
     const issues = [{ title: "A" }, { title: "B", kind: "warning" as const }];

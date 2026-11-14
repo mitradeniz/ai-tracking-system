@@ -36,7 +36,9 @@ curl -s -X POST {{serverUrl}}/api/report -H "Content-Type: application/json" -d 
 
 PROBLEMS: if anything failed, was skipped, is missing or needs a person, also add "issues" to the report, one entry each:
 "issues":[{"title":"<one plain line>","detail":"<what happened and what is needed>","kind":"error|missing|needs-you|warning","fix":"<a prompt that would fix it>"}]
-Write "title" and "detail" in {{language}}, for the project owner, without jargon. Never hide a problem inside "summary".`;
+For a decision only the person can make, give the options as buttons in that issue, your recommendation first:
+"choices":[{"label":"<option in a few plain words>","reply":"<what you will do if it is picked>","recommended":true},{"label":"...","reply":"..."}]
+Write "title", "detail", "reason" and the labels in {{language}}, for the project owner, without jargon. Never hide a problem inside "summary".`;
 
 export const DEFAULT_DISPATCH_TEMPLATE = `TASK {{task.id}} — {{task.title}}
 Chat: {{agent.name}} ({{agent.id}}){{milestoneLine}}

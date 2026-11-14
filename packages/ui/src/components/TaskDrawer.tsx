@@ -11,18 +11,21 @@ import {
   lastRunOf,
   localMessage,
   localReason,
-  permissionRules,
   problemsOf,
   PROVIDER_LABEL,
   reasonText,
+  REFUSED,
   runnerOf,
+  type IssueChoice,
   type Model,
   type Problem,
 } from "../model.ts";
+import { allowSteps, choiceReply, continueAfterAllow, setProblemState } from "../problemActions.ts";
 import { usePlanEditing } from "../editing.ts";
 import { InfoTip, PromptPicker, useNow } from "./Info.tsx";
 import { Markdown, splitReport } from "./Markdown.tsx";
 import { RunLog, StopButton, stopRun } from "./Runners.tsx";
+import { StepList } from "./StepList.tsx";
 
 interface Props {
   model: Model;
@@ -129,25 +132,35 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
     }
   };
 
-  /** Gives text to the chat: continues its session, or starts the task with it, or copies it for pasting. */
-  const sendMessage = async (text: string) => {
+  /**
+   * Gives text to the chat: continues its session, or starts the task with it, or copies it for
+   * pasting. Returns how it went, or null when it failed.
+   */
+  const sendMessage = async (text: string, before?: () => Promise<unknown>, quiet = false): Promise<"sent" | "copied" | null> => {
     const body = text.trim();
-    if (!body) return;
+    if (!body) return null;
     setBusy(true);
     try {
+      await before?.();
+      let how: "sent" | "copied";
       if (msgAgent && msgRunner && hasSession) {
         await api.reply(key, msgAgent, body, taskId);
-        onInfo?.(t("run_replySent", { agent: agentName(model, msgAgent) }));
+        if (!quiet) onInfo?.(t("run_replySent", { agent: agentName(model, msgAgent) }));
+        how = "sent";
       } else if (canRunFix) {
         await api.runTask(key, taskId, agent || undefined, body);
-        onInfo?.(t("run_sent", { task: taskId, agent: agentName(model, agent) }));
+        if (!quiet) onInfo?.(t("run_sent", { task: taskId, agent: agentName(model, agent) }));
+        how = "sent";
       } else {
         await copyText(body);
         onInfo?.(t("copied"));
+        how = "copied";
       }
       setReply("");
+      return how;
     } catch (e) {
       onError((e as Error).message);
+      return null;
     } finally {
       setBusy(false);
     }
@@ -192,17 +205,34 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
       )
       .catch((e: Error) => onError(e.message));
   };
-  // A step Claude Code refused: allow it for this chat from here.
-  const allow = (problem: Problem) => {
-    if (!msgAgent || !msgRunner || !problem.tool || !problem.issue) return;
-    const rules = permissionRules(problem.tool);
-    const have = (msgRunner.allowedTools ?? "").split(/[\n,]+/).map((x) => x.trim()).filter(Boolean);
-    const next = [...have, ...rules.filter((r) => !have.includes(r))];
-    api
-      .saveRunner(model.detail.key, msgAgent, { allowedTools: next.join("\n") })
-      .then(() => api.setIssueState(model.detail.key, task.id, { ...problem.issue!, state: "resolved" }))
-      .then(() => onInfo?.(t("problem_allowed", { agent: agentName(model, msgAgent), rules: rules.join(", ") })))
+  const closeProblem = (problem: Problem, state: "resolved" | "ignored") => {
+    setProblemState(model.detail.key, task.id, problem, state)
+      .then(() => onInfo?.(t(state === "resolved" ? "problem_resolvedToast" : "problem_ignoredToast", { title: problem.title })))
       .catch((e: Error) => onError(e.message));
+  };
+  // Steps Claude Code refused: allow them for this chat from now on, then let it go on.
+  const allow = async (problem: Problem, risky: boolean) => {
+    if (!msgAgent || !msgRunner || !problem.steps || !problem.issues) return;
+    const picked = problem.steps.map((step, i) => ({ step, issue: problem.issues![i]! })).filter((x) => risky || x.step.risk !== "risky");
+    if (!picked.length) return;
+    const steps = picked.map((x) => x.step);
+    const done = await sendMessage(
+      continueAfterAllow(steps, t),
+      async () => {
+        await allowSteps(model.detail.key, msgAgent, msgRunner, steps);
+        await setProblemState(model.detail.key, task.id, { ...problem, issues: picked.map((x) => x.issue) }, "resolved");
+      },
+      true,
+    );
+    if (done === "sent") onInfo?.(t("problem_allowedContinue", { agent: agentName(model, msgAgent) }));
+  };
+  // An option the chat offered for a decision: tell it, and close the question.
+  const choose = async (problem: Problem, choice: IssueChoice) => {
+    const done = await sendMessage(choiceReply(problem, choice, t), undefined, true);
+    if (done) {
+      await setProblemState(model.detail.key, task.id, problem, "resolved").catch((e: Error) => onError(e.message));
+      if (done === "sent") onInfo?.(t("choice_sent", { label: choice.label }));
+    }
   };
   const said = snap.lastMessage ? splitReport(localMessage(snap.lastMessage, t)) : null;
   // A report the tracker could not read (it left the task waiting for a reply instead).
@@ -484,9 +514,9 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                   busy={busy}
                   onSend={(text) => void sendMessage(text)}
                   onSettings={p.settings && onRunnerSettings && msgAgent ? () => onRunnerSettings(msgAgent) : undefined}
-                  onState={p.issue ? (state) => setIssue(p.issue!, state) : undefined}
-                  allowRules={p.tool && msgRunner?.provider === "claude" ? permissionRules(p.tool) : undefined}
-                  onAllow={() => allow(p)}
+                  onState={p.issues?.length ? (state) => closeProblem(p, state) : undefined}
+                  onAllow={p.steps && msgRunner?.provider === "claude" && !running ? (risky) => void allow(p, risky) : undefined}
+                  onChoose={p.choices && !running ? (c) => void choose(p, c) : undefined}
                 />
               ))}
               {closed.length > 0 && (
@@ -496,7 +526,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                     <div className="closed-problem" key={`${c.index}-${c.title}`}>
                       <span className={`pill closed-${c.state}`}>{t(`problem_state_${c.state!}` as Key)}</span>
                       <span className="grow ellipsis" title={c.detail ?? c.title}>
-                        {c.title}
+                        {c.title.startsWith(REFUSED) ? t("issue_permission", { tool: c.title.slice(REFUSED.length) }) : c.title}
                       </span>
                       <button className="btn small ghost" onClick={() => setIssue({ index: c.index, title: c.title }, "open")}>
                         {t("problem_reopen")}
@@ -730,24 +760,31 @@ function ProblemCard({
   onSend,
   onSettings,
   onState,
-  allowRules,
   onAllow,
+  onChoose,
 }: {
   problem: Problem;
   canSend: boolean;
   busy: boolean;
   onSend: (text: string) => void;
   onSettings?: () => void;
-  /** Marks a problem the chat reported resolved or ignored. */
+  /** Marks the problems the chat reported resolved or ignored. */
   onState?: (state: "resolved" | "ignored") => void;
-  /** Permission rules that would allow a refused step, and the action that adds them. */
-  allowRules?: string[];
-  onAllow?: () => void;
+  /** Allows the refused steps (the risky ones too, when asked) and lets the chat go on. */
+  onAllow?: (risky: boolean) => void;
+  /** Answers a decision with one of the chat's options. */
+  onChoose?: (choice: IssueChoice) => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(problem.fix);
   const [copied, setCopied] = useState(false);
+  const risky = problem.steps?.filter((s) => s.risk === "risky").length ?? 0;
+  const safe = (problem.steps?.length ?? 0) - risky;
+  // One main action per card: allowing steps or picking an option comes before sending the fix prompt.
+  const fixIsMain = !(onAllow && safe > 0);
+  // A decision is answered with its options (or a reply below), not with a generic fix prompt.
+  const showFix = Boolean(problem.fix) && !problem.choices;
   return (
     <div className={`problem ${problem.kind}`}>
       <div className="problem-head">
@@ -760,7 +797,34 @@ function ProblemCard({
         </div>
         <span className={`pill kind-${problem.kind}`}>{t(`problem_kind_${problem.kind}` as Key)}</span>
       </div>
+      {problem.steps && <StepList steps={problem.steps} />}
+      {problem.choices && (
+        <div className="problem-choices">
+          {problem.choices.map((c, i) => (
+            <button
+              key={`${c.label}-${i}`}
+              className={`btn small${c.recommended ? " primary" : ""}`}
+              disabled={busy || !onChoose}
+              title={c.reply?.trim() || t("choice_pickHint")}
+              onClick={() => onChoose?.(c)}
+            >
+              {c.label}
+              {c.recommended && <span className="choice-rec"> · {t("choice_recommended")}</span>}
+            </button>
+          ))}
+        </div>
+      )}
       <div className="row wrap">
+        {onAllow && safe > 0 && (
+          <button className="btn small primary" disabled={busy} title={t("problem_allowContinueHint")} onClick={() => onAllow(false)}>
+            {t("problem_allowContinue")}
+          </button>
+        )}
+        {onAllow && risky > 0 && (
+          <button className="btn small ghost danger" disabled={busy} title={t("problem_allowRiskyHint")} onClick={() => onAllow(true)}>
+            {t("problem_allowRisky")}
+          </button>
+        )}
         {problem.command && (
           <>
             <code className="mono problem-command">{problem.command}</code>
@@ -776,17 +840,17 @@ function ProblemCard({
             </button>
           </>
         )}
-        {problem.fix && (
+        {showFix && (
           <button className="btn small" aria-expanded={open} onClick={() => setOpen(!open)}>
             {open ? "▾" : "▸"} {t("fixPrompt")}
           </button>
         )}
-        {problem.fix && canSend && (
-          <button className="btn small primary" disabled={busy} onClick={() => onSend(text)}>
+        {showFix && canSend && (
+          <button className={`btn small${fixIsMain ? " primary" : ""}`} disabled={busy} onClick={() => onSend(text)}>
             {t("fixSend")}
           </button>
         )}
-        {problem.fix && (
+        {showFix && (
           <button
             className="btn small ghost"
             onClick={async () => {
@@ -796,11 +860,6 @@ function ProblemCard({
             }}
           >
             {copied ? `✓ ${t("copied")}` : t("copy")}
-          </button>
-        )}
-        {allowRules && allowRules.length > 0 && onAllow && (
-          <button className="btn small primary" title={t("problem_allowHint")} onClick={onAllow}>
-            {t("problem_allow", { rules: allowRules.map((r) => r.replace(/^Bash\((.*):\*\)$/, "$1")).join(", ") })}
           </button>
         )}
         {onSettings && (
@@ -819,7 +878,7 @@ function ProblemCard({
           </span>
         )}
       </div>
-      {open && problem.fix && <textarea className="input mono small" style={{ minHeight: 110 }} value={text} onChange={(e) => setText(e.target.value)} />}
+      {open && showFix && <textarea className="input mono small" style={{ minHeight: 110 }} value={text} onChange={(e) => setText(e.target.value)} />}
     </div>
   );
 }

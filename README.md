@@ -59,7 +59,7 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 | 🟢 **A board that knows what's next** | Tasks unlock when their dependencies are done and their chat has room. *Ready to send* shows the green ones at a glance; every other task says why it is waiting. |
 | 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or any command run the task in their own session, in your repository. Output streams in live; you reply, approve and stop from the app or the floating window. |
 | ⚡ **Auto-dispatch** | One switch: free chats pick up their most urgent ready task, up to *N* at once, as soon as it turns green. |
-| ❗ **Problems in plain words** | What a chat could not do, skipped or needs from you is marked with a red **!** everywhere, explained in your language, with a fix prompt ready to edit, copy or send. Mark it resolved or ignore it; a refused command is allowed in one click. |
+| ❗ **Problems in plain words** | What a chat could not do, skipped or needs from you is marked with a red **!** everywhere, explained in your language, with a fix prompt ready to edit, copy or send. A decision comes with the chat's options as buttons; refused steps come on one card that says what each does, with **Allow and continue**. Mark a problem resolved or ignore it. |
 | ⏱️ **Run details** | Elapsed time, tool calls, tokens, turns, list price and how full the session's context is — live. |
 | ✍️ **Your own prompts** | Add instructions when sending, write to a chat's session at any time, keep a list of saved prompts. |
 | 🪟 **Floating window** | A small always-on-top window over your editor and the AI apps: what each chat is doing, what waits for you, one-click send — and replies, approvals, fixes and stop right there. |
@@ -339,7 +339,7 @@ Set a chat up once — click the **⚙ by hand** badge on its lane — and **Sen
 | **Runs with** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · any command (Cursor CLI, Aider, scripts). Installed CLIs are found automatically, with their versions. |
 | **Model and effort** | Picked from lists, not typed: Codex's model catalog with each model's reasoning levels, Copilot's models, and the Claude Code (`opus`, `sonnet`, `haiku`, `fable`) and Gemini (`pro`, `flash`, …) aliases that always follow the latest version. **Other** takes any model id; **Default** leaves it to the CLI. |
 | **Where** | The project's code folder — the repository the project file is in, or the one the plan names (**Project settings → Code folder**) — or a folder per chat (a git worktree when several chats edit code). If the plan names a folder that is not on this computer yet, the board offers to create it. |
-| **Access** | Read only · edit files (default) · full access. With *edit files*, Claude Code also runs the usual work commands without asking — read and search, `mkdir`/`cp`/`mv`, local git, build and test; `git push`, `rm` and the rest still ask. A refused step shows **Allow …** on its problem. |
+| **Access** | Read only · edit files (default) · full access. With *edit files*, Claude Code runs in its **auto mode** when the installed version has it — a safety check approves routine steps and blocks risky ones — and runs the usual work commands without asking: read and search, details of this computer, `mkdir`/`cp`/`mv`, local git, build and test. `git push`, `rm` and the rest still ask. Refused steps are listed on one problem with **Allow and continue**. |
 | **Conversation** | Continues the same session, like a chat you keep open — or a new session per task. Paste an existing session id to continue *that* chat. |
 | **Status** | *Started* on the first output, *done* from the report at the end, **waiting for your reply** when the agent asks — answer with **Reply** (<kbd>⌘</kbd><kbd>↵</kbd>). |
 | **Live** | Commands, edits and messages stream into the task drawer; **Stop** at any time — from the lane, the drawer or the floating window — or **Stop all**. A chat you stopped gets nothing new from auto-dispatch until you send it something. |
@@ -359,7 +359,7 @@ Everything — commands per CLI, access levels, sessions, hooks, API: **[docs/ag
 <td width="380"><img src="docs/images/problems.png" alt="Task drawer: two problems the chat reported in plain words, each with a fix prompt, and the run's time, tool calls, context and tokens" width="380"></td>
 <td>
 
-**Problems, in plain words.** When a chat could not do something, skipped it or needs you, it lists it in its report — in the project's language. The task gets a red **!** on cards, lanes, *Needs you* and the floating window. The drawer shows each problem with a **fix prompt**: open it to edit, copy it, or send it to the chat in one click. Failures, questions the chat waits on and tools a CLI refused show up here too, with a shortcut to the run settings. Mark a problem **Resolved** or **Ignore** it: it stops counting and stays listed, so you can open it again. What the chat wrote is shown as Markdown — headings, lists, tables, code.
+**Problems, in plain words.** When a chat could not do something, skipped it or needs you, it lists it in its report — in the project's language. The task gets a red **!** on cards, lanes, *Needs you* and the floating window. The drawer shows each problem with a **fix prompt**: open it to edit, copy it, or send it to the chat in one click. Failures, questions the chat waits on and tools a CLI refused show up here too, with a shortcut to the run settings. A decision comes with the chat's options as buttons — one click answers it. Steps a CLI refused are gathered on one card that says what each one does and whether it only reads, changes something or is risky; **Allow and continue** allows the safe ones for that chat and lets it go on. Mark a problem **Resolved** or **Ignore** it: it stops counting and stays listed, so you can open it again. What the chat wrote is shown as Markdown — headings, lists, tables, code.
 
 **Run details.** Time, tool calls, tokens in and out, turns, list price, and how full the session's context window is (Claude Code reports it) — on lanes, cards, the drawer and the floating window.
 
@@ -457,6 +457,8 @@ A report can also list **problems** — what failed, was skipped, is missing or 
   ]
 }
 ```
+
+A decision the chat cannot take itself can carry `choices` — `[{"label": "Separate repository", "reply": "I move the commits there.", "recommended": true}, …]` — shown as buttons.
 
 Details and the report schema: [docs/agent-reporting.md](docs/agent-reporting.md).
 
@@ -626,7 +628,7 @@ Yes. Each project is a `.aitrack` file in its own repository; the sidebar lists 
 <details>
 <summary><b>A chat stops at "permission denied" or "working folder not found".</b></summary>
 
-*Permission denied:* the chat's access level did not allow a command. With **edit files**, Claude Code already runs the usual work commands; for anything else, click **Allow …** on the problem and send the task again, or choose **full access** in the run settings (only in a disposable worktree). *Working folder not found:* the plan names a code folder that is not on this computer yet — **Create the folder**, choose another one, or use the plan's repository from the notice on the board or **Project settings → Code folder**.
+*Permission denied:* the chat's access level did not allow a command. With **edit files**, Claude Code approves routine steps itself (auto mode, on recent versions — run `claude update` if the run settings say it is missing) and runs the usual work commands. For anything else the problem lists each refused step with what it does: click **Allow and continue**, or choose **full access** in the run settings (only in a disposable worktree). *Working folder not found:* the plan names a code folder that is not on this computer yet — **Create the folder**, choose another one, or use the plan's repository from the notice on the board or **Project settings → Code folder**.
 
 </details>
 

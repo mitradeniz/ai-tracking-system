@@ -36,6 +36,15 @@ export interface ChatRunner {
    * folders, local git, build and test). On unless turned off.
    */
   workCommands?: boolean;
+  /**
+   * Claude Code with "edit files": run in Claude Code's auto mode, where a safety check approves
+   * routine steps (looking around, reading system details) and blocks risky ones, instead of
+   * refusing every step that is not on the allowed list. On unless turned off; used only when the
+   * installed CLI has auto mode.
+   */
+  autoPermissions?: boolean;
+  /** Claude Code: other folders the chat may use, one absolute path per line (passed with --add-dir). */
+  extraDirs?: string;
   /** Extra command line arguments, appended as written (quotes are respected). */
   extraArgs?: string;
   /** Full path of the CLI when it is not found on PATH. */
@@ -54,11 +63,15 @@ export const WORK_COMMANDS = [
   "ls", "cat", "head", "tail", "wc", "find", "grep", "rg", "sort", "uniq", "cut", "tr", "diff", "cmp", "tree",
   "pwd", "cd", "echo", "printf", "which", "file", "stat", "du", "jq", "sed", "awk", "basename", "dirname",
   "realpath", "date", "test", "true",
+  // look around the computer (read only)
+  "uname", "sw_vers", "sysctl", "system_profiler", "hostname", "whoami", "id", "uptime", "df", "ps",
+  "docker ps", "docker info", "docker version", "docker images", "brew list", "brew info",
   // files
   "mkdir", "touch", "cp", "mv",
   // local git
   "git status", "git diff", "git log", "git show", "git branch", "git add", "git commit", "git switch",
   "git checkout", "git restore", "git worktree", "git rev-parse", "git ls-files", "git stash", "git blame", "git grep",
+  "git remote", "git config --get",
   // build and test
   "node", "npm", "npx", "pnpm", "yarn", "bun", "tsc", "make", "go", "python", "python3", "pytest", "cargo",
 ] as const;
@@ -218,6 +231,8 @@ export interface Invocation {
   sessionId?: string;
   /** How the output is read. */
   format: "codex" | "claude" | "gemini" | "text";
+  /** Claude Code: the permission mode asked for. */
+  permissionMode?: string;
 }
 
 export interface BuildInput {
@@ -230,6 +245,8 @@ export interface BuildInput {
   newSessionId: string;
   /** Other folders the chat may read (and, when it may edit, write): the plan's repository. */
   addDirs?: string[];
+  /** Claude Code: the installed CLI has auto mode and it worked here (see ChatRunner.autoPermissions). */
+  autoMode?: boolean;
 }
 
 function fill(template: string, vars: Record<string, string>): string {
@@ -261,20 +278,22 @@ export function buildInvocation(input: BuildInput): Invocation {
       const args = ["-p", "--output-format", "stream-json", "--verbose"];
       if (resume) args.push("--resume", resume);
       else args.push("--session-id", newSessionId);
-      args.push(
-        "--permission-mode",
-        runner.access === "readonly" ? "plan" : runner.access === "edit" ? "acceptEdits" : "bypassPermissions",
-      );
+      const auto = runner.access === "edit" && runner.autoPermissions !== false && input.autoMode === true;
+      const permissionMode = runner.access === "readonly" ? "plan" : runner.access === "edit" ? (auto ? "auto" : "acceptEdits") : "bypassPermissions";
+      args.push("--permission-mode", permissionMode);
       if (model) args.push("--model", model);
       if (effort) args.push("--effort", effort);
       if (addDirs.length) args.push("--add-dir", ...addDirs);
       args.push(...extra);
       const tools = [
         ...(runner.access === "edit" && runner.workCommands !== false ? WORK_COMMANDS.map((c) => `Bash(${c}:*)`) : []),
+        // Edits inside the chat's folders need no review, as with acceptEdits. This also keeps them
+        // working if the CLI falls back from auto mode to its default mode.
+        ...(auto ? [cwd, ...addDirs].filter((d) => d.startsWith("/")).map((d) => `Edit(/${d.replace(/\/+$/, "")}/**)`) : []),
         ...splitTools(runner.allowedTools),
       ];
       if (tools.length) args.push("--allowedTools", ...tools);
-      return { command: runner.binary || "claude", args, stdin: prompt, sessionId: resume ?? newSessionId, format: "claude" };
+      return { command: runner.binary || "claude", args, stdin: prompt, sessionId: resume ?? newSessionId, format: "claude", permissionMode };
     }
     case "copilot": {
       const session = resume ?? newSessionId;
@@ -339,6 +358,8 @@ export interface RunUsage {
 /** What the runner learns from one line of output. */
 export type StreamEvent =
   | { kind: "session"; id: string }
+  /** Claude Code: the permission mode the session really runs in. */
+  | { kind: "mode"; mode: string }
   | { kind: "usage"; usage: RunUsage }
   | { kind: "tool" }
   | { kind: "denied"; tool: string }
@@ -410,7 +431,12 @@ function parseCodex(o: Record<string, unknown>): StreamEvent[] {
 
 function parseClaude(o: Record<string, unknown>): StreamEvent[] {
   const type = String(o.type ?? "");
-  if (type === "system" && o.subtype === "init" && typeof o.session_id === "string") return [{ kind: "session", id: o.session_id }];
+  if (type === "system" && o.subtype === "init") {
+    const out: StreamEvent[] = [];
+    if (typeof o.session_id === "string") out.push({ kind: "session", id: o.session_id });
+    if (typeof o.permissionMode === "string") out.push({ kind: "mode", mode: o.permissionMode });
+    return out;
+  }
   if (type === "assistant") {
     const message = (o.message ?? {}) as { content?: unknown[]; usage?: Record<string, unknown>; model?: string };
     const content = (message.content ?? []) as Record<string, unknown>[];
@@ -496,6 +522,8 @@ export class OutputParser {
   private textOut: string[] = [];
   result: { ok: boolean; text?: string; error?: string } | null = null;
   sessionId: string | null = null;
+  /** Claude Code: the permission mode the session runs in, from its first line. */
+  mode: string | null = null;
   errors: string[] = [];
   usage: RunUsage = {};
   tools = 0;
@@ -525,6 +553,7 @@ export class OutputParser {
           : parseGemini(o as Record<string, unknown>);
     for (const e of events) {
       if (e.kind === "session") this.sessionId = e.id;
+      if (e.kind === "mode") this.mode = e.mode;
       if (e.kind === "error") this.errors.push(e.text);
       if (e.kind === "result") this.result = { ok: e.ok, text: e.text, error: e.error };
       if (e.kind === "tool") this.tools += 1;

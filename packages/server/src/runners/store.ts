@@ -29,6 +29,11 @@ const str = (v: unknown, max = 4000): string | undefined => {
   return s ? s.slice(0, max) : undefined;
 };
 
+/** Folders given one per line. */
+export function splitDirs(text: string | undefined): string[] {
+  return [...new Set((text ?? "").split(/\r?\n/).map((d) => d.trim().replace(/(.)\/+$/, "$1")).filter(Boolean))];
+}
+
 /** Validates a chat's run settings coming from the UI or from disk. */
 export function normalizeRunner(input: unknown, base: ChatRunner = DEFAULT_RUNNER): ChatRunner {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
@@ -48,6 +53,10 @@ export function normalizeRunner(input: unknown, base: ChatRunner = DEFAULT_RUNNE
   if (effort && !/^[a-z]+$/.test(effort)) throw new Error(`Unknown effort level "${effort}".`);
   const binary = pick("binary", 1000);
   if (binary && !path.isAbsolute(binary)) throw new Error("The program path must be an absolute path.");
+  const extraDirs = pick("extraDirs", 4000);
+  for (const dir of splitDirs(extraDirs)) {
+    if (!path.isAbsolute(dir)) throw new Error(`"${dir}" is not an absolute path. Give each folder as a full path, one per line.`);
+  }
   return {
     provider,
     workdir,
@@ -59,7 +68,9 @@ export function normalizeRunner(input: unknown, base: ChatRunner = DEFAULT_RUNNE
     unattended: typeof o.unattended === "boolean" ? o.unattended : base.unattended,
     network: typeof o.network === "boolean" ? o.network : base.network,
     workCommands: typeof o.workCommands === "boolean" ? o.workCommands : base.workCommands,
+    autoPermissions: typeof o.autoPermissions === "boolean" ? o.autoPermissions : base.autoPermissions,
     allowedTools: pick("allowedTools", 2000),
+    extraDirs: splitDirs(extraDirs).join("\n") || undefined,
     extraArgs: pick("extraArgs", 2000),
     binary,
     command: pick("command", 4000),

@@ -4,6 +4,12 @@
 import { appendFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
+// `claude --help`: lists auto mode among the permission modes when FAKE_AUTO is set.
+if (args.includes("--help")) {
+  const modes = ['"acceptEdits"', ...(process.env.FAKE_AUTO ? ['"auto"'] : []), '"bypassPermissions"', '"plan"'];
+  process.stdout.write(`Usage: claude [options]\n  --permission-mode <mode>  Permission mode to use for the session\n                            (choices: ${modes.join(", ")})\n`);
+  process.exit(0);
+}
 const format = (args.includes("--fake-format") && args[args.indexOf("--fake-format") + 1]) || process.env.FAKE_FORMAT || "codex";
 const scenario = process.env.FAKE_SCENARIO || "done";
 let stdin = "";
@@ -87,7 +93,8 @@ if (format === "codex") {
   out({ type: "turn.completed", usage: {} });
 } else if (format === "claude") {
   const sid = flag("--resume") ?? flag("--session-id");
-  out({ type: "system", subtype: "init", session_id: sid });
+  // FAKE_MODE: the mode the CLI really runs in (auto mode may be unavailable for the account).
+  out({ type: "system", subtype: "init", session_id: sid, permissionMode: process.env.FAKE_MODE ?? flag("--permission-mode") ?? "default" });
   if (scenario === "project") {
     for (const file of ["README.md", "package.json", "src/"]) {
       await pause(Number(process.env.FAKE_PAUSE ?? 0));

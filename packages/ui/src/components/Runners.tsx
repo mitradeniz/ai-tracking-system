@@ -85,6 +85,7 @@ export function RunnerDialog({
         effort: form.effort ?? "",
         sessionId: form.sessionId ?? "",
         allowedTools: form.allowedTools ?? "",
+        extraDirs: form.extraDirs ?? "",
         extraArgs: form.extraArgs ?? "",
         binary: form.binary ?? "",
         command: form.command ?? "",
@@ -230,6 +231,15 @@ export function RunnerDialog({
               )}
               {p === "claude" && form.access === "edit" && (
                 <label className="check plain">
+                  <input type="checkbox" checked={form.autoPermissions !== false} onChange={(e) => set({ autoPermissions: e.target.checked })} />
+                  <span>
+                    {t("run_autoPermissions")}
+                    <span className="small muted block">{found?.autoMode === false ? t("run_autoPermissionsOld") : t("run_autoPermissionsHint")}</span>
+                  </span>
+                </label>
+              )}
+              {p === "claude" && form.access === "edit" && (
+                <label className="check plain">
                   <input type="checkbox" checked={form.workCommands !== false} onChange={(e) => set({ workCommands: e.target.checked })} />
                   <span>
                     {t("run_workCommands")}
@@ -299,6 +309,20 @@ export function RunnerDialog({
                   onChange={(e) => set({ allowedTools: e.target.value })}
                 />
                 <span className="small muted">{t("run_allowedToolsHint")}</span>
+              </div>
+            )}
+            {p === "claude" && (
+              <div className="field">
+                <label htmlFor="run-dirs">{t("run_extraDirs")}</label>
+                <textarea
+                  id="run-dirs"
+                  className="input mono"
+                  style={{ minHeight: 44 }}
+                  value={form.extraDirs ?? ""}
+                  placeholder="/Users/you/other-repo"
+                  onChange={(e) => set({ extraDirs: e.target.value })}
+                />
+                <span className="small muted">{t("run_extraDirsHint")}</span>
               </div>
             )}
             <div className="field">

@@ -119,15 +119,19 @@ export interface DetectedProvider {
   /** Models to offer: the CLI's own list when it has one, else aliases. */
   models: ModelChoice[];
   efforts: string[];
+  /** Claude Code: whether the installed version has auto mode. */
+  autoMode?: boolean;
 }
 
 let detectCache: { at: number; value: Promise<DetectedProvider[]> } | null = null;
 
 function output(file: string, args: string[], envPath: string, timeout = 8000, maxBuffer = 4 * 1024 * 1024): Promise<string | null> {
   return new Promise((resolve) => {
-    execFile(file, args, { timeout, maxBuffer, encoding: "utf8", env: { ...process.env, PATH: envPath, NO_COLOR: "1" } }, (err, stdout) =>
+    const child = execFile(file, args, { timeout, maxBuffer, encoding: "utf8", env: { ...process.env, PATH: envPath, NO_COLOR: "1" } }, (err, stdout) =>
       resolve(err ? null : (stdout ?? "")),
     );
+    // Nothing to read: a CLI that waits for input on stdin goes on at once.
+    child.stdin?.end();
   });
 }
 
@@ -135,6 +139,27 @@ async function version(file: string, envPath: string): Promise<string | null> {
   const out = await output(file, ["--version"], envPath);
   const line = out?.split("\n").find((l) => l.trim());
   return line ? line.trim().slice(0, 80) : null;
+}
+
+/** Whether `claude --help` lists "auto" among the permission modes. */
+export function helpHasAutoMode(help: string): boolean {
+  return /--permission-mode[^(]{0,200}\(choices:[^)]*["'`]auto["'`]/.test(help);
+}
+
+const autoModeCache = new Map<string, { at: number; value: Promise<boolean> }>();
+
+/** Forgets what was found out about auto mode (after an update of the CLI, and in tests). */
+export function clearAutoModeCache(): void {
+  autoModeCache.clear();
+}
+
+/** Whether this Claude Code binary has auto mode. Cached for ten minutes per binary. */
+export function claudeHasAutoMode(file: string, envPath: string): Promise<boolean> {
+  const hit = autoModeCache.get(file);
+  if (hit && Date.now() - hit.at < 10 * 60_000) return hit.value;
+  const value = output(file, ["--help"], envPath, 10_000).then((out) => Boolean(out && helpHasAutoMode(out)));
+  autoModeCache.set(file, { at: Date.now(), value });
+  return value;
 }
 
 /** `codex debug models`: the model catalog with each model's effort levels. */
@@ -189,11 +214,12 @@ export function detectProviders(force = false): Promise<DetectedProvider[]> {
         const info = PROVIDER_INFO[id];
         const found = which(info.bin!, envPath);
         const canRun = Boolean(found) && process.platform !== "win32";
-        const [ver, models] = await Promise.all([
+        const [ver, models, autoMode] = await Promise.all([
           canRun ? version(found!, envPath) : Promise.resolve(null),
           canRun ? modelsOf(id, found!, envPath) : Promise.resolve(info.models),
+          canRun && id === "claude" ? claudeHasAutoMode(found!, envPath) : Promise.resolve(undefined),
         ]);
-        return { id, name: info.name, path: found, version: ver, models, efforts: info.efforts };
+        return { id, name: info.name, path: found, version: ver, models, efforts: info.efforts, ...(autoMode !== undefined && { autoMode }) };
       }),
     );
   })();

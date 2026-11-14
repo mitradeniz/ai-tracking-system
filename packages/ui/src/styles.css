@@ -4412,3 +4412,79 @@ details.advanced[open] {
 .mini-quick-actions:empty {
   display: none;
 }
+
+/* Steps a CLI refused, each explained, and the options of a decision. */
+.problem-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px 8px;
+  align-items: start;
+}
+
+/* Each step is a row of the list's grid, so the explanations line up whatever the label. */
+.problem-step {
+  display: contents;
+  font-size: 13px;
+}
+
+.problem-step .grow {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.problem-step .pill {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.step-cmd {
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.problem-steps.compact {
+  gap: 4px 8px;
+}
+
+.problem-steps.compact .problem-step {
+  font-size: 12px;
+}
+
+.pill.step-read {
+  color: var(--ready);
+  border-color: var(--ready-line);
+}
+
+.pill.step-change {
+  color: var(--muted);
+}
+
+.pill.step-risky {
+  color: var(--blocked);
+  border-color: var(--blocked-line);
+}
+
+.problem-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.choice-rec {
+  opacity: 0.75;
+  font-weight: 400;
+}
+
+.problem-step .pill {
+  justify-self: stretch;
+  justify-content: center;
+  text-align: center;
+}

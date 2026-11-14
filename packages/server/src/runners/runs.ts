@@ -3,14 +3,15 @@ import { randomUUID } from "node:crypto";
 import { createWriteStream, existsSync, realpathSync, statSync, type WriteStream } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
+import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { parseReports, renderBootstrapPrompt, renderTaskPrompt, type Report, type TaskIssue } from "@aitrack/core";
 import { HttpError, type ProjectManager } from "../manager.ts";
-import { agentPath, which } from "./env.ts";
+import { agentPath, claudeHasAutoMode, which } from "./env.ts";
 import { hookSnippets, type HookSignal } from "./hooks.ts";
-import { buildInvocation, OutputParser, PROVIDER_INFO, type ChatRunner, type ProviderId, type RunUsage } from "./providers.ts";
-import { normalizeRunner, type ProjectRunners, type RunnerStore } from "./store.ts";
+import { buildInvocation, OutputParser, PROVIDER_INFO, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
+import { normalizeRunner, splitDirs, type ProjectRunners, type RunnerStore } from "./store.ts";
 
 export type RunState = "running" | "waiting" | "finished" | "failed" | "stopped";
 
@@ -107,6 +108,17 @@ function insideGit(dir: string): boolean {
   }
 }
 
+/**
+ * The folder where Claude Code keeps its own notes ("memory") for a working folder. Chats look
+ * there with ls and cat; outside the working folder that is refused unless the folder is added.
+ */
+export function claudeMemoryDir(workdir: string, configDir = process.env.CLAUDE_CONFIG_DIR || path.join(homedir(), ".claude")): string {
+  return path.join(configDir, "projects", path.resolve(workdir).replace(/[^A-Za-z0-9]/g, "-"), "memory");
+}
+
+/** A failure that says auto mode could not be used (an older CLI, or turned off for the account). */
+const AUTO_MODE_ERROR = /auto mode|invalid[^\n]{0,80}permission-mode|permission-mode[^\n]{0,80}(?:invalid|choices)/i;
+
 function isDir(p: string): boolean {
   try {
     return statSync(p).isDirectory();
@@ -133,7 +145,9 @@ export function runnerPreamble(taskId: string, runner: ChatRunner, language = "E
   const lines = [
     `You were started by AI Tracking System for task ${taskId}. Nobody watches this session live: a person reads your final message in the tracker and can reply to it.`,
     `- Reporting: skip the HTTP call and the report files described below. Just end your final message with the aitrack-report block; the tracker reads it from your output.`,
-    `- If you need a decision, an approval or anything only a person can do, stop, ask clearly in your final message and report status "blocked" with the question as the reason.`,
+    `- Solve what you can yourself before asking. Find missing facts with read-only commands (the folders, git, this computer, running services). When a choice is low-risk and easy to undo, take the sensible option, note it as a "warning" issue and carry on.`,
+    `- If your permissions refuse a step, do not stop for it: find another way or finish the rest without it, and list the refused step under "issues".`,
+    `- Report status "blocked" only for what you cannot decide or do yourself: a choice between real alternatives, or something only a person can do. Put one clear question in ${language} in "reason", and give each decision as one "needs-you" issue with "choices", your recommendation first.`,
     `- List anything that failed, was skipped or is missing under "issues" in the report, with a plain ${language} title, what is needed, and a prompt that would fix it.`,
   ];
   if (runner.unattended) {
@@ -157,6 +171,11 @@ export class RunManager extends EventEmitter {
   private pendingLines = new Map<string, { key: string; from: number; lines: string[] }>();
   private flushTimer: NodeJS.Timeout | null = null;
   private closed = false;
+  /**
+   * Claude Code binaries that could not run in auto mode here (the CLI fell back to another mode or
+   * refused it), with the mode they ran in. They get the usual permissions until the app restarts.
+   */
+  private autoOff = new Map<string, string>();
 
   constructor(
     private readonly manager: ProjectManager,
@@ -384,12 +403,19 @@ export class RunManager extends EventEmitter {
       );
     }
     const provider = runner.provider as ProviderId;
-    let invocation;
+    let invocation: Invocation;
+    const newSessionId = randomUUID();
+    // The plan's repository, when the chat works elsewhere: the plan and its docs live there.
+    const plan = planFolder(ctx.filePath);
+    const addDirs = plan !== workdir && isDir(plan) ? [plan] : [];
+    if (provider === "claude") {
+      const memory = claudeMemoryDir(workdir);
+      if (isDir(memory)) addDirs.push(memory);
+      // Folders the person allowed for this chat; one that is gone would stop the CLI, so it is left out.
+      for (const dir of splitDirs(runner.extraDirs)) if (isDir(dir) && !addDirs.includes(dir) && dir !== workdir) addDirs.push(dir);
+    }
     try {
-      // The plan's repository, when the chat works elsewhere: the plan and its docs live there.
-      const plan = planFolder(ctx.filePath);
-      const addDirs = plan !== workdir && isDir(plan) ? [plan] : [];
-      invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId: randomUUID(), addDirs });
+      invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId, addDirs });
     } catch (e) {
       throw new HttpError(400, (e as Error).message);
     }
@@ -401,6 +427,12 @@ export class RunManager extends EventEmitter {
     }
     if (process.platform === "win32" && /\.(cmd|bat)$/i.test(binary)) {
       throw new HttpError(400, `Windows: point the program path to the .exe of ${PROVIDER_INFO[provider].name}; .cmd launchers are not supported.`);
+    }
+    // Claude Code's auto mode: a safety check approves routine steps and blocks risky ones.
+    if (provider === "claude" && runner.access === "edit" && runner.autoPermissions !== false && !this.autoOff.has(binary)) {
+      if (await claudeHasAutoMode(binary, envPath)) {
+        invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId, addDirs, autoMode: true });
+      }
     }
 
     const id = `r-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`;
@@ -440,6 +472,7 @@ export class RunManager extends EventEmitter {
     const name = PROVIDER_INFO[provider].name;
     this.append(run, `▶ ${name} · ${kind === "reply" ? "reply" : `task ${task}`} · ${workdir}`);
     this.append(run, `  ${path.basename(binary)} ${invocation.args.map((a) => (a === prompt ? "<prompt>" : a.length > 80 ? `${a.slice(0, 77)}…` : a)).join(" ")}`);
+    if (invocation.permissionMode === "auto") this.append(run, "  permissions: auto mode (Claude Code approves routine steps itself and blocks risky ones)");
 
     try {
       if (kind === "task") {
@@ -506,7 +539,15 @@ export class RunManager extends EventEmitter {
     if (child.stdout) {
       createInterface({ input: child.stdout }).on("line", (line) => {
         for (const ev of parser.feed(line)) {
-          if (ev.kind === "session") {
+          if (ev.kind === "mode") {
+            if (invocation.permissionMode === "auto" && ev.mode !== "auto" && !this.autoOff.has(binary)) {
+              this.autoOff.set(binary, ev.mode);
+              this.append(
+                run,
+                `! Claude Code could not use auto mode here and runs in "${ev.mode}" mode. Edits in the chat's folders and the usual work commands still run; the next runs use the usual permissions.`,
+              );
+            }
+          } else if (ev.kind === "session") {
             run.sessionId = ev.id;
             markStarted();
             if (runner.session === "keep") void this.store.setSession(key, agent, ev.id).catch(() => undefined);
@@ -559,6 +600,7 @@ export class RunManager extends EventEmitter {
       run.tools = parser.tools;
       run.usage = { ...parser.usage };
       if (parser.denials.length) run.denials = [...parser.denials];
+      if (!ok && invocation.permissionMode === "auto" && !parser.mode && AUTO_MODE_ERROR.test(reason)) this.autoOff.set(binary, "error");
       void this.finish(run, {
         ok,
         error: ok ? undefined : clip(reason || `${name} exited with code ${code}`, 2000),
@@ -597,6 +639,8 @@ export class RunManager extends EventEmitter {
       fix: `The command "${tool}" was not allowed in your environment. Finish the task without it if you can; otherwise stop and tell me exactly which command you need and why.`,
     }));
     const withDenied = (issues: TaskIssue[] | undefined) => (denied.length ? [...(issues ?? []), ...denied] : issues);
+    // A task the chat finished anyway needs nothing from the person for the steps it skipped.
+    const finishedAnyway = (s: string) => s === "done" || s === "review";
     try {
       if (run.stopRequested) {
         run.state = "stopped";
@@ -616,7 +660,8 @@ export class RunManager extends EventEmitter {
         run.lastMessage = clip(outcome.final, 2000) || run.lastMessage;
         if (report) {
           this.append(run, `✓ report: ${report.status}`);
-          await this.manager.recordReport({ ...report, agent: report.agent ?? agent, project: undefined, issues: withDenied(report.issues) }, "runner", key);
+          const issues = finishedAnyway(report.status) ? report.issues : withDenied(report.issues);
+          await this.manager.recordReport({ ...report, agent: report.agent ?? agent, project: undefined, issues }, "runner", key);
         } else if (status === "dispatched" || status === "in_progress") {
           await this.manager.addEvent(
             key,

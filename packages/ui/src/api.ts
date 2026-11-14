@@ -38,6 +38,10 @@ export interface ChatRunner {
   provider: RunnerProvider;
   /** Claude Code with "edit files": the usual work commands run without asking (default on). */
   workCommands?: boolean;
+  /** Claude Code with "edit files": auto mode approves routine steps and blocks risky ones (default on). */
+  autoPermissions?: boolean;
+  /** Claude Code: other folders the chat may use, one absolute path per line. */
+  extraDirs?: string;
   workdir?: string;
   model?: string;
   effort?: string;
@@ -109,6 +113,8 @@ export interface DetectedProvider {
   version: string | null;
   models: ModelChoice[];
   efforts: string[];
+  /** Claude Code: whether the installed version has auto mode. */
+  autoMode?: boolean;
 }
 
 export interface RunLogEvent {
@@ -381,6 +387,9 @@ export const api = {
     request<TrackEvent>("POST", `/api/projects/${enc(key)}/events`, event),
   setIssueState: (key: string, task: string, issue: { index: number; title: string; state: "resolved" | "ignored" | "open" }) =>
     request<TrackEvent>("POST", `/api/projects/${enc(key)}/tasks/${enc(task)}/issues`, issue),
+  /** Several problems of a task at once (a group of refused steps, say), in one event. */
+  setIssueStates: (key: string, task: string, issues: Array<{ index: number; title: string }>, state: "resolved" | "ignored" | "open") =>
+    request<TrackEvent>("POST", `/api/projects/${enc(key)}/tasks/${enc(task)}/issues`, { issues, state }),
   paste: (key: string, text: string) =>
     request<{ recorded: number; errors: string[] }>("POST", `/api/projects/${enc(key)}/paste`, { text }),
   taskPrompt: (key: string, task: string, agent?: string) =>

@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProjectFileSchema, serializeProject } from "@aitrack/core";
 import { startServer, type RunningServer } from "../src/index.ts";
-import { parseCodexModels, parseCopilotModels } from "../src/runners/env.ts";
+import { clearAutoModeCache, helpHasAutoMode, parseCodexModels, parseCopilotModels } from "../src/runners/env.ts";
+import { claudeMemoryDir } from "../src/runners/runs.ts";
 import { normalizeHook } from "../src/runners/hooks.ts";
 import { normalizeRunner, RunnerStore } from "../src/runners/store.ts";
 import { buildInvocation, DEFAULT_RUNNER, OutputParser, splitArgs } from "../src/runners/providers.ts";
@@ -198,10 +199,70 @@ describe("agent runners", () => {
     expect(run.tools).toBe(1);
     expect(run.usage).toMatchObject({ context: 32100, contextWindow: 1000000, costUsd: 0.05, turns: 2, input: 62020, cached: 60000, output: 150 });
     expect(run.denials).toEqual(["Bash npm test"]);
+    // The chat finished anyway: the skipped step needs nothing from the person.
+    const done = (await call("GET", `/api/projects/${key}`)).json.board.tasks.find((t: { id: string }) => t.id === "T3");
+    expect(done.issues ?? []).toHaveLength(0);
+
+    // A chat that stops with a refused step: that step becomes a problem.
+    process.env.FAKE_DENY = "1";
+    process.env.FAKE_SCENARIO = "ask";
+    try {
+      await call("POST", `/api/projects/${key}/events`, { task: "T3", type: "reopened" });
+      await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+      await waitFor("T3", "blocked");
+    } finally {
+      delete process.env.FAKE_DENY;
+    }
     const t3 = (await call("GET", `/api/projects/${key}`)).json.board.tasks.find((t: { id: string }) => t.id === "T3");
     expect(t3.issues).toHaveLength(1);
     expect(t3.issues[0]).toMatchObject({ title: "Permission denied: Bash npm test", kind: "needs-you" });
     expect(t3.issues[0].fix).toContain("npm test");
+  });
+
+  it("runs Claude Code in auto mode when the CLI has it, and falls back when it cannot use it", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_AUTO = "1";
+    const config = path.join(dir, "claude-config");
+    process.env.CLAUDE_CONFIG_DIR = config;
+    const memory = claudeMemoryDir(dir, config);
+    await mkdir(memory, { recursive: true });
+    clearAutoModeCache();
+    try {
+      await setRunner("b", { provider: "claude" });
+      await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+      await waitFor("T3", "done");
+      const first = (await invocations())[0]!;
+      expect(first.args[first.args.indexOf("--permission-mode") + 1]).toBe("auto");
+      // Edits in the chat's folders need no review, and Claude Code may look at its own notes.
+      expect(first.args).toContain(`Edit(/${dir}/**)`);
+      expect(first.args.join(" ")).toContain(`--add-dir ${memory}`);
+      expect(first.args).toContain("Bash(sysctl:*)");
+
+      // The account cannot use auto mode: the CLI runs in its default mode, the next run gets the usual permissions.
+      process.env.FAKE_MODE = "default";
+      await call("POST", `/api/projects/${key}/events`, { task: "T3", type: "reopened" });
+      await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+      await waitFor("T3", "done");
+      const log = (await call("GET", `/api/projects/${key}/runners`)).json.runs[0];
+      const lines = (await call("GET", `/api/runs/${log.id}/log`)).json.lines.join("\n");
+      expect(lines).toContain("could not use auto mode");
+      delete process.env.FAKE_MODE;
+      await call("POST", `/api/projects/${key}/events`, { task: "T3", type: "reopened" });
+      await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+      await waitFor("T3", "done");
+      const third = (await invocations())[2]!;
+      expect(third.args[third.args.indexOf("--permission-mode") + 1]).toBe("acceptEdits");
+
+      // Turned off in the chat's settings.
+      await setRunner("b", { provider: "claude", autoPermissions: false });
+      const off = (await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.b;
+      expect(off.autoPermissions).toBe(false);
+    } finally {
+      delete process.env.FAKE_AUTO;
+      delete process.env.FAKE_MODE;
+      delete process.env.CLAUDE_CONFIG_DIR;
+      clearAutoModeCache();
+    }
   });
 
   it("marks the task failed when the CLI fails", async () => {
@@ -330,6 +391,32 @@ describe("provider adapters", () => {
     const readonly = buildInvocation({ runner: { ...base, access: "readonly" }, prompt: "P", cwd: "/w", newSessionId: "u" });
     expect(readonly.args).not.toContain("--allowedTools");
     expect(readonly.args).toContain("plan");
+  });
+
+  it("asks Claude Code for auto mode only with edit access, and reads the mode it really runs in", () => {
+    const base = { ...DEFAULT_RUNNER, provider: "claude" as const };
+    const auto = buildInvocation({ runner: base, prompt: "P", cwd: "/w", newSessionId: "u", addDirs: ["/plan"], autoMode: true });
+    expect(auto.permissionMode).toBe("auto");
+    expect(auto.args).toEqual(expect.arrayContaining(["--permission-mode", "auto", "Edit(//w/**)", "Edit(//plan/**)", "Bash(system_profiler:*)"]));
+    expect(buildInvocation({ runner: base, prompt: "P", cwd: "/w", newSessionId: "u" }).permissionMode).toBe("acceptEdits");
+    expect(buildInvocation({ runner: { ...base, autoPermissions: false }, prompt: "P", cwd: "/w", newSessionId: "u", autoMode: true }).permissionMode).toBe("acceptEdits");
+    expect(buildInvocation({ runner: { ...base, access: "readonly" }, prompt: "P", cwd: "/w", newSessionId: "u", autoMode: true }).permissionMode).toBe("plan");
+    const plain = buildInvocation({ runner: base, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(plain.args.some((a) => a.startsWith("Edit("))).toBe(false);
+
+    expect(helpHasAutoMode('  --permission-mode <mode>  Permission mode\n      (choices: "acceptEdits", "auto",\n      "bypassPermissions", "plan")')).toBe(true);
+    expect(helpHasAutoMode('  --permission-mode <mode>  Permission mode (choices: "acceptEdits", "bypassPermissions", "plan")\n  --auto-update "auto"')).toBe(false);
+
+    const parser = new OutputParser("claude");
+    const events = parser.feed(JSON.stringify({ type: "system", subtype: "init", session_id: "s-1", permissionMode: "default" }));
+    expect(events).toEqual([{ kind: "session", id: "s-1" }, { kind: "mode", mode: "default" }]);
+    expect(parser.mode).toBe("default");
+  });
+
+  it("keeps the other folders a Claude chat may use, as full paths", () => {
+    expect(normalizeRunner({ provider: "claude", extraDirs: "/a/b/\n\n/c/d\n/a/b" }).extraDirs).toBe("/a/b\n/c/d");
+    expect(() => normalizeRunner({ provider: "claude", extraDirs: "relative/dir" })).toThrow(/absolute/);
+    expect(claudeMemoryDir("/Users/me/my_app.v2", "/cfg")).toBe("/cfg/projects/-Users-me-my-app-v2/memory");
   });
 
   it("passes the model and reasoning effort to each CLI", () => {

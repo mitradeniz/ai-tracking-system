@@ -246,6 +246,16 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     const body = await readJson(ctx.req);
     const state = body.state;
     if (state !== "resolved" && state !== "ignored" && state !== "open") throw new HttpError(400, '"state" must be resolved, ignored or open.');
+    if (Array.isArray(body.issues)) {
+      const targets = (body.issues as unknown[]).slice(0, 50).map((x) => {
+        const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+        if (typeof o.title !== "string" || !o.title) throw new HttpError(400, 'Each problem needs a "title".');
+        const index = typeof o.index === "number" && Number.isInteger(o.index) && o.index >= 0 ? o.index : undefined;
+        return { index, title: o.title };
+      });
+      send(ctx.res, 201, await manager.setIssueStates(key!, task!, targets, state));
+      return;
+    }
     if (typeof body.title !== "string" || !body.title) throw new HttpError(400, '"title" is required.');
     const index = typeof body.index === "number" && Number.isInteger(body.index) && body.index >= 0 ? body.index : undefined;
     send(ctx.res, 201, await manager.setIssueState(key!, task!, { index, title: body.title, state }));

@@ -489,19 +489,39 @@ export class ProjectManager extends EventEmitter {
     taskId: string,
     target: { index?: number; title: string; state: "resolved" | "ignored" | "open" },
   ): Promise<TrackEvent> {
+    return this.setIssueStates(key, taskId, [target], target.state);
+  }
+
+  /** Resolves, ignores or reopens several problems of a task at once, in one event. */
+  async setIssueStates(
+    key: string,
+    taskId: string,
+    targets: Array<{ index?: number; title: string }>,
+    state: "resolved" | "ignored" | "open",
+  ): Promise<TrackEvent> {
     const { board } = this.context(key);
     const view = board.tasks.find((t) => t.task.id === taskId);
     if (!view) throw new HttpError(404, `Unknown task "${taskId}"`);
+    if (targets.length === 0) throw new HttpError(400, "No problem given.");
     const issues = view.runtime.issues.map((i) => ({ ...i }));
-    // The index the app saw, unless the list changed since; then the first problem with that title.
-    const at =
-      target.index !== undefined && issues[target.index]?.title === target.title ? target.index : issues.findIndex((i) => i.title === target.title);
-    if (at < 0) throw new HttpError(409, "That problem is no longer reported for this task.");
-    const issue = issues[at]!;
-    if (target.state === "open") delete issue.state;
-    else issue.state = target.state;
-    const verb = target.state === "open" ? "reopened" : target.state;
-    return this.addEvent(key, { type: "note", task: taskId, message: `Problem ${verb}: ${issue.title}`, issues }, "ui");
+    const titles: string[] = [];
+    const taken = new Set<number>();
+    for (const target of targets) {
+      // The index the app saw, unless the list changed since; then the first problem with that title.
+      const at =
+        target.index !== undefined && issues[target.index]?.title === target.title && !taken.has(target.index)
+          ? target.index
+          : issues.findIndex((i, n) => i.title === target.title && !taken.has(n));
+      if (at < 0) throw new HttpError(409, "That problem is no longer reported for this task.");
+      taken.add(at);
+      const issue = issues[at]!;
+      if (state === "open") delete issue.state;
+      else issue.state = state;
+      titles.push(issue.title);
+    }
+    const verb = state === "open" ? "reopened" : state;
+    const message = titles.length === 1 ? `Problem ${verb}: ${titles[0]}` : `${titles.length} problems ${verb}: ${titles.join("; ")}`;
+    return this.addEvent(key, { type: "note", task: taskId, message: message.slice(0, 2000), issues }, "ui");
   }
 
   async addEvent(key: string, input: Record<string, unknown>, source: EventSource): Promise<TrackEvent> {

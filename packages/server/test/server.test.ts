@@ -121,6 +121,13 @@ describe("server", () => {
     expect((await issuesOf()).map((i: any) => i.state ?? null)).toEqual(["resolved", null]);
     expect((await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { title: "Nope", state: "resolved" })).status).toBe(409);
     expect((await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { title: "Key missing", state: "maybe" })).status).toBe(400);
+    // Several at once (the steps of one card), in one event.
+    const before = (await call("GET", `/api/projects/${json.key}`)).json.events.length;
+    const both = [{ index: 0, title: "Key missing" }, { index: 1, title: "Docker missing" }];
+    expect((await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { issues: both, state: "ignored" })).status).toBe(201);
+    expect((await issuesOf()).map((i: any) => i.state)).toEqual(["ignored", "ignored"]);
+    expect((await call("GET", `/api/projects/${json.key}`)).json.events.length).toBe(before + 1);
+    expect((await call("POST", `/api/projects/${json.key}/tasks/T1/issues`, { issues: [{ title: "Nope" }], state: "open" })).status).toBe(409);
     const detail = await call("GET", `/api/projects/${json.key}`);
     expect(detail.json.board.tasks.find((t: any) => t.id === "T1").status).toBe("blocked");
   });

@@ -115,6 +115,17 @@ export const TaskIssueSchema = z.object({
   detail: z.string().max(4000).optional().describe("What happened and what is needed."),
   kind: z.enum(ISSUE_KINDS).optional().describe("error (default), missing, needs-you or warning."),
   fix: z.string().max(8000).optional().describe("A prompt that would fix it, ready to send to a chat."),
+  choices: z
+    .array(
+      z.object({
+        label: z.string().min(1).max(200).describe("The option in plain words, shown as a button."),
+        reply: z.string().max(4000).optional().describe("What the chat is told when the person picks it; the label when left out."),
+        recommended: z.boolean().optional().describe("The option the chat recommends."),
+      }),
+    )
+    .max(5)
+    .optional()
+    .describe("For a decision only the person can make: the options to pick from, the recommended one first."),
   state: z
     .enum(["resolved", "ignored"])
     .optional()
@@ -176,6 +187,15 @@ function cleanReport(value: unknown): unknown {
       .map((i) => {
         const issue = drop(i);
         if (issue.kind !== undefined && !(ISSUE_KINDS as readonly unknown[]).includes(issue.kind)) delete issue.kind;
+        if (Array.isArray(issue.choices)) {
+          const choices = issue.choices
+            .filter((c): c is Record<string, unknown> => Boolean(c) && typeof c === "object" && !Array.isArray(c))
+            .map((c) => drop(c))
+            .filter((c) => typeof c.label === "string" && c.label.trim() !== "")
+            .slice(0, 5);
+          if (choices.length) issue.choices = choices;
+          else delete issue.choices;
+        } else if (issue.choices !== undefined) delete issue.choices;
         return issue;
       });
   }
