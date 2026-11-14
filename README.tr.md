@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="apps/desktop/build/icon.svg" width="104" alt="AI Tracking System simgesi">
+<img src="docs/images/banner-tr.svg" width="100%" alt="AI Tracking System: yeşil kod yağmuru, bir glider ve daire içinde A. Efendi yok, sadece ajanlar.">
 
 # AI Tracking System
 
@@ -12,6 +12,7 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 ![ajanlar](https://img.shields.io/badge/%C3%A7al%C4%B1%C5%9Ft%C4%B1r%C4%B1r-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Copilot%20%C2%B7%20Gemini-f5f4ef?style=flat-square&labelColor=111111)
 ![yerel](https://img.shields.io/badge/%C3%A7al%C4%B1%C5%9Ft%C4%B1%C4%9F%C4%B1%20yer-127.0.0.1-8fcfa6?style=flat-square&labelColor=111111)
 ![telemetri yok](https://img.shields.io/badge/telemetri-yok-8fcfa6?style=flat-square&labelColor=111111)
+![ilke](https://img.shields.io/badge/%E2%92%B6-efendi%20yok%2C%20sadece%20ajanlar-00ff41?style=flat-square&labelColor=000000)
 
 [English](README.md) · **Türkçe**
 
@@ -21,6 +22,15 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 </picture>
 
 </div>
+
+```diff
++ efendi yok. sadece ajanlar.          her sohbet kendi oturumunda çalışır. sen emir değil plan yazarsın.
++ yeşil görevi takip et.               yeşil = beklediği her şey bitti ve sohbeti boşta. gönder.
++ pano bilir.                          her görev neden beklediğini söyler. her sorun çözümüyle gelir.
++ sen uyu, anahtarlar yöneticide.      bir yapay zekâ CLI'ı sen yokken yanıtlar, onaylar, yeniden planlar.
++ bilgi takip edilmek ister.           her rapor bir olaydır. pano sadece tekrar oynatımdır.
++ 127.0.0.1 ya da hiç.                 hesap yok. bulut yok. telemetri yok.
+```
 
 > [!TIP]
 > **Bütün fikir tek satırda:** bir görev, bağlı olduğu her şey bitince ve sohbeti boştayken **yeşil** yanar. Gönder: promptu o sohbete yapıştır ya da Codex / Claude Code / Copilot / Gemini sohbetinin **kendi kendine çalıştırmasına** bırak. Sohbet geri bildirir, pano ilerler, sıradaki görevler yeşile döner. Bir şey ters giderse görev, gönderilmeye hazır bir çözüm promptuyla birlikte kırmızı **!** alır.
@@ -52,6 +62,8 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 
 ## ✨ Neler var
 
+`>_ sürüyü yönetmek için gereken her şey. eve telefon eden hiçbir şey yok.`
+
 | | |
 | --- | --- |
 | 🆕 **Yeni proje sihirbazı** | Klasörü, sohbetleri (bilgisayarındaki yapay zekâ CLI'larından önerilir) ve nasıl planlanacağını seç: Claude Code ya da Codex planından görevleri yazsın, başka bir yapay zekâ kopyala-yapıştırla yazsın ya da boş başla. JSON yazmak yok. |
@@ -59,7 +71,7 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 | 🟢 **Sırada ne olduğunu bilen pano** | Görevler, bağlı oldukları işler bitince ve sohbetlerinde yer varken açılır. *Şimdi gönderilebilir* yeşil olanları tek bakışta gösterir; diğer her görev neden beklediğini söyler. |
 | 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
 | ⚡ **Otomatik dağıtım** | Tek anahtar: boştaki sohbetler, en acil hazır görevlerini yeşile döner dönmez alır; aynı anda en fazla *N* tane. |
-| 🌙 **Yönetici** | Uyumaya mı gidiyorsun? Projeyi seçtiğin bir yapay zekâ CLI'ına devret: bekleyen sohbetlere yanıt verir, seçenek seçer, başka görevi bekleyenleri beklemeye alır, başarısız olanları yeniden gönderir, sonraya bırakılan işleri plana ekler. Ödeme, hesap, yasal şartlar, yayınlama ve riskli adımlar sende kalır; ne yaptığı ve sana ne bıraktığı listelenir. |
+| 🌙 **Yönetici** | Uyumaya mı gidiyorsun? Projeyi seçtiğin bir yapay zekâ CLI'ına devret: bekleyen sohbetlere yanıt verir, seçenek seçer, başka görevi bekleyenleri beklemeye alır, başarısız olanları yeniden gönderir, sonraya bırakılan işleri plana ekler. Ödeme, hesap, yasal şartlar, yayınlama ve riskli adımlar sende kalır; ne yaptığı ve sana ne bıraktığı listelenir. Çalışırken panonun üstünde bir göz süzülür: tıkla, modellerin ne yaptığını, projenin yüzde kaçta olduğunu, neyin bozulduğunu ve son gelişmeleri aşağıya yansıtsın. |
 | 📋 **Önerilen görevler** | Sohbetin sonraya bıraktığı iş — değiştirilecek bir yer tutucu, eklenecek bir kontrol — sana soru olarak değil önerilen görev olarak gelir: plana ekle, yoksay ya da hepsini bir CLI'ın mevcut plana yerleştirmesine bırak; hiçbir şey yazılmadan önce önizlenir. |
 | ❗ **Sade bir dille sorunlar** | Sohbetin yapamadığı, atladığı ya da senden beklediği şeyler her yerde kırmızı **!** ile işaretlenir, senin dilinde açıklanır ve düzenlemeye, kopyalamaya ya da göndermeye hazır bir çözüm promptuyla gelir. Bir karar, sohbetin seçenekleriyle buton olarak gelir; reddedilen adımlar, her birinin ne yaptığını söyleyen tek bir kartta **İzin ver ve devam et** ile gelir. Çözüldü olarak işaretle ya da yoksay. |
 | ⏱️ **Çalıştırma bilgileri** | Geçen süre, araç çağrıları, tokenlar, turlar, liste fiyatı ve oturumun bağlamının ne kadar dolu olduğu — canlı. |
@@ -73,6 +85,8 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 | 🏠 **Önce yerel** | `127.0.0.1` üzerinde çalışır; hesap yok, telemetri yok. Plan, commit'lediğin bir dosyadır. |
 
 ## 🎬 Hareket halinde
+
+`>_ okuma. çalışırken izle.`
 
 ### Pano kendini günceller
 
@@ -125,6 +139,8 @@ Ekranlar **panellerden** oluşur. Ekle, sürükle, boyutlandır, sohbete göre s
 <img src="docs/images/customize.gif" alt="Genel bakış düzenini özelleştirme: sohbet şeritleri paneli ekleniyor, vurgu rengi değişiyor, açık ve koyu tema arasında geçiliyor, kenar çubuğu dar bir şeride katlanıyor" width="100%">
 
 ## 📦 Kurulum
+
+`>_ hesap yok. bulut yok. sadece senin bilgisayarın.`
 
 | Gereken | Neden |
 | --- | --- |
@@ -188,6 +204,8 @@ npm run serve -- examples/landing-page.aitrack    # aynı arayüz http://127.0.0
 </details>
 
 ## 🔄 Güncellemeler
+
+`>_ git pull, ama kibarca.`
 
 <table>
 <tr>
@@ -278,6 +296,8 @@ sequenceDiagram
 
 ## 🆕 Proje başlat
 
+`>_ boş klasörden çalışan sürüye.`
+
 <table>
 <tr>
 <td width="440"><img src="docs/images/new-project.png" alt="Yeni proje sihirbazı, 3. adım: Burada yapay zekâyla oluştur, Başka bir yapay zekâ kullan ya da Boş başla; Claude Code'un yazdığı plan, kaydedilmeden önce sohbetleri ve bağımlılıklarıyla dört görev olarak gösteriliyor" width="440"></td>
@@ -303,6 +323,8 @@ Hiçbir şey kaydedilmeden önce planı görürsün: görevler, sohbetleri ve ne
 
 ## ✏️ Planı uygulamada düzenle
 
+`>_ plan programdır. canlı düzenle.`
+
 <table>
 <tr>
 <td width="440"><img src="docs/images/task-editor.png" alt="Görev düzenleyici: başlık, görevi alacak sohbet, onun yerine alabilecek sohbetler, beklediği görevler (döngü yaratacak olanlar kapalı), sırasıyla promptlar, talimat, kabul kriteri, izinli yollar, tahmin ve etiketler" width="440"></td>
@@ -325,6 +347,8 @@ Her değişiklik kontrol edilip `.aitrack` dosyasına biçimi korunarak yazılı
 
 ## 🚀 Hızlı başlangıç
 
+`>_ ilk yeşil göreve giden en kısa yol.`
+
 1. **+ Yeni proje** — [sihirbaz](#-proje-başlat) klasörü, sohbetleri ve planı kurar. Uygulamayı önce denemek için yanındaki klasör düğmesiyle `examples/landing-page.aitrack`'i aç.
 2. **Sohbetleri başlat.** Elle yürüttüğün bir sohbet için **Oturum promptu**'nu bir kez yeni bir Claude / Codex / Cursor sohbetine kopyala. Bir sohbetin kendi kendine çalışması için şeridindeki **⚙ elle** rozetine tıkla ve bir CLI seç ([aşağıda](#-kendi-kendine-çalışan-sohbetler)).
 3. **Yeşil görevleri gönder.** Yeşil karta tıkla → **Promptu kopyala ve gönderildi işaretle** (elle) ya da **Gönder ▶** (kendi kendine). Ya da başlıktaki **Otomatik dağıtım**'ı aç.
@@ -333,6 +357,8 @@ Her değişiklik kontrol edilip `.aitrack` dosyasına biçimi korunarak yazılı
 6. **Planı paylaş.** **Dışa aktar** planı — istersen durum anlık görüntüsüyle — commit'leyebileceğin bir dosyaya yazar.
 
 ## 🤖 Kendi kendine çalışan sohbetler
+
+`>_ efendi yok. sadece ajanlar.`
 
 Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — artık **Gönder** görevi doğrudan ona verir: kopyala-yapıştır yok.
 
@@ -357,6 +383,8 @@ Her şey — CLI başına komutlar, erişim düzeyleri, oturumlar, kancalar, API
 
 ## ❗ Sorunlar, çalıştırma bilgileri ve kendi promptların
 
+`>_ bir şey bozulunca söyler. senin dilinde.`
+
 <table>
 <tr>
 <td width="380"><img src="docs/images/problems.png" alt="Görev paneli: sohbetin sade bir dille bildirdiği iki sorun, her birinin çözüm promptu, ve çalıştırmanın süresi, araç çağrıları, bağlamı ve tokenları" width="380"></td>
@@ -373,6 +401,8 @@ Her şey — CLI başına komutlar, erişim düzeyleri, oturumlar, kancalar, API
 </table>
 
 ## 🧭 Nasıl çalışır
+
+`>_ yeşil görevi takip et.`
 
 ```mermaid
 flowchart LR
@@ -432,6 +462,8 @@ Her durum, görev yeniden gönderilene, sorunsuz bitti bildirilene, onaylanana y
 
 ## 📡 Sohbetten bildirim
 
+`>_ bilgi takip edilmek ister.`
+
 Her prompt kısa bir **REPORTING** bölümüyle biter; sohbetler ek kurulum olmadan nasıl bildireceklerini bilir:
 
 | Kanal | Ne zaman |
@@ -467,6 +499,8 @@ Ayrıntılar ve rapor şeması: [docs/agent-reporting.md](docs/agent-reporting.m
 
 ## 📄 `.aitrack` dosyası
 
+`>_ tek json dosyası. bütün planın. commit'le.`
+
 <details>
 <summary>Küçük bir örnek</summary>
 
@@ -500,6 +534,8 @@ Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Şeması: [`sch
 
 ## 🎨 Kendine göre ayarla
 
+`>_ senin panon. senin kuralların.`
+
 | | |
 | --- | --- |
 | **Paneller** | Şimdi gönderilebilir · Sohbet şeritleri · Akış · Liste · Senden bekleyenler · Son olaylar · İlerleme. Ekle, sürükle, boyutlandır (genişlikte ¼'ten tama, yükseklikte otomatikten tama) ve her birini bazı sohbetlerle sınırla. |
@@ -514,6 +550,8 @@ Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Şeması: [`sch
 
 ## ⌨️ Klavye kısayolları
 
+`>_ eller klavyede.`
+
 | Tuşlar | İşlem |
 | --- | --- |
 | <kbd>⌘</kbd><kbd>B</kbd> | Kenar çubuğunu katla ya da aç |
@@ -525,6 +563,8 @@ Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Şeması: [`sch
 Windows ve Linux'ta <kbd>⌘</kbd> yerine <kbd>Ctrl</kbd>.
 
 ## 🧰 Komutlar
+
+`>_ terminal yerlileri için.`
 
 | Komut | Ne yapar |
 | --- | --- |
@@ -559,6 +599,8 @@ docs/               dosya biçimi, bildirim, ajan çalıştırıcılar, yapay ze
 
 ## 💾 Verilerin nerede
 
+`>_ 127.0.0.1 ya da hiç.`
+
 | Ne | Nerede |
 | --- | --- |
 | Plan | Reponda, senin `.aitrack` dosyan. |
@@ -575,6 +617,8 @@ docs/               dosya biçimi, bildirim, ajan çalıştırıcılar, yapay ze
 
 ## 🔒 Güvenlik
 
+`>_ raporlar veridir. veri asla çalışmaz.`
+
 - İzleyici **yalnızca 127.0.0.1**'i dinler, yabancı `Host` başlıklarını (DNS rebinding) ve başka kökenlerden gelen yazmaları reddeder, yazmalar için `application/json` ister.
 - Pencereler bağlam yalıtımı ve sandbox ile çalışır; yerel köprü dosya pencereleri, kayan pencere, güncellemeler ve denetim anahtarıyla sınırlıdır ve her çağrı ana süreçte kontrol edilir.
 - Ajan başlatmak bir **denetim anahtarı** ister; çalıştırma ayarları yalnızca senin bilgisayarında durur, proje dosyalarında asla.
@@ -586,6 +630,8 @@ docs/               dosya biçimi, bildirim, ajan çalıştırıcılar, yapay ze
 Daha fazlası [SECURITY.md](SECURITY.md) içinde.
 
 ## ❓ Sık sorulanlar
+
+`>_ olağan şüpheliler.`
 
 <details>
 <summary><b>Benim yerime Claude'la ya da Codex'le konuşuyor mu?</b></summary>
@@ -645,6 +691,8 @@ Gelen kutusu dosyasını kullan (sohbet diskindeki bir worktree'de çalışıyor
 
 ## 🗺️ Yol haritası
 
+`>_ sürü büyümeye devam ediyor.`
+
 - [x] Kendi kendine çalışan sohbetler, otomatik dağıtım, kancalar
 - [x] Çözüm promptlu sorunlar, çalıştırma bilgileri, kendi promptların
 - [x] macOS'ta tek tıkla ve otomatik güncelleme (klonundan)
@@ -657,6 +705,8 @@ Gelen kutusu dosyasını kullan (sohbet diskindeki bir worktree'de çalışıyor
 ---
 
 <div align="center">
+
+<sub>Ⓐ ░▒▓ insanlar ve ajanları tarafından, ajanlar ve insanları için yapıldı ▓▒░ Ⓐ</sub>
 
 Sürüm 0.1 · dosya biçimi sürümlüdür ve bir ana sürüm içinde geriye dönük uyumlu kalır · [Katkı](CONTRIBUTING.md) · [Değişiklik günlüğü](CHANGELOG.md)
 

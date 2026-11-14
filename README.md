@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="apps/desktop/build/icon.svg" width="104" alt="AI Tracking System icon">
+<img src="docs/images/banner.svg" width="100%" alt="AI Tracking System: green code rain, a glider and a circle-A. No masters, just agents.">
 
 # AI Tracking System
 
@@ -12,6 +12,7 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 ![agents](https://img.shields.io/badge/runs-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Copilot%20%C2%B7%20Gemini-f5f4ef?style=flat-square&labelColor=111111)
 ![local first](https://img.shields.io/badge/runs%20on-127.0.0.1-8fcfa6?style=flat-square&labelColor=111111)
 ![no telemetry](https://img.shields.io/badge/telemetry-none-8fcfa6?style=flat-square&labelColor=111111)
+![ethos](https://img.shields.io/badge/%E2%92%B6-no%20masters%2C%20just%20agents-00ff41?style=flat-square&labelColor=000000)
 
 **English** · [Türkçe](README.tr.md)
 
@@ -21,6 +22,15 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 </picture>
 
 </div>
+
+```diff
++ no masters. just agents.            every chat runs in its own session. you write the plan, not the orders.
++ follow the green task.              green = all it waits for is done and its chat is free. send it.
++ the board knows.                    every task says why it waits. every problem comes with its fix.
++ sleep. the manager has the keys.    an AI CLI answers, approves and re-plans while you are away.
++ information wants to be tracked.    every report is an event. the board is just the replay.
++ 127.0.0.1 or nothing.               no account. no cloud. no telemetry.
+```
 
 > [!TIP]
 > **The whole idea in one line:** a task turns **green** when everything it depends on is done and its chat is free. Send it — paste the prompt into that chat, or let a Codex / Claude Code / Copilot / Gemini chat **run it by itself**. The chat reports back, the board moves, the next tasks turn green. If something went wrong, the task gets a red **!** with a fix prompt ready to send.
@@ -52,6 +62,8 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 
 ## ✨ What's inside
 
+`>_ everything you need to run a swarm. nothing that phones home.`
+
 | | |
 | --- | --- |
 | 🆕 **New project wizard** | Pick the folder, the chats (suggested from the AI CLIs on your computer) and how to plan: Claude Code or Codex writes the tasks from your plan, any other AI does it by copy and paste, or you start empty. No JSON to write. |
@@ -59,7 +71,7 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 | 🟢 **A board that knows what's next** | Tasks unlock when their dependencies are done and their chat has room. *Ready to send* shows the green ones at a glance; every other task says why it is waiting. |
 | 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or any command run the task in their own session, in your repository. Output streams in live; you reply, approve and stop from the app or the floating window. |
 | ⚡ **Auto-dispatch** | One switch: free chats pick up their most urgent ready task, up to *N* at once, as soon as it turns green. |
-| 🌙 **Manager** | Going to bed? Hand the project to an AI CLI you choose: it answers waiting chats, picks options, parks tasks that wait for others, sends failed ones again and adds work left for later to the plan. Payments, accounts, legal terms, publishing and risky steps stay with you; what it did and what it left for you is listed. |
+| 🌙 **Manager** | Going to bed? Hand the project to an AI CLI you choose: it answers waiting chats, picks options, parks tasks that wait for others, sends failed ones again and adds work left for later to the plan. Payments, accounts, legal terms, publishing and risky steps stay with you; what it did and what it left for you is listed. While it runs, an eye floats over the board: click it and it projects what each model is doing, how far the project is, what broke and the latest news. |
 | 📋 **Proposed tasks** | Work a chat left for later — a placeholder to replace, a check to add — becomes a proposed task instead of a question for you: add it to the plan, ignore it, or let a CLI fold them all into the current plan, previewed before anything is written. |
 | ❗ **Problems in plain words** | What a chat could not do, skipped or needs from you is marked with a red **!** everywhere, explained in your language, with a fix prompt ready to edit, copy or send. A decision comes with the chat's options as buttons; refused steps come on one card that says what each does, with **Allow and continue**. Mark a problem resolved or ignore it. |
 | ⏱️ **Run details** | Elapsed time, tool calls, tokens, turns, list price and how full the session's context is — live. |
@@ -73,6 +85,8 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 | 🏠 **Local first** | Runs on `127.0.0.1`, no account, no telemetry. The plan is a file you commit. |
 
 ## 🎬 See it move
+
+`>_ don't read about it. watch it run.`
 
 ### The board updates itself
 
@@ -125,6 +139,8 @@ Screens are built from **panels**. Add, drag, resize, filter them by chat, keep 
 <img src="docs/images/customize.gif" alt="Customizing the Overview layout: adding a chat lanes panel, changing the accent, switching between the light and dark themes, folding the sidebar into a rail" width="100%">
 
 ## 📦 Install
+
+`>_ no account. no cloud. just your machine.`
 
 | You need | Why |
 | --- | --- |
@@ -188,6 +204,8 @@ npm run serve -- examples/landing-page.aitrack    # same UI at http://127.0.0.1:
 </details>
 
 ## 🔄 Updates
+
+`>_ git pull, but polite.`
 
 <table>
 <tr>
@@ -278,6 +296,8 @@ sequenceDiagram
 
 ## 🆕 Start a project
 
+`>_ from an empty folder to a running swarm.`
+
 <table>
 <tr>
 <td width="440"><img src="docs/images/new-project.png" alt="New project wizard, step 3: Create with AI here, Use another AI or Start empty; the plan written by Claude Code is shown as four tasks with their chats and dependencies before anything is saved" width="440"></td>
@@ -303,6 +323,8 @@ Before anything is saved you see the plan: the tasks, their chats and what they 
 
 ## ✏️ Edit the plan in the app
 
+`>_ the plan is the program. edit it live.`
+
 <table>
 <tr>
 <td width="440"><img src="docs/images/task-editor.png" alt="Task editor: title, the chat that takes it, the chats that can also take it, the tasks it waits for (tasks that would create a cycle are disabled), prompts in order, instructions, acceptance, allowed paths, estimate and tags" width="440"></td>
@@ -325,6 +347,8 @@ Every change is checked and written to the `.aitrack` file, keeping its formatti
 
 ## 🚀 Quick start
 
+`>_ the shortest path to the first green task.`
+
 1. **+ New project** — [the wizard](#-start-a-project) sets up the folder, the chats and the plan. To try the app first, open `examples/landing-page.aitrack` with the folder button next to it.
 2. **Start the chats.** For a chat you run by hand, copy its **Session prompt** once into a new Claude / Codex / Cursor chat. To let a chat run itself, click its **⚙ by hand** badge and pick a CLI ([below](#-chats-that-run-themselves)).
 3. **Send the green tasks.** Click a green card → **Copy prompt and mark as sent** (by hand) or **Send ▶** (runs itself). Or switch on **Auto-dispatch** in the header.
@@ -333,6 +357,8 @@ Every change is checked and written to the `.aitrack` file, keeping its formatti
 6. **Share the plan.** **Export** writes the plan — optionally with a status snapshot — back to a file you can commit.
 
 ## 🤖 Chats that run themselves
+
+`>_ no masters. just agents.`
 
 Set a chat up once — click the **⚙ by hand** badge on its lane — and **Send** gives it the task directly: no copy and paste.
 
@@ -357,6 +383,8 @@ Everything — commands per CLI, access levels, sessions, hooks, API: **[docs/ag
 
 ## ❗ Problems, run details and your own prompts
 
+`>_ when it breaks, it says so. in your language.`
+
 <table>
 <tr>
 <td width="380"><img src="docs/images/problems.png" alt="Task drawer: two problems the chat reported in plain words, each with a fix prompt, and the run's time, tool calls, context and tokens" width="380"></td>
@@ -373,6 +401,8 @@ Everything — commands per CLI, access levels, sessions, hooks, API: **[docs/ag
 </table>
 
 ## 🧭 How it works
+
+`>_ follow the green task.`
 
 ```mermaid
 flowchart LR
@@ -432,6 +462,8 @@ Any state can carry **problems** (the red **!**) until the task is sent again, r
 
 ## 📡 Reporting from a chat
 
+`>_ information wants to be tracked.`
+
 Every prompt ends with a short **REPORTING** section, so chats know how to report without extra setup:
 
 | Channel | When to use it |
@@ -467,6 +499,8 @@ Details and the report schema: [docs/agent-reporting.md](docs/agent-reporting.md
 
 ## 📄 The `.aitrack` file
 
+`>_ one json file. your whole plan. commit it.`
+
 <details>
 <summary>A small example</summary>
 
@@ -500,6 +534,8 @@ Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`sch
 
 ## 🎨 Make it yours
 
+`>_ your board. your rules.`
+
 | | |
 | --- | --- |
 | **Panels** | Ready to send · Chat lanes · Flow · List · Needs you · Recent activity · Progress. Add, drag, resize (¼ to full width, auto to full height) and limit each to some chats. |
@@ -514,6 +550,8 @@ Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`sch
 
 ## ⌨️ Keyboard shortcuts
 
+`>_ hands on the keys.`
+
 | Keys | Action |
 | --- | --- |
 | <kbd>⌘</kbd><kbd>B</kbd> | Fold or unfold the sidebar |
@@ -525,6 +563,8 @@ Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`sch
 On Windows and Linux use <kbd>Ctrl</kbd> instead of <kbd>⌘</kbd>.
 
 ## 🧰 Commands
+
+`>_ for the terminal natives.`
 
 | Command | What it does |
 | --- | --- |
@@ -559,6 +599,8 @@ docs/               file format, reporting, agent runners, authoring with AI, im
 
 ## 💾 Where your data lives
 
+`>_ 127.0.0.1 or nothing.`
+
 | What | Where |
 | --- | --- |
 | The plan | Your `.aitrack` file, in your repository. |
@@ -575,6 +617,8 @@ The tracker itself sends nothing anywhere. The prompts you give to AI chats leav
 
 ## 🔒 Security
 
+`>_ reports are data. data never runs.`
+
 - The tracker listens on **127.0.0.1 only**, refuses foreign `Host` headers (DNS rebinding) and cross-origin writes, and requires `application/json` for writes.
 - Windows run with context isolation and the sandbox; the native bridge is limited to file dialogs, the floating window, updates and the control token, and every call is checked in the main process.
 - Starting agents needs a **control token**; run settings live only on your computer, never in project files.
@@ -586,6 +630,8 @@ The tracker itself sends nothing anywhere. The prompts you give to AI chats leav
 More in [SECURITY.md](SECURITY.md).
 
 ## ❓ FAQ
+
+`>_ the usual suspects.`
 
 <details>
 <summary><b>Does it talk to Claude or Codex for me?</b></summary>
@@ -645,6 +691,8 @@ Use the inbox file (if the chat works in a worktree on your disk) or paste the `
 
 ## 🗺️ Roadmap
 
+`>_ the swarm keeps growing.`
+
 - [x] Chats that run themselves, auto-dispatch, hooks
 - [x] Problems with fix prompts, run details, your own prompts
 - [x] One-click and automatic updates on macOS (from your clone)
@@ -657,6 +705,8 @@ Use the inbox file (if the chat works in a worktree on your disk) or paste the `
 ---
 
 <div align="center">
+
+<sub>Ⓐ ░▒▓ built by humans and their agents, for agents and their humans ▓▒░ Ⓐ</sub>
 
 Version 0.1 · the file format is versioned and stays backward compatible within a major version · [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 

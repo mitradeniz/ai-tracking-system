@@ -4,6 +4,7 @@ import { useI18n, type Key } from "../i18n.ts";
 import { formatTime, localError, type Model } from "../model.ts";
 import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
+import { useEyeHidden } from "./ManagerEye.tsx";
 import { CLI_NAME, GENERATORS, useProviders } from "./NewProject.tsx";
 
 const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve"]);
@@ -26,6 +27,7 @@ function leftForYou(log: ManagerRun[]): string[] {
 export function ManagerSwitch({ model, onOpen, onError, onInfo }: { model: Model; onOpen: () => void; onError: (m: string) => void; onInfo: (m: string) => void }) {
   const { t } = useI18n();
   const state = model.runners?.manager;
+  const [eyeHidden, setEyeHidden] = useEyeHidden(model.detail.key);
   if (!state) return null;
   const on = state.settings.enabled;
   const waiting = leftForYou(state.log.slice(0, 5)).length;
@@ -55,6 +57,14 @@ export function ManagerSwitch({ model, onOpen, onError, onInfo }: { model: Model
         <span className="badge busy" title={t("mgr_working")}>
           <span className="pulse" aria-hidden="true" />
         </span>
+      )}
+      {on && eyeHidden && (
+        <button className="btn tiny ghost eye-show" onClick={() => setEyeHidden(false)} title={t("eye_show")} aria-label={t("eye_show")}>
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" fill="none" stroke="currentColor" strokeWidth="2" />
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+          </svg>
+        </button>
       )}
       <button className="btn tiny ghost" onClick={onOpen} title={t("mgr_title")} aria-label={t("mgr_title")}>
         ⚙{waiting > 0 && <span className="count-dot">{waiting}</span>}

@@ -4677,3 +4677,598 @@ details.advanced[open] {
 .mgr-notes p {
   margin: 0;
 }
+
+/* ── The manager's eye: floats over the board while a manager runs the project ── */
+.eye-dock {
+  --eye-main: #00ff41;
+  --eye-core: #d8ffe0;
+  --eye-deep: #003b12;
+  --eye-glow: rgba(0, 255, 65, 0.45);
+  --holo-top: rgba(0, 40, 14, 0.95);
+  --holo-bottom: rgba(0, 8, 3, 0.97);
+  --holo-line: rgba(0, 255, 65, 0.035);
+  position: fixed;
+  top: 132px;
+  right: 28px;
+  width: 420px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: none;
+  animation: eye-pop 0.9s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.eye-wrap {
+  position: relative;
+  pointer-events: auto;
+}
+
+.eye-btn {
+  width: 76px;
+  height: 76px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 20, 8, 0.92) 55%, rgba(0, 0, 0, 0) 72%);
+  cursor: pointer;
+  filter: drop-shadow(0 0 10px var(--eye-glow));
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.eye-btn:hover {
+  transform: scale(1.06);
+  filter: drop-shadow(0 0 18px var(--eye-glow));
+}
+
+.eye-btn:focus-visible {
+  outline: 2px solid var(--eye-main);
+  outline-offset: 3px;
+}
+
+.eye-btn.alert,
+.eye-holo.alert {
+  --eye-main: #ff4d4d;
+  --eye-core: #ffe0dc;
+  --eye-deep: #3d0000;
+  --eye-glow: rgba(255, 77, 77, 0.5);
+  --holo-top: rgba(44, 6, 6, 0.95);
+  --holo-bottom: rgba(10, 2, 2, 0.97);
+  --holo-line: rgba(255, 77, 77, 0.035);
+}
+
+.eye-dock:has(.eye-btn.alert) {
+  --eye-main: #ff4d4d;
+  --eye-glow: rgba(255, 77, 77, 0.5);
+}
+
+.eye-art {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.eye-ring {
+  fill: none;
+  stroke: var(--eye-main);
+  transform-origin: 60px 60px;
+}
+
+.eye-ring.outer {
+  stroke-width: 1.6;
+  stroke-dasharray: 22 8 4 8;
+  opacity: 0.85;
+  animation: eye-spin 14s linear infinite;
+}
+
+.eye-ring.ticks {
+  stroke-width: 4;
+  stroke-dasharray: 1.2 6;
+  opacity: 0.45;
+  animation: eye-spin 22s linear infinite reverse;
+}
+
+.eye-art.busy .eye-ring.outer {
+  animation-duration: 3s;
+}
+
+.eye-art.busy .eye-ring.ticks {
+  animation-duration: 5s;
+}
+
+.eye-lids {
+  transform-origin: 60px 60px;
+  animation: eye-blink 6.5s ease-in-out infinite;
+}
+
+.eye-white {
+  fill: rgba(0, 12, 4, 0.95);
+}
+
+.eye-outline {
+  fill: none;
+  stroke: var(--eye-main);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+
+.eye-look {
+  animation: eye-look 9s ease-in-out infinite;
+}
+
+.eye-art.busy .eye-look {
+  animation-duration: 3.2s;
+}
+
+.eye-iris-ring {
+  fill: none;
+  stroke: var(--eye-deep);
+  stroke-width: 0.8;
+  opacity: 0.8;
+}
+
+.eye-pupil {
+  fill: #000;
+  transform-origin: 60px 60px;
+  animation: eye-pupil 4s ease-in-out infinite;
+}
+
+.eye-scan {
+  fill: var(--eye-main);
+  opacity: 0.35;
+  animation: eye-scan 2.6s linear infinite;
+}
+
+/* The hide button shows when the pointer is over the eye. */
+.eye-hide {
+  position: absolute;
+  top: -2px;
+  right: -6px;
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border-radius: 50%;
+  border: 1px solid var(--eye-main);
+  background: rgba(0, 12, 4, 0.95);
+  color: var(--eye-main);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+
+.eye-hide svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.eye-wrap:hover .eye-hide,
+.eye-hide:focus-visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.eye-hide:hover {
+  background: var(--eye-main);
+  color: #000;
+}
+
+/* The projection: a cone of light from the eye down to a hologram. */
+.eye-beam {
+  width: 100%;
+  height: 46px;
+  margin-top: -20px;
+  clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%);
+  background: linear-gradient(to bottom, var(--eye-glow), rgba(0, 255, 65, 0.06));
+  animation: eye-beam 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  pointer-events: none;
+}
+
+.eye-holo {
+  position: relative;
+  width: 100%;
+  max-height: calc(100vh - 260px);
+  overflow: auto;
+  padding: 12px 14px 10px;
+  border: 1px solid var(--eye-main);
+  border-radius: 6px;
+  background:
+    repeating-linear-gradient(to bottom, var(--holo-line) 0 1px, transparent 1px 3px),
+    linear-gradient(to bottom, var(--holo-top), var(--holo-bottom));
+  box-shadow: 0 0 28px var(--eye-glow), inset 0 0 22px var(--holo-line);
+  color: #c8ffd2;
+  font-family: var(--mono);
+  font-size: 12px;
+  pointer-events: auto;
+  transform-origin: top center;
+  animation: eye-holo 0.55s 0.15s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+}
+
+.eye-holo::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgba(0, 255, 65, 0.12), transparent);
+  height: 40px;
+  animation: eye-sweep 3.2s linear infinite;
+}
+
+.eye-holo > * {
+  animation: eye-line 0.35s ease both;
+  animation-delay: calc(0.35s + var(--i, 0) * 0.05s);
+}
+
+.eye-holo h4 {
+  margin: 12px 0 4px;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--eye-main);
+  opacity: 0.8;
+}
+
+.eye-holo h4.alert {
+  color: #ff6b6b;
+}
+
+.holo-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.holo-head .holo-status {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.holo-title {
+  color: var(--eye-main);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 8px var(--eye-glow);
+}
+
+.holo-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  opacity: 0.85;
+}
+
+.holo-status .dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--eye-main);
+  box-shadow: 0 0 8px var(--eye-main);
+  animation: eye-pulse 1.4s ease-in-out infinite;
+}
+
+.holo-status.alert .dot {
+  background: #ff4d4d;
+  box-shadow: 0 0 8px #ff4d4d;
+}
+
+.holo-cli {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
+.holo-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.holo-pct {
+  font-size: 34px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--eye-main);
+  text-shadow: 0 0 12px var(--eye-glow);
+}
+
+.holo-pct small {
+  font-size: 14px;
+  margin-left: 2px;
+}
+
+.holo-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(0, 255, 65, 0.12);
+  overflow: hidden;
+}
+
+.holo-bar span {
+  display: block;
+  height: 100%;
+  background: var(--eye-main);
+  box-shadow: 0 0 10px var(--eye-main);
+  transition: width 0.6s ease;
+}
+
+.holo-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 5px;
+  opacity: 0.75;
+}
+
+.holo-row,
+.holo-news,
+.holo-foot {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  margin: 0 -6px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.holo-row:hover,
+.holo-news:hover,
+.holo-foot:hover {
+  background: rgba(0, 255, 65, 0.08);
+}
+
+.holo-row .pulse {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--eye-main);
+  animation: eye-pulse 1s ease-in-out infinite;
+}
+
+.holo-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 92px;
+  color: #eaffef;
+}
+
+.holo-who small,
+.holo-ago,
+.holo-time {
+  opacity: 0.55;
+  font-size: 11px;
+}
+
+.holo-what,
+.holo-msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holo-what b,
+.holo-news b {
+  color: var(--eye-main);
+  font-weight: 600;
+}
+
+.holo-row.alert b,
+.holo-bang {
+  color: #ff6b6b;
+}
+
+.holo-bang {
+  font-weight: 700;
+}
+
+.holo-ago {
+  min-width: 34px;
+}
+
+.holo-type {
+  opacity: 0.8;
+  white-space: nowrap;
+}
+
+.holo-news.failed .holo-type,
+.holo-news.blocked .holo-type {
+  color: #ff8a80;
+}
+
+.holo-news.done .holo-type,
+.holo-news.approved .holo-type {
+  color: var(--eye-main);
+}
+
+.holo-empty {
+  opacity: 0.55;
+  padding: 2px 0;
+}
+
+.holo-foot {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 255, 65, 0.2);
+  border-radius: 0;
+  flex-wrap: wrap;
+  opacity: 0.85;
+}
+
+.holo-foryou {
+  color: #ffd166;
+}
+
+.eye-show svg {
+  display: block;
+}
+
+@keyframes eye-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(-14px) scale(0.3);
+    filter: blur(6px) hue-rotate(90deg);
+  }
+  45% {
+    opacity: 1;
+    filter: blur(0) hue-rotate(0);
+  }
+  55% {
+    transform: translateX(3px) scale(1.08);
+  }
+  60% {
+    transform: translateX(-3px) scale(1.02);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes eye-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes eye-blink {
+  0%,
+  92%,
+  100% {
+    transform: scaleY(1);
+  }
+  95% {
+    transform: scaleY(0.08);
+  }
+}
+
+@keyframes eye-look {
+  0%,
+  100% {
+    transform: translate(0, 0);
+  }
+  18% {
+    transform: translate(-13px, -2px);
+  }
+  32% {
+    transform: translate(-13px, -2px);
+  }
+  50% {
+    transform: translate(12px, 3px);
+  }
+  66% {
+    transform: translate(12px, 3px);
+  }
+  80% {
+    transform: translate(2px, -5px);
+  }
+}
+
+@keyframes eye-pupil {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.35);
+  }
+}
+
+@keyframes eye-scan {
+  from {
+    transform: translateY(20px);
+  }
+  to {
+    transform: translateY(100px);
+  }
+}
+
+@keyframes eye-beam {
+  from {
+    clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0);
+    opacity: 0;
+  }
+  to {
+    clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%);
+    opacity: 1;
+  }
+}
+
+@keyframes eye-holo {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.02) scaleX(0.3);
+  }
+  60% {
+    opacity: 1;
+    transform: scaleY(1.02) scaleX(1);
+  }
+  70% {
+    opacity: 0.6;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: none;
+  }
+}
+
+@keyframes eye-sweep {
+  from {
+    transform: translateY(-40px);
+  }
+  to {
+    transform: translateY(520px);
+  }
+}
+
+@keyframes eye-line {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes eye-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .eye-dock,
+  .eye-dock *,
+  .eye-holo::after {
+    animation: none !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .eye-dock {
+    width: calc(100vw - 32px);
+    right: 16px;
+  }
+}

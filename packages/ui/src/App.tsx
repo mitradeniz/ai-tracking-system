@@ -7,6 +7,7 @@ import { NewProjectWizard, PlanWithAIDialog } from "./components/NewProject.tsx"
 import { CodeFolderBanner, ProjectList, ProjectSettingsDialog, RemoveProjectDialog } from "./components/Projects.tsx";
 import { AutoDispatch, RunnerDialog } from "./components/Runners.tsx";
 import { ManagerDialog, ManagerSwitch } from "./components/Manager.tsx";
+import { ManagerEye } from "./components/ManagerEye.tsx";
 import { ProposalsDialog, ProposalsStrip } from "./components/Proposals.tsx";
 import { SettingsDialog } from "./components/Settings.tsx";
 import { TaskDrawer } from "./components/TaskDrawer.tsx";
@@ -582,6 +583,7 @@ export function App() {
           onRunnerSettings={runnerSettings}
         />
       )}
+      {model && <ManagerEye model={model} onOpenTask={setOpenTask} onOpenManager={() => setDialog("manager")} />}
       {dialog === "proposals" && model && (
         <ProposalsDialog
           model={model}
