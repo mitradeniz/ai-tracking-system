@@ -828,6 +828,11 @@ const en = {
   msg_manager_allowed: "Manager allowed: {text}",
   msg_manager_sent_it_again: "Manager sent the task again. {text}",
   msg_manager_chose: "Manager chose “{choice}” for “{title}”",
+  mgr_approve: "Also approve finished work",
+  mgr_approveHint: "For projects where finished tasks wait for your approval. It reads the report — summary, how it was verified, the task's acceptance — and approves when the work is done as asked, so the next tasks can start. Work with open problems, failing checks or parts left undone stays for you, listed under Left for you. Each approval is in the task's history with its reason.",
+  mgr_approveUnused: "This project does not ask for approval (Project settings): finished tasks are done right away.",
+  mgr_action_approve: "Approved",
+  msg_manager_approved: "Manager approved it. {text}",
 };
 
 export type Key = keyof typeof en;
@@ -1658,6 +1663,11 @@ const tr: Record<Key, string> = {
   msg_manager_allowed: "Yönetici izin verdi: {text}",
   msg_manager_sent_it_again: "Yönetici görevi yeniden gönderdi. {text}",
   msg_manager_chose: "Yönetici “{title}” için “{choice}” seçti",
+  mgr_approve: "Biten işleri de onaylasın",
+  mgr_approveHint: "Biten görevlerin onayını bekleyen projeler için. Raporu okur — özet, nasıl doğrulandığı, görevin kabul ölçütü — ve iş istendiği gibi bittiyse onaylar, böylece sıradaki görevler başlar. Açık sorunu, başarısız kontrolü ya da yarım kalan kısmı olan iş sende kalır ve Sana bıraktıkları'nda listelenir. Her onay, gerekçesiyle görevin geçmişine yazılır.",
+  mgr_approveUnused: "Bu proje onay istemiyor (Proje ayarları): biten görevler hemen bitti sayılır.",
+  mgr_action_approve: "Onayladı",
+  msg_manager_approved: "Yönetici onayladı. {text}",
 };
 
 const dictionaries: Record<Lang, Record<Key, string>> = { en, tr };

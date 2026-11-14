@@ -4666,3 +4666,14 @@ details.advanced[open] {
 .section.notes .note-item + .row {
   margin-top: 12px;
 }
+
+.mgr-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 10px 0 12px;
+}
+
+.mgr-notes p {
+  margin: 0;
+}

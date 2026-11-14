@@ -6,7 +6,7 @@ import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
 import { CLI_NAME, GENERATORS, useProviders } from "./NewProject.tsx";
 
-const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave"]);
+const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve"]);
 
 /** What the manager left for the person in its recent runs, newest first, once each. */
 function leftForYou(log: ManagerRun[]): string[] {
@@ -151,6 +151,7 @@ export function ManagerDialog({
     model: draft.model ?? "",
     maxRunsPerHour: draft.maxRunsPerHour,
     resumeStopped: draft.resumeStopped,
+    approveDone: draft.approveDone,
   });
   const runNow = async () => {
     setBusy(true);
@@ -212,9 +213,16 @@ export function ManagerDialog({
         <input type="checkbox" checked={draft.resumeStopped} disabled={busy} onChange={(e) => setDraft({ ...draft, resumeStopped: e.target.checked })} />
         {t("mgr_resume")} <InfoTip text={t("mgr_resumeHint")} />
       </label>
-      {providers && !installed.length && <p className="error small">{t("prop_noCli")}</p>}
-      {manualChats.length > 0 && <p className="small muted">{t("mgr_manualChats", { chats: manualChats.map((a) => a.name).join(", ") })}</p>}
-      <p className="small muted">{t("mgr_awake")}</p>
+      <label className="check">
+        <input type="checkbox" checked={draft.approveDone} disabled={busy} onChange={(e) => setDraft({ ...draft, approveDone: e.target.checked })} />
+        {t("mgr_approve")} <InfoTip text={t("mgr_approveHint")} />
+      </label>
+      <div className="mgr-notes">
+        {draft.approveDone && !model.detail.project?.settings.requireApproval && <p className="small muted">{t("mgr_approveUnused")}</p>}
+        {providers && !installed.length && <p className="error small">{t("prop_noCli")}</p>}
+        {manualChats.length > 0 && <p className="small muted">{t("mgr_manualChats", { chats: manualChats.map((a) => a.name).join(", ") })}</p>}
+        <p className="small muted">{t("mgr_awake")}</p>
+      </div>
       <div className="row wrap">
         {on ? (
           <>

@@ -113,6 +113,7 @@ describe("refused steps and decisions", () => {
     expect(localMessage("Manager: replied — Evet, devam et.", tr)).toBe("Yönetici yanıtladı: Evet, devam et.");
     expect(localMessage('Manager: chose "Separate repo" for "Where does the code go?"', tr)).toBe("Yönetici “Where does the code go?” için “Separate repo” seçti");
     expect(localMessage("Manager: left for you — Buy the domain.", tr)).toBe("Yönetici sana bıraktı: Buy the domain.");
+    expect(localMessage("Manager: approved — Tests pass.", tr)).toBe("Yönetici onayladı. Tests pass.");
     expect(localMessage("Proposed tasks: Add CI → ignored", tr)).toBe("Önerilen görevler: Add CI → yoksayıldı");
   });
 

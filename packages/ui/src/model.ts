@@ -103,7 +103,7 @@ export function localMessage(message: string, t: T): string {
   if (m) return t("run_msg_working", { provider: m[1]! });
   m = /^Reply sent: ([\s\S]*)$/.exec(message);
   if (m) return t("run_msg_reply", { text: m[1]! });
-  m = /^Manager: (replied|left for you|allowed|sent it again)(?: — )?([\s\S]*)$/.exec(message);
+  m = /^Manager: (replied|left for you|allowed|sent it again|approved)(?: — )?([\s\S]*)$/.exec(message);
   if (m) return t(`msg_manager_${m[1]!.replace(/ /g, "_")}` as Parameters<T>[0], { text: m[2]! });
   m = /^Manager: chose "(.*)" for "([\s\S]*)"$/.exec(message);
   if (m) return t("msg_manager_chose", { choice: m[1]!, title: m[2]! });

@@ -99,6 +99,8 @@ export interface ManagerSettings {
   maxRunsPerHour: number;
   /** Also continue tasks the person stopped. */
   resumeStopped: boolean;
+  /** Also approve finished tasks that wait in review. */
+  approveDone: boolean;
 }
 
 export interface ManagerAction {

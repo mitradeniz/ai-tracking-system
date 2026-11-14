@@ -345,6 +345,56 @@ describe("agent runners", () => {
     }
   });
 
+  it("approves finished work for the person only when allowed, and never work with open problems", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
+      actions: [
+        { type: "approve", task: "T1", note: "Summary covers the task and the tests pass." },
+        { type: "approve", task: "T3", note: "Looks done." },
+      ],
+      summary: "Approved T1.",
+    });
+    const managerCalls = async () => (await invocations()).filter((i) => i.stdin.includes("You are the manager")).length;
+    const status = async (id: string) =>
+      (await call("GET", `/api/projects/${key}`)).json.board.tasks.find((t: { id: string }) => t.id === id).status as string;
+    try {
+      expect((await call("POST", `/api/projects/${key}/info`, { requireApproval: true })).status).toBe(200);
+      await call("POST", "/api/report", { project: "demo", task: "T1", agent: "a", status: "done", summary: "Built and tested.", verify: "npm test" });
+      await call("POST", "/api/report", {
+        project: "demo",
+        task: "T3",
+        agent: "b",
+        status: "done",
+        summary: "Mostly done.",
+        issues: [{ title: "The payment step was not tried", kind: "needs-you" }],
+      });
+      expect(await status("T1")).toBe("review");
+      // Off by default: finished work waits for the person, and the manager is not even called.
+      await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "claude", binary: FAKE });
+      await new Promise((r) => setTimeout(r, 400));
+      expect(await managerCalls()).toBe(0);
+
+      const on = await call("POST", `/api/projects/${key}/manager`, { approveDone: true });
+      expect(on.json.settings.approveDone).toBe(true);
+      let log = on.json.log;
+      for (let i = 0; i < 150 && log[0]?.state !== "done"; i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        log = (await call("GET", `/api/projects/${key}/runners`)).json.manager.log;
+      }
+      expect(log[0].actions.map((a: { type: string; task: string; ok: boolean }) => `${a.type}:${a.task}:${a.ok}`)).toEqual([
+        "approve:T1:true",
+        "approve:T3:false",
+      ]);
+      expect(log[0].forYou[0]).toContain("T3: waits for your approval");
+      expect(await status("T1")).toBe("done");
+      expect(await status("T3")).toBe("review");
+      const events = (await call("GET", `/api/projects/${key}`)).json.events;
+      expect(events.some((e: { type: string; source: string; message?: string }) => e.type === "approved" && e.source === "manager" && e.message?.includes("tests pass"))).toBe(true);
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
   it("tries a failed manager run again later, not on every change", async () => {
     await running.close();
     running = await startServer({ port: 0, dataDir: path.join(dir, "data"), projects: [file], watch: false, controlToken: TOKEN, managerDelayMs: 50, managerRetryMs: [600] });

@@ -20,9 +20,11 @@ export interface ManagerSettings {
   maxRunsPerHour: number;
   /** Also let it continue tasks the person stopped. */
   resumeStopped: boolean;
+  /** Also let it approve finished tasks that wait in review (projects with requireApproval). */
+  approveDone: boolean;
 }
 
-export const DEFAULT_MANAGER: ManagerSettings = { enabled: false, provider: "claude", maxRunsPerHour: 6, resumeStopped: true };
+export const DEFAULT_MANAGER: ManagerSettings = { enabled: false, provider: "claude", maxRunsPerHour: 6, resumeStopped: true, approveDone: false };
 
 export interface ProjectRunners {
   /** Give the next ready task to a chat as soon as it is free. */
@@ -60,6 +62,7 @@ export function normalizeManager(input: unknown, base: ManagerSettings = DEFAULT
     binary,
     maxRunsPerHour: Number.isInteger(max) && max >= 1 && max <= 60 ? max : base.maxRunsPerHour,
     resumeStopped: typeof o.resumeStopped === "boolean" ? o.resumeStopped : base.resumeStopped,
+    approveDone: typeof o.approveDone === "boolean" ? o.approveDone : base.approveDone,
   };
 }
 

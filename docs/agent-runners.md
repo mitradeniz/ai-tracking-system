@@ -108,10 +108,11 @@ It runs read-only in the plan's folder and answers with actions that the app che
 | wait | parks the task until the tasks it waits for are done, as if the chat had reported `waitingFor` |
 | resend | sends a failed task again, with a note |
 | close | marks problems resolved or ignored |
+| approve | with *Also approve finished work* on: approves a task in review whose report shows it is done as asked (summary, how it was verified, the task's acceptance); a task with open problems is never approved and is left for you |
 | plan | folds proposed tasks and notes into the plan, the same way as **Fold into the current plan** |
 | leave | leaves something for you, in one sentence |
 
-It acts only on the tasks it was shown, one action per task; never approves payments, enters credentials, accepts legal terms, publishes, deletes data, pushes to a main branch or allows risky steps — those are left for you, and chats run by hand are never touched. With *Also continue tasks I stopped* off, a task you stopped stays stopped. Every action is written to the task's history (`Manager: …`, source `manager`), and the manager dialog lists its recent runs, what each did and what it left for you (kept in `~/.aitrack/manager/`). **Look now** runs it once. While chats run or a manager is on, the desktop app keeps the computer from going to sleep on its own; a laptop still sleeps when its lid is closed.
+It acts only on the tasks it was shown, one action per task; never approves payments, enters credentials, accepts legal terms, publishes, deletes data, pushes to a main branch or allows risky steps — those are left for you, and chats run by hand are never touched. With *Also continue tasks I stopped* off, a task you stopped stays stopped. In a project where finished tasks wait for your approval (`requireApproval`), they wait for you unless *Also approve finished work* is on (off by default). Every action is written to the task's history (`Manager: …`, source `manager`), and the manager dialog lists its recent runs, what each did and what it left for you (kept in `~/.aitrack/manager/`). **Look now** runs it once. While chats run or a manager is on, the desktop app keeps the computer from going to sleep on its own; a laptop still sleeps when its lid is closed.
 
 ## Hooks for sessions you open yourself
 
@@ -172,7 +173,7 @@ The hook finds the chat by, in order: `AITRACK_CHAT` (start the session as `AITR
 | `POST /api/hook?tool=claude\|codex\|…` | hook payloads |
 | `POST /api/authoring/generate` 🔑 | `{provider: claude\|codex\|gemini\|copilot, cwd, input, model?}` — write a project plan with that CLI, read-only in `cwd` |
 | `GET /api/authoring/generate/:id` · `POST …/:id/stop` 🔑 | progress and answer of a plan being written; stop it |
-| `POST /api/projects/:key/manager` 🔑 | `{enabled, provider, model, effort, binary, maxRunsPerHour, resumeStopped}` — the manager; its state and log come with `GET …/runners` as `manager` |
+| `POST /api/projects/:key/manager` 🔑 | `{enabled, provider, model, effort, binary, maxRunsPerHour, resumeStopped, approveDone}` — the manager; its state and log come with `GET …/runners` as `manager` |
 | `POST /api/projects/:key/manager/run` 🔑 | let the manager look once, now (409 when nothing waits for a decision) |
 | `POST /api/projects/:key/proposals/integrate` 🔑 | `{provider, model?}` — fold proposed tasks and notes into the plan with that CLI; see [reporting](agent-reporting.md#work-left-for-later-followups) |
 

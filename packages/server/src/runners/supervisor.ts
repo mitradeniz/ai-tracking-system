@@ -154,6 +154,10 @@ export class Supervisor extends EventEmitter {
       this.failures.delete(key);
       this.retryAt.delete(key);
       this.schedule(key, Math.min(1000, this.delayMs));
+    } else if (settings.enabled) {
+      // What it may do changed: look again with the new settings.
+      this.handled.delete(key);
+      this.schedule(key, Math.min(1000, this.delayMs));
     }
     this.changed(key);
     return this.state(key);
@@ -282,6 +286,13 @@ export class Supervisor extends EventEmitter {
   private attention(key: string, board: Board, settings: ManagerSettings): Attention[] {
     const out: Attention[] = [];
     for (const view of board.tasks) {
+      // Finished work that waits for approval, when the person let the manager approve it.
+      if (view.status === "review") {
+        if (!settings.approveDone) continue;
+        const agent = view.runtime.agent ?? view.task.agent;
+        out.push({ view, agent, provider: this.runs.store.chat(key, agent).provider, canReply: false, stopped: false });
+        continue;
+      }
       if (view.status !== "blocked" && view.status !== "failed") continue;
       if (view.reasons.some((r) => r.kind === "waiting_for")) continue;
       const agent = view.runtime.agent ?? view.task.agent;
@@ -302,6 +313,7 @@ export class Supervisor extends EventEmitter {
   }
 
   private async carryOut(key: string, answer: ManagerAnswer, attention: Attention[], run: ManagerRun): Promise<void> {
+    const settings = this.settings(key);
     const listed = new Map(attention.map((a) => [a.view.task.id, a]));
     const acted = new Set<string>();
     const done = (type: string, task: string | undefined, ok: boolean, detail: string) => {
@@ -333,7 +345,21 @@ export class Supervisor extends EventEmitter {
           continue;
         }
         const view = this.manager.context(key).board.byId.get(task)!;
+        if (view.status === "review" && type !== "approve") throw new Error("A finished task in review is only approved, or left for the person.");
         switch (type) {
+          case "approve": {
+            if (!settings.approveDone) throw new Error("Approving finished tasks is turned off.");
+            if (view.status !== "review") throw new Error("Only a finished task in review is approved.");
+            const open = view.runtime.issues.filter((i) => !i.state && i.kind !== "warning");
+            if (open.length) {
+              run.forYou.push(`${task}: waits for your approval — it has open problems (${open.map((i) => clip(i.title, 80)).join("; ")}).`);
+              throw new Error("It has open problems; left for the person.");
+            }
+            const why = typeof a.note === "string" ? a.note.trim() : "";
+            await this.manager.addEvent(key, { type: "approved", task, message: `Manager: approved${why ? ` — ${why}` : ""}`.slice(0, 2000) }, "manager");
+            done(type, task, true, why || "approved");
+            break;
+          }
           case "reply": {
             const text = String(a.text ?? "").trim();
             if (!text) throw new Error("An empty reply.");
@@ -515,6 +541,17 @@ export function parseAnswer(text: string): ManagerAnswer {
 
 function attentionText(a: Attention): string {
   const v = a.view;
+  if (v.status === "review") {
+    const lines = [`### ${v.task.id} · ${clip(v.task.title, 100)} · chat ${a.agent} · IN REVIEW (finished, waits for approval)`];
+    if (v.task.acceptance) lines.push(`Acceptance: ${clip(v.task.acceptance, 800)}`);
+    if (v.runtime.summary) lines.push(`Summary: ${clip(v.runtime.summary, 1500)}`);
+    if (v.runtime.verify) lines.push(`How to verify: ${clip(v.runtime.verify, 600)}`);
+    if (v.runtime.pr) lines.push(`PR: ${clip(v.runtime.pr, 300)}`);
+    if (v.runtime.lastMessage) lines.push(`Last message: ${clip(v.runtime.lastMessage, 1500)}`);
+    const open = v.runtime.issues.filter((i) => !i.state);
+    if (open.length) lines.push(`Open problems: ${open.map((i) => `${i.kind ?? "error"}: ${clip(i.title, 160)}`).join("; ")}`);
+    return lines.join("\n");
+  }
   const lines = [
     `### ${v.task.id} · ${clip(v.task.title, 100)} · chat ${a.agent} (${a.provider === "manual" ? "run by hand: you cannot reply, only leave it for the person" : a.canReply ? `${a.provider}, can reply` : `${a.provider}, no session: a reply sends the task again`}) · ${v.status}${a.stopped ? " · STOPPED BY THE PERSON" : ""}`,
   ];
@@ -560,11 +597,17 @@ ACTIONS
 - wait: when a task cannot go on until other tasks of the plan are done, park it; it goes back to its chat when they are done.
 - resend: send a failed task again, with a short note on what to do differently.
 - close: mark problems of a task resolved or ignored when nothing has to be done about them.
-- leave: leave something for the person, in one clear sentence, when only they can do it.
+- leave: leave something for the person, in one clear sentence, when only they can do it.${
+    settings.approveDone
+      ? "\n- approve: accept a task IN REVIEW when its report shows the work is done as asked: the summary covers the task and its acceptance, it says how it was verified, and nothing is left open. Give the reason in \"note\". When in doubt, leave it for the person with what to check."
+      : ""
+  }
 - plan: fold the proposals and notes into the plan (rules below).
 At most one action per task, plus "close".
 
-NEVER: approve payments, enter or ask for credentials, accept legal terms, publish, delete data, push to or merge into a main branch, or allow [risky] steps. Leave those for the person. Act only on the tasks listed under ATTENTION.${settings.resumeStopped ? " A task STOPPED BY THE PERSON may be continued with a reply when its messages give no reason to keep it stopped." : ""}
+NEVER: approve payments, enter or ask for credentials, accept legal terms, publish, delete data, push to or merge into a main branch, or allow [risky] steps. Leave those for the person.${
+    settings.approveDone ? " Never approve a task whose report mentions failing checks, skipped parts or work left undone." : ""
+  } Act only on the tasks listed under ATTENTION.${settings.resumeStopped ? " A task STOPPED BY THE PERSON may be continued with a reply when its messages give no reason to keep it stopped." : ""}
 Write replies, notes and the summary in ${language}.
 
 PLAN RULES
@@ -572,10 +615,10 @@ ${PLAN_RULES}
 - Write titles, instructions and acceptance in ${language}.
 
 Answer with one JSON object in a \`\`\`json fence, and nothing after it:
-{"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"}
+{"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${settings.approveDone ? ',{"type":"approve","task":"<id>","note":"…"}' : ""}],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"}
 Leave out what you do not use.
 
-ATTENTION (tasks waiting for a decision, or failed)
+ATTENTION (tasks waiting for a decision, failed${settings.approveDone ? ", or finished and waiting for approval" : ""})
 ${attention.length ? attention.map(attentionText).join("\n\n") : "(none)"}
 
 PROPOSALS (work chats left for later)

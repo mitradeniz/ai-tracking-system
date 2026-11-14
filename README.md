@@ -347,7 +347,7 @@ Set a chat up once — click the **⚙ by hand** badge on its lane — and **Sen
 | **Live** | Commands, edits and messages stream into the task drawer; **Stop** at any time — from the lane, the drawer or the floating window — or **Stop all**. A chat you stopped gets nothing new from auto-dispatch until you send it something. |
 | **Setup help** | A CLI that is not installed shows the command that installs it; one that is not signed in shows the command to sign in. |
 | **Auto-dispatch** | The switch in the header: free chats get their most urgent ready task, up to *N* runs at once. |
-| **Manager** | The switch next to it hands the project to a CLI you choose (for the night, say). It does not poll: it wakes up when a chat asks a question, waits for approval or fails, or leaves work for later, at most *N* times an hour, answers what it safely can and leaves the rest for you. The app keeps the computer awake meanwhile. See [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
+| **Manager** | The switch next to it hands the project to a CLI you choose (for the night, say). It does not poll: it wakes up when a chat asks a question, waits for approval or fails, or leaves work for later, at most *N* times an hour, answers what it safely can and leaves the rest for you; with *Also approve finished work* it also approves finished tasks whose report shows them done, in projects that ask for approval. The app keeps the computer awake meanwhile. See [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
 | **Your own sessions** | A one-line hook for Claude Code and Codex marks tasks *in progress* and *waiting for your reply* while you work in a session you opened yourself. |
 
 > [!IMPORTANT]
