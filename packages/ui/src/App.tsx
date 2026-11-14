@@ -44,6 +44,11 @@ export function App() {
   useApplyAppearance(appearance);
   const [selected, setSelected] = usePref<string | null>("selectedProject", null);
   const [openTask, setOpenTask] = useState<string | null>(null);
+  // The desktop app shows the manager's eye in its own window above other apps, not on the board.
+  const [eyeWindow, setEyeWindow] = useState(false);
+  useEffect(() => {
+    void desktop?.eyeAvailable?.().then((v) => setEyeWindow(Boolean(v)), () => undefined);
+  }, []);
   const [dialog, setDialog] = useState<
     | "add"
     | "wizard"
@@ -583,7 +588,7 @@ export function App() {
           onRunnerSettings={runnerSettings}
         />
       )}
-      {model && <ManagerEye model={model} onOpenTask={setOpenTask} onOpenManager={() => setDialog("manager")} />}
+      {model && !eyeWindow && <ManagerEye model={model} onOpenTask={setOpenTask} onOpenManager={() => setDialog("manager")} />}
       {dialog === "proposals" && model && (
         <ProposalsDialog
           model={model}

@@ -4705,8 +4705,8 @@ details.advanced[open] {
 }
 
 .eye-btn {
-  width: 76px;
-  height: 76px;
+  width: 54px;
+  height: 54px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -4717,7 +4717,7 @@ details.advanced[open] {
 }
 
 .eye-btn:hover {
-  transform: scale(1.06);
+  transform: scale(1.08);
   filter: drop-shadow(0 0 18px var(--eye-glow));
 }
 
@@ -4823,11 +4823,11 @@ details.advanced[open] {
 /* The hide button shows when the pointer is over the eye. */
 .eye-hide {
   position: absolute;
-  top: -2px;
-  right: -6px;
-  width: 24px;
-  height: 24px;
-  padding: 4px;
+  top: -4px;
+  right: -8px;
+  width: 20px;
+  height: 20px;
+  padding: 3px;
   border-radius: 50%;
   border: 1px solid var(--eye-main);
   background: rgba(0, 12, 4, 0.95);
@@ -4863,9 +4863,9 @@ details.advanced[open] {
 /* The projection: a cone of light from the eye down to a hologram. */
 .eye-beam {
   width: 100%;
-  height: 46px;
-  margin-top: -20px;
-  clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%);
+  height: 40px;
+  margin-top: -14px;
+  clip-path: polygon(calc(var(--apex, 50%) - 10px) 0, calc(var(--apex, 50%) + 10px) 0, 100% 100%, 0 100%);
   background: linear-gradient(to bottom, var(--eye-glow), rgba(0, 255, 65, 0.06));
   animation: eye-beam 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
   pointer-events: none;
@@ -5033,7 +5033,7 @@ details.advanced[open] {
   background: rgba(0, 255, 65, 0.08);
 }
 
-.holo-row .pulse {
+.holo-row .holo-pulse {
   flex-shrink: 0;
   width: 7px;
   height: 7px;
@@ -5096,7 +5096,7 @@ details.advanced[open] {
 
 .holo-news.done .holo-type,
 .holo-news.approved .holo-type {
-  color: var(--eye-main);
+  color: #00ff41;
 }
 
 .holo-empty {
@@ -5203,11 +5203,11 @@ details.advanced[open] {
 
 @keyframes eye-beam {
   from {
-    clip-path: polygon(50% 0, 50% 0, 50% 0, 50% 0);
+    clip-path: polygon(var(--apex, 50%) 0, var(--apex, 50%) 0, var(--apex, 50%) 0, var(--apex, 50%) 0);
     opacity: 0;
   }
   to {
-    clip-path: polygon(46% 0, 54% 0, 100% 100%, 0 100%);
+    clip-path: polygon(calc(var(--apex, 50%) - 10px) 0, calc(var(--apex, 50%) + 10px) 0, 100% 100%, 0 100%);
     opacity: 1;
   }
 }
@@ -5256,6 +5256,34 @@ details.advanced[open] {
   50% {
     opacity: 0.35;
   }
+}
+
+/* The desktop app's eye window: transparent, only the eye (and its projection when open). */
+:root[data-eye],
+:root[data-eye] body,
+:root[data-eye] #root {
+  background: transparent;
+  overflow: hidden;
+}
+
+.eye-dock.windowed {
+  position: static;
+  width: 100%;
+  padding-top: 15px;
+  align-items: flex-start;
+}
+
+.eye-dock.windowed .eye-wrap {
+  margin-left: calc(var(--apex, 42px) - 27px);
+}
+
+.eye-dock.windowed .eye-holo {
+  max-height: calc(100vh - 100px);
+}
+
+/* On the board, the eye rests while the window is in the background. */
+:root[data-inactive] .eye-dock:not(.windowed) * {
+  animation-play-state: paused;
 }
 
 @media (prefers-reduced-motion: reduce) {

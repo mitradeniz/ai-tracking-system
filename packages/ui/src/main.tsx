@@ -3,10 +3,13 @@ import { createRoot } from "react-dom/client";
 import { desktop } from "./api.ts";
 import { App } from "./App.tsx";
 import { markDesktop } from "./appearance.ts";
+import { EyeApp } from "./Eye.tsx";
 import { MiniApp } from "./Mini.tsx";
 import "./styles.css";
 
-const isMini = new URLSearchParams(window.location.search).get("mini") === "1";
+const query = new URLSearchParams(window.location.search);
+const isMini = query.get("mini") === "1";
+const isEye = query.get("eye") === "1";
 markDesktop();
 
 // Animations stop while the window is hidden or in the background, so an idle window draws nothing.
@@ -24,5 +27,5 @@ document.addEventListener("visibilitychange", markInactive);
 markInactive();
 const root = document.getElementById("root");
 if (root) {
-  createRoot(root).render(<StrictMode>{isMini ? <MiniApp /> : <App />}</StrictMode>);
+  createRoot(root).render(<StrictMode>{isEye ? <EyeApp /> : isMini ? <MiniApp /> : <App />}</StrictMode>);
 }

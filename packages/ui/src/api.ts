@@ -304,6 +304,12 @@ export interface DesktopBridge {
   setMini?(options: { pinned?: boolean; opacity?: number }): Promise<void>;
   /** Brings the main window forward, optionally on a project and task. */
   focusMain?(projectKey?: string, taskId?: string): Promise<void>;
+  /** True when the app shows the manager's eye in its own window above other apps. */
+  eyeAvailable?(): Promise<boolean>;
+  /** The eye window: show or hide it, open or close the projection (with the panel's height). Returns where the eye sits. */
+  eyeSet?(options: { visible?: boolean; open?: boolean; height?: number }): Promise<{ offset: number } | null>;
+  /** Moves the eye window while it is dragged: start, then offsets from where the drag started, then end. */
+  eyeMove?(phase: "start" | "move" | "end", dx?: number, dy?: number): Promise<void>;
   /** In-app updates (desktop app built from a git clone). */
   updates?: {
     check(): Promise<UpdateInfo | null>;

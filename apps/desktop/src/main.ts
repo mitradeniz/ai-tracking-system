@@ -25,6 +25,7 @@ let running: RunningServer | null = null;
 let baseUrl = "";
 let win: BrowserWindow | null = null;
 let mini: BrowserWindow | null = null;
+let eye: BrowserWindow | null = null;
 const pendingFiles: string[] = [];
 
 function uiDir(): string {
@@ -170,6 +171,101 @@ function openMini(): void {
   void mini.loadURL(`${baseUrl}/?mini=1`);
 }
 
+/* ── The manager's eye: a small window above other apps while a manager runs a project ── */
+
+const EYE_SMALL = 84;
+const EYE_WIDE = 440;
+let eyeOpen = false;
+let eyeDrag: { cx: number; top: number } | null = null;
+const eyeFile = () => path.join(app.getPath("userData"), "eye-window.json");
+
+/** Where the eye sits: the centre of the eye and the top of its window. Top right by default. */
+let eyeAnchor: { cx: number; top: number } | null = null;
+function anchor(): { cx: number; top: number } {
+  if (eyeAnchor) return eyeAnchor;
+  try {
+    const a = JSON.parse(readFileSync(eyeFile(), "utf8")) as { cx: number; top: number };
+    const onScreen = screen.getAllDisplays().some((d) => {
+      const w = d.workArea;
+      return a.cx > w.x + 20 && a.cx < w.x + w.width - 20 && a.top >= w.y - 10 && a.top < w.y + w.height - 60;
+    });
+    if (onScreen && Number.isFinite(a.cx) && Number.isFinite(a.top)) eyeAnchor = a;
+  } catch {
+    // No saved place yet.
+  }
+  if (!eyeAnchor) {
+    const area = screen.getPrimaryDisplay().workArea;
+    eyeAnchor = { cx: area.x + area.width - 24 - EYE_SMALL / 2, top: area.y + 64 };
+  }
+  return eyeAnchor;
+}
+
+/** Sizes the eye window: just the eye, or the eye with its projection below. */
+function layoutEye(height?: number): { offset: number } {
+  const a = anchor();
+  if (!eye) return { offset: EYE_SMALL / 2 };
+  const area = screen.getDisplayNearestPoint({ x: Math.round(a.cx), y: Math.round(a.top) }).workArea;
+  if (!eyeOpen) {
+    eye.setBounds({ x: Math.round(a.cx - EYE_SMALL / 2), y: Math.round(a.top), width: EYE_SMALL, height: EYE_SMALL });
+    return { offset: EYE_SMALL / 2 };
+  }
+  const x = Math.round(Math.min(Math.max(a.cx - EYE_WIDE / 2, area.x + 4), area.x + area.width - EYE_WIDE - 4));
+  const room = area.y + area.height - a.top - 8;
+  const h = Math.round(Math.min(Math.max(height ?? 560, EYE_SMALL), room));
+  eye.setBounds({ x, y: Math.round(a.top), width: EYE_WIDE, height: h });
+  return { offset: Math.round(a.cx - x) };
+}
+
+function createEye(): void {
+  const a = anchor();
+  eye = new BrowserWindow({
+    x: Math.round(a.cx - EYE_SMALL / 2),
+    y: Math.round(a.top),
+    width: EYE_SMALL,
+    height: EYE_SMALL,
+    frame: false,
+    transparent: true,
+    backgroundColor: "#00000000",
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    fullscreenable: false,
+    skipTaskbar: true,
+    alwaysOnTop: true,
+    hasShadow: false,
+    acceptFirstMouse: true,
+    title: "AI Tracking System",
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.cjs"),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      spellcheck: false,
+      backgroundThrottling: false,
+    },
+  });
+  eye.setAlwaysOnTop(true, "floating");
+  eye.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+  guardNavigation(eye);
+  eye.on("closed", () => {
+    eye = null;
+    eyeOpen = false;
+  });
+  void eye.loadURL(`${baseUrl}/?eye=1`);
+}
+
+/** The eye window exists while a manager runs a project of this tracker; its page decides when it shows. */
+function syncEye(): void {
+  const want = Boolean(running && running.supervisor.managing().length > 0);
+  if (want && !eye) createEye();
+  if (!want && eye) {
+    eye.destroy();
+    eye = null;
+    eyeOpen = false;
+  }
+}
+
 /** Tells the page whether its window is in front, so it can pause its animations in the background. */
 function reportActivity(w: BrowserWindow): void {
   const send = () => {
@@ -278,6 +374,34 @@ function registerIpc(): void {
     const { pinned, opacity } = options as { pinned?: unknown; opacity?: unknown };
     if (typeof pinned === "boolean") mini.setAlwaysOnTop(pinned, "floating");
     if (typeof opacity === "number" && Number.isFinite(opacity)) mini.setOpacity(Math.min(1, Math.max(0.4, opacity)));
+  });
+  ipcMain.handle("aitrack:eye-available", (event) => isOwnFrame(event) && Boolean(running));
+  ipcMain.handle("aitrack:eye-set", (event, options: unknown) => {
+    if (!isOwnFrame(event) || !eye || event.sender !== eye.webContents || !options || typeof options !== "object") return null;
+    const { visible, open, height } = options as { visible?: unknown; open?: unknown; height?: unknown };
+    if (visible === true && !eye.isVisible()) eye.showInactive();
+    if (visible === false && eye.isVisible()) {
+      eyeOpen = false;
+      layoutEye();
+      eye.hide();
+    }
+    if (typeof open === "boolean") eyeOpen = open;
+    return layoutEye(typeof height === "number" && Number.isFinite(height) ? height : undefined);
+  });
+  ipcMain.handle("aitrack:eye-move", (event, phase: unknown, dx: unknown, dy: unknown) => {
+    if (!isOwnFrame(event) || !eye || event.sender !== eye.webContents || eyeOpen) return;
+    if (phase === "start") eyeDrag = { ...anchor() };
+    else if (phase === "move" && eyeDrag && Number.isFinite(dx) && Number.isFinite(dy)) {
+      eyeAnchor = { cx: eyeDrag.cx + Number(dx), top: eyeDrag.top + Number(dy) };
+      eye.setPosition(Math.round(eyeAnchor.cx - EYE_SMALL / 2), Math.round(eyeAnchor.top));
+    } else if (phase === "end") {
+      eyeDrag = null;
+      try {
+        writeFileSync(eyeFile(), JSON.stringify(anchor()));
+      } catch {
+        // The place is a convenience.
+      }
+    }
   });
   ipcMain.handle("aitrack:focus-main", (event, projectKey: unknown, taskId: unknown) => {
     if (!isOwnFrame(event)) return;
@@ -504,6 +628,11 @@ if (!gotLock) {
     buildMenu();
     createWindow();
     keepAwakeWhileWorking();
+    if (running) {
+      running.supervisor.on("manager", syncEye);
+      syncEye();
+      setInterval(syncEye, 30_000).unref?.();
+    }
     for (const f of pendingFiles.splice(0)) await addProjectFile(f);
 
     app.on("activate", () => {
@@ -517,6 +646,7 @@ if (!gotLock) {
 
   app.on("before-quit", () => {
     mini?.destroy();
+    eye?.destroy();
     void running?.close();
   });
 }

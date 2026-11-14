@@ -1,5 +1,6 @@
 import type { TrackEvent } from "@aitrack/core";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
+import { desktop } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import { agentName, formatDuration, localMessage, problemsOf, PROVIDER_LABEL, type Model } from "../model.ts";
 import { usePref } from "../prefs.ts";
@@ -64,17 +65,76 @@ function EyeArt({ mood }: { mood: "watching" | "busy" | "alert" }) {
 }
 
 /**
- * While a manager runs the project, a small eye floats over the board. Clicking it projects a
- * panel downwards: what each chat is doing, how far the project is, what went wrong, the latest news.
+ * While a manager runs the project, a small eye floats over the board — or, in the desktop app, in
+ * its own window above other apps (windowed). Clicking it projects a panel downwards: what each
+ * chat is doing, how far the project is, what went wrong, the latest news. It can be dragged there.
  */
-export function ManagerEye({ model, onOpenTask, onOpenManager }: { model: Model; onOpenTask: (id: string) => void; onOpenManager: () => void }) {
+export function ManagerEye({
+  model,
+  onOpenTask,
+  onOpenManager,
+  windowed = false,
+}: {
+  model: Model;
+  onOpenTask: (id: string) => void;
+  onOpenManager: () => void;
+  windowed?: boolean;
+}) {
   const { t, lang } = useI18n();
   const key = model.detail.key;
   const state = model.runners?.manager;
   const on = Boolean(state?.settings.enabled);
   const [hidden, setHidden] = useEyeHidden(key);
   const [open, setOpen] = useState(false);
+  const [apex, setApex] = useState<number | null>(null);
+  const dock = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const now = useNow(on && !hidden && open, 1000);
+  const visible = on && !hidden && Boolean(state);
+
+  // In its own window, the window follows: shown or hidden, small or tall enough for the projection.
+  useEffect(() => {
+    if (!windowed) return;
+    void desktop?.eyeSet?.({ open, height: open ? 560 : undefined }).then((r) => r && setApex(r.offset));
+  }, [windowed, open]);
+  useEffect(() => {
+    if (!windowed) return;
+    void desktop?.eyeSet?.({ visible }).then((r) => r && setApex(r.offset));
+  }, [windowed, visible]);
+  useEffect(() => {
+    if (!windowed || !open || !dock.current) return;
+    const el = dock.current;
+    const report = () => void desktop?.eyeSet?.({ open: true, height: Math.ceil(el.scrollHeight) + 8 }).then((r) => r && setApex(r.offset));
+    const observer = new ResizeObserver(report);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [windowed, open]);
+
+  // Dragging the eye moves its window; a press without moving opens the projection.
+  const pointer = {
+    onPointerDown: (e: ReactPointerEvent<HTMLButtonElement>) => {
+      if (!windowed || open || e.button !== 0) return;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      drag.current = { x: e.screenX, y: e.screenY, moved: false };
+      void desktop?.eyeMove?.("start");
+    },
+    onPointerMove: (e: ReactPointerEvent<HTMLButtonElement>) => {
+      const d = drag.current;
+      if (!d) return;
+      const dx = e.screenX - d.x;
+      const dy = e.screenY - d.y;
+      if (!d.moved && Math.hypot(dx, dy) < 4) return;
+      d.moved = true;
+      void desktop?.eyeMove?.("move", dx, dy);
+    },
+    onPointerUp: () => {
+      const d = drag.current;
+      drag.current = null;
+      if (d) void desktop?.eyeMove?.("end");
+      if (d?.moved) return;
+      setOpen((o) => !o);
+    },
+  };
 
   // Switching the manager on brings the eye back.
   const last = useRef<{ key: string; on: boolean }>({ key, on });
@@ -95,7 +155,7 @@ export function ManagerEye({ model, onOpenTask, onOpenManager }: { model: Model;
     return () => window.removeEventListener("keydown", onKey);
   }, [open]);
 
-  if (!on || hidden || !state) return null;
+  if (!visible || !state) return null;
 
   const counts = model.detail.board?.counts;
   const total = counts?.total ?? 0;
@@ -118,11 +178,15 @@ export function ManagerEye({ model, onOpenTask, onOpenManager }: { model: Model;
   const line = (): CSSProperties => ({ ["--i" as string]: i++ });
 
   return (
-    <div className={`eye-dock ${open ? "open" : ""}`}>
+    <div
+      ref={dock}
+      className={`eye-dock ${open ? "open" : ""} ${windowed ? "windowed" : ""}`}
+      style={windowed && apex !== null ? ({ ["--apex" as string]: `${apex}px` } as CSSProperties) : undefined}
+    >
       <div className="eye-wrap">
         <button
           className={`eye-btn ${mood}`}
-          onClick={() => setOpen((o) => !o)}
+          {...(windowed ? pointer : { onClick: () => setOpen((o) => !o) })}
           aria-expanded={open}
           aria-label={open ? t("eye_close") : t("eye_open")}
           title={`${t("mgr_title")} · ${status}`}
@@ -186,7 +250,7 @@ export function ManagerEye({ model, onOpenTask, onOpenManager }: { model: Model;
             ) : (
               running.map((r) => (
                 <button key={r.id} className="holo-row" style={line()} onClick={() => onOpenTask(r.task)}>
-                  <span className="pulse" aria-hidden="true" />
+                  <span className="holo-pulse" aria-hidden="true" />
                   <span className="holo-who">
                     {agentName(model, r.agent)}
                     <small>
