@@ -13,6 +13,7 @@ import {
   helpedChats,
   lastContextRun,
   problemsOf,
+  shownStatus,
   type Model,
 } from "../model.ts";
 import { Bang, InfoTip, useNow } from "./Info.tsx";
@@ -395,8 +396,8 @@ export function ListView({ model, onOpen, agents }: Omit<ViewProps, "onError">) 
                 </td>
                 <td>{agentName(model, s.agent ?? task.agent)}</td>
                 <td>
-                  <span className={`pill ${s.dispatchable ? "sendable" : s.status}`}>
-                    {s.dispatchable ? t("sendable") : t(`status_${s.status}`)}
+                  <span className={`pill ${s.dispatchable ? "sendable" : shownStatus(s)}`}>
+                    {s.dispatchable ? t("sendable") : t(`status_${shownStatus(s)}`)}
                   </span>
                 </td>
                 <td className="mono small">{task.dependsOn.join(", ")}</td>

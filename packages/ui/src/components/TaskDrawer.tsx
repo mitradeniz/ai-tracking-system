@@ -16,6 +16,7 @@ import {
   reasonText,
   REFUSED,
   runnerOf,
+  shownStatus,
   type IssueChoice,
   type Model,
   type Problem,
@@ -251,7 +252,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
         <div className="drawer-head">
           <div className="row">
             <span className="mono muted">{task.id}</span>
-            <span className={`pill ${snap.dispatchable ? "sendable" : s}`}>{snap.dispatchable ? t("sendable") : t(`status_${s}`)}</span>
+            <span className={`pill ${snap.dispatchable ? "sendable" : shownStatus(snap)}`}>{snap.dispatchable ? t("sendable") : t(`status_${shownStatus(snap)}`)}</span>
             {snap.critical && <span className="crit">● {t("critical")}</span>}
             <span className="spacer" />
             {planEditing && (

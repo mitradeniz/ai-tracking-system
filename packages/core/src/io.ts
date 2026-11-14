@@ -122,6 +122,7 @@ export function reportToEvent(report: Report, source: EventSource, now: Date = n
     pr: report.pr,
     verify: report.verify,
     issues: report.issues,
+    waitingFor: report.status === "blocked" ? report.waitingFor : undefined,
     source,
   });
 }

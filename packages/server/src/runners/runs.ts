@@ -148,6 +148,7 @@ export function runnerPreamble(taskId: string, runner: ChatRunner, language = "E
     `- Solve what you can yourself before asking. Find missing facts with read-only commands (the folders, git, this computer, running services). When a choice is low-risk and easy to undo, take the sensible option, note it as a "warning" issue and carry on.`,
     `- If your permissions refuse a step, do not stop for it: find another way or finish the rest without it, and list the refused step under "issues".`,
     `- Report status "blocked" only for what you cannot decide or do yourself: a choice between real alternatives, or something only a person can do. Put one clear question in ${language} in "reason", and give each decision as one "needs-you" issue with "choices", your recommendation first.`,
+    `- If you cannot go on until another task of the plan is done (its code merged, its contract written), do not ask the person to send this task again. Report status "blocked" with "waitingFor": ["<task id>"] and a one-line "reason"; do not add an issue for the wait. The tracker sends this task back to you, in this conversation, when those tasks are done.`,
     `- List anything that failed, was skipped or is missing under "issues" in the report, with a plain ${language} title, what is needed, and a prompt that would fix it.`,
   ];
   if (runner.unattended) {
@@ -358,6 +359,15 @@ export class RunManager extends EventEmitter {
     }
     parts.push(runnerPreamble(taskId, runner, project.settings.language === "tr" ? "Turkish" : "English"));
     parts.push(renderTaskPrompt(project, taskId, { serverUrl: this.manager.serverUrl, agentId: agent }));
+    // The chat stopped this task until other tasks were done; they are, so it picks up where it stopped.
+    if (view.resumes?.length) {
+      const done = view.resumes.map((id) => {
+        const v = board.byId.get(id);
+        const summary = v?.runtime.summary ? `: ${clip(v.runtime.summary, 400)}` : "";
+        return `- ${id} (${v?.task.title ?? id})${summary}${v?.runtime.pr ? ` · PR: ${v.runtime.pr}` : ""}`;
+      });
+      parts.push(`THE TASKS YOU WAITED FOR ARE DONE\n${done.join("\n")}\nContinue task ${taskId} where you stopped.`);
+    }
     const extra = options.extra?.trim();
     if (extra) parts.push(`ADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\n${extra}`);
     return this.launch({ key, task: taskId, agent, runner, prompt: parts.join("\n\n---\n\n"), resume, kind: "task", auto: options.auto === true });

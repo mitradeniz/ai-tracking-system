@@ -458,7 +458,7 @@ A report can also list **problems** — what failed, was skipped, is missing or 
 }
 ```
 
-A decision the chat cannot take itself can carry `choices` — `[{"label": "Separate repository", "reply": "I move the commits there.", "recommended": true}, …]` — shown as buttons.
+A chat that must wait for another task reports `blocked` with `"waitingFor": ["T-01"]`: the task waits without a problem, the wait goes into the plan, and the task goes back to the same chat when T-01 is done. A decision the chat cannot take itself can carry `choices` — `[{"label": "Separate repository", "reply": "I move the commits there.", "recommended": true}, …]` — shown as buttons.
 
 Details and the report schema: [docs/agent-reporting.md](docs/agent-reporting.md).
 

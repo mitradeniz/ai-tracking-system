@@ -88,7 +88,10 @@ export function App() {
   const onActivity = useCallback(
     (a: Activity) => {
       if (!["done", "blocked", "failed", "started", "review"].includes(a.event.type)) return;
-      const text = `${a.projectName ? `${a.projectName}: ` : ""}${t(`activity_${a.event.type}` as Key, { task: a.event.task })}`;
+      const what = a.event.type === "blocked" && a.event.waitingFor?.length
+        ? t("activity_waiting", { task: a.event.task, tasks: a.event.waitingFor.join(", ") })
+        : t(`activity_${a.event.type}` as Key, { task: a.event.task });
+      const text = `${a.projectName ? `${a.projectName}: ` : ""}${what}`;
       toast(text, a.event.type);
       if (a.event.source !== "ui" && "Notification" in window && Notification.permission === "granted" && document.hidden) {
         new Notification("AI Tracking System", { body: text });

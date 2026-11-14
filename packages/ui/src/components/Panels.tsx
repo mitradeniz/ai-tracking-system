@@ -2,7 +2,15 @@ import type { TaskSnapshot } from "@aitrack/core";
 import { useState } from "react";
 import { api, dispatchTask } from "../api.ts";
 import { useI18n } from "../i18n.ts";
-import { agentName, cardNote, formatTime, problemsOf, runnerOf, type Model } from "../model.ts";
+import {
+  agentName,
+  cardNote,
+  formatTime,
+  problemsOf,
+  runnerOf,
+  waitingFor,
+  type Model,
+} from "../model.ts";
 import { inChats } from "./Views.tsx";
 
 interface PanelProps {
@@ -53,7 +61,7 @@ export function InboxPanel({ model, onOpen, onError, onInfo, agents }: PanelProp
   const groups: { key: string; title: string; items: TaskSnapshot[] }[] = [
     { key: "sendable", title: t("inbox_sendable"), items: mine.filter((s) => s.dispatchable).sort((a, b) => b.chain - a.chain) },
     { key: "review", title: t("inbox_review"), items: mine.filter((s) => s.status === "review") },
-    { key: "blocked", title: t("inbox_blocked"), items: mine.filter((s) => s.status === "blocked") },
+    { key: "blocked", title: t("inbox_blocked"), items: mine.filter((s) => s.status === "blocked" && !waitingFor(s)) },
     { key: "failed", title: t("inbox_failed"), items: mine.filter((s) => s.status === "failed") },
     {
       key: "problems",

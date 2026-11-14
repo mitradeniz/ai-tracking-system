@@ -19,6 +19,8 @@ export interface TaskSnapshot {
   dispatchable: boolean;
   candidates: string[];
   reasons: Reason[];
+  /** The tasks the chat waited for, when they are done and the task goes back to it. */
+  resumes: string[] | null;
   layer: number;
   chain: number;
   critical: boolean;
@@ -59,6 +61,7 @@ export function serializeBoard(board: Board): BoardSnapshot {
     dispatchable: v.dispatchable,
     candidates: v.candidates,
     reasons: v.reasons,
+    resumes: v.resumes ?? null,
     layer: v.layer,
     chain: v.chain,
     critical: v.critical,

@@ -580,12 +580,38 @@ export class ProjectManager extends EventEmitter {
     target.events.push(event);
     this.changed(target.key);
     this.emit("activity", { key: target.key, event, projectName: target.project?.project.name });
+    if (event.type === "blocked" && event.waitingFor?.length) {
+      await this.addWaitDependencies(target.key, report.task, event.waitingFor).catch((e) => this.emit("warning", e));
+    }
 
     const project = target.project as ProjectFile;
     const board = computeBoard(project, target.events);
     const agent = report.agent ?? board.byId.get(report.task)?.runtime.agent ?? project.tasks.find((t) => t.id === report.task)?.agent;
     const next = agent ? nextTasksFor(board, agent).map((v) => ({ id: v.task.id, title: v.task.title })) : [];
     return { key: target.key, task: report.task, status: board.byId.get(report.task)?.status ?? "unknown", next };
+  }
+
+  /**
+   * A chat stopped a task until other tasks are done: those become dependencies of the task in the
+   * plan, so it is not sent too early next time. One that would make a cycle is left out.
+   */
+  async addWaitDependencies(key: string, taskId: string, ids: string[]): Promise<string[]> {
+    const added: string[] = [];
+    for (const id of ids) {
+      const project = this.get(key).project;
+      const task = project?.tasks.find((t) => t.id === taskId);
+      if (!project || !task || id === taskId || task.dependsOn.includes(id) || !project.tasks.some((t) => t.id === id)) continue;
+      try {
+        await this.saveTask(key, { id: task.id, title: task.title, agent: task.agent, dependsOn: [...task.dependsOn, id] }, "update");
+        added.push(id);
+      } catch {
+        // A cycle, or a file that cannot be written: the wait still works without it.
+      }
+    }
+    if (added.length) {
+      await this.addEvent(key, { type: "note", task: taskId, message: `Added to the plan: ${taskId} now waits for ${added.join(", ")}.` }, "runner");
+    }
+    return added;
   }
 
   async paste(key: string, text: string): Promise<{ recorded: number; errors: string[] }> {

@@ -445,6 +445,16 @@
                   ]
                 }
               },
+              "waitingFor": {
+                "description": "With status blocked: tasks of the plan the chat waits for. The task goes back to the same chat when they are done.",
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 80
+                }
+              },
               "source": {
                 "default": "ui",
                 "type": "string",

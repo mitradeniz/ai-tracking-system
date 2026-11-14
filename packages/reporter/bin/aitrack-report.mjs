@@ -23,6 +23,8 @@ Options:
   --pr <url|branch>    pull request or branch
   --verify <text>      how to verify the result
   --issues <json>      problems: '[{"title":"…","detail":"…","kind":"missing","fix":"<prompt>"}]'
+  --waiting-for <ids>  with --status blocked: tasks it waits for, comma-separated (T-01,T-02);
+                       the task comes back to this chat when they are done
   --server <url>       default: $AITRACK_SERVER or http://127.0.0.1:4317
   --inbox <dir>        fallback directory, default: <repo root>/.aitrack/inbox
   --no-http            skip the HTTP call and write the inbox file directly
@@ -109,6 +111,9 @@ async function main() {
   const report = {};
   for (const key of ["project", "task", "agent", "status", "summary", "reason", "pr", "verify"]) {
     if (args[key]) report[key] = args[key];
+  }
+  if (args["waiting-for"]) {
+    report.waitingFor = args["waiting-for"].split(",").map((id) => id.trim()).filter(Boolean);
   }
   if (args.issues) {
     try {

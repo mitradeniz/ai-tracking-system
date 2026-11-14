@@ -458,7 +458,7 @@ Bir rapor **sorunları** da listeleyebilir — başarısız olan, atlanan, eksik
 }
 ```
 
-Sohbetin kendisinin veremeyeceği bir karar `choices` taşıyabilir — `[{"label": "Ayrı repo", "reply": "Commit'leri oraya taşırım.", "recommended": true}, …]` — ve buton olarak gösterilir.
+Başka bir görevi beklemesi gereken sohbet `"waitingFor": ["T-01"]` ile `blocked` bildirir: görev sorun açmadan bekler, bekleme plana bağımlılık olarak yazılır ve T-01 bitince görev aynı sohbete geri döner. Sohbetin kendisinin veremeyeceği bir karar `choices` taşıyabilir — `[{"label": "Ayrı repo", "reply": "Commit'leri oraya taşırım.", "recommended": true}, …]` — ve buton olarak gösterilir.
 
 Ayrıntılar ve rapor şeması: [docs/agent-reporting.md](docs/agent-reporting.md) (İngilizce).
 

@@ -1,4 +1,4 @@
-import type { Agent, Reason, Task, TaskIssue, TaskSnapshot, TrackEvent } from "@aitrack/core";
+import type { Agent, BoardStatus, Reason, Task, TaskIssue, TaskSnapshot, TrackEvent } from "@aitrack/core";
 import type { ChatRunner, ProjectDetail, RunnerState, RunSummary } from "./api.ts";
 import type { T } from "./i18n.ts";
 
@@ -111,6 +111,8 @@ export function reasonText(model: Model, reason: Reason, t: T): string {
   switch (reason.kind) {
     case "dependency":
       return t("why_dependency", { task: reason.task, status: t(`status_${reason.status}`) });
+    case "waiting_for":
+      return t("why_waiting_for", { tasks: reason.tasks.join(", ") });
     case "agent_busy":
       return reason.tasks.length > 0
         ? t("why_agent_busy", { agent: agentName(model, reason.agent), tasks: reason.tasks.join(", ") })
@@ -126,8 +128,22 @@ export function reasonText(model: Model, reason: Reason, t: T): string {
   }
 }
 
+/** The tasks a blocked task waits for: the chat stopped it until they are done. Null otherwise. */
+export function waitingFor(s: TaskSnapshot): string[] | null {
+  const r = s.reasons.find((x) => x.kind === "waiting_for");
+  return r?.kind === "waiting_for" ? r.tasks : null;
+}
+
+/** The status a pill shows: a task waiting for other tasks needs nothing from the person, so it is not shown as blocked. */
+export function shownStatus(s: TaskSnapshot): BoardStatus {
+  return waitingFor(s) ? "waiting" : s.status;
+}
+
 /** One short line under a card title. */
 export function cardNote(model: Model, s: TaskSnapshot, t: T): string {
+  const wait = waitingFor(s);
+  if (wait) return t("card_waitingFor", { tasks: wait.join(", ") });
+  if (s.resumes?.length) return t("card_resumes", { tasks: s.resumes.join(", ") });
   if (s.status === "blocked" || s.status === "failed") return s.reason ? localReason(s.reason, t) : "";
   if (s.status === "waiting") {
     const open = s.reasons.filter((r) => r.kind === "dependency").map((r) => (r.kind === "dependency" ? r.task : ""));
@@ -489,6 +505,7 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
     s.status === "blocked" &&
     s.reason &&
     !askedAlready &&
+    !waitingFor(s) &&
     s.reason !== "Waiting for your reply." &&
     !s.reason.startsWith("Stopped from") &&
     !s.reason.startsWith("The run stopped")

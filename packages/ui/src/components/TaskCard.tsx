@@ -1,6 +1,13 @@
 import type { TaskSnapshot } from "@aitrack/core";
 import { useI18n } from "../i18n.ts";
-import { agentName, cardNote, formatDuration, problemsOf, type Model } from "../model.ts";
+import {
+  agentName,
+  cardNote,
+  formatDuration,
+  problemsOf,
+  shownStatus,
+  type Model,
+} from "../model.ts";
 import { Bang, useNow } from "./Info.tsx";
 
 interface Props {
@@ -22,7 +29,7 @@ export function TaskCard({ model, snap, onOpen, showAgent, highlight, onHover }:
   const now = useNow(Boolean(run));
   const classes = [
     "card",
-    snap.status,
+    shownStatus(snap),
     snap.dispatchable ? "dispatchable" : "",
     problems.length > 0 ? "has-problems" : "",
     highlight === "self" ? "highlight" : highlight === "related" ? "related" : "",
@@ -56,8 +63,8 @@ export function TaskCard({ model, snap, onOpen, showAgent, highlight, onHover }:
           </span>
         )}
         {showAgent && <span className="agent-chip">{agentName(model, who)}</span>}
-        <span className={`pill ${snap.dispatchable ? "sendable" : snap.status}`}>
-          {snap.dispatchable ? t("sendable") : t(`status_${snap.status}`)}
+        <span className={`pill ${snap.dispatchable ? "sendable" : shownStatus(snap)}`}>
+          {snap.dispatchable ? t("sendable") : t(`status_${shownStatus(snap)}`)}
         </span>
       </div>
       <div className="title">{task.title}</div>

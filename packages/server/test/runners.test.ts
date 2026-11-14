@@ -219,6 +219,37 @@ describe("agent runners", () => {
     expect(t3.issues[0].fix).toContain("npm test");
   });
 
+  it("parks a task the chat stopped until another one is done, writes the wait into the plan, and sends the task back by itself", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_SCENARIO = "wait";
+    process.env.FAKE_WAIT = "T1";
+    try {
+      await setRunner("b", { provider: "claude" });
+      await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+      await waitFor("T3", "blocked");
+      let detail = (await call("GET", `/api/projects/${key}`)).json;
+      const t3 = detail.board.tasks.find((t: { id: string }) => t.id === "T3");
+      expect(t3.reasons).toEqual([{ kind: "waiting_for", tasks: ["T1"] }]);
+      // The wait is now a dependency in the plan file, with a note in the task's history.
+      expect(detail.project.tasks.find((t: { id: string }) => t.id === "T3").dependsOn).toEqual(["T1"]);
+      expect(await readFile(file, "utf8")).toMatch(/"id": "T3"[\s\S]*"dependsOn": \[\s*"T1"\s*\]/);
+      expect(detail.events.some((e: { type: string; message?: string }) => e.type === "note" && e.message?.includes("T3 now waits for T1"))).toBe(true);
+
+      // T1 is done: with automatic dispatch on, T3 goes back to chat b and is told what it waited for.
+      process.env.FAKE_SCENARIO = "done";
+      await call("POST", `/api/projects/${key}/runners`, { autoDispatch: true });
+      await call("POST", `/api/projects/${key}/events`, { task: "T1", type: "done", message: "Contract merged" });
+      await waitFor("T3", "done");
+      const second = (await invocations())[1]!;
+      expect(second.stdin).toContain("THE TASKS YOU WAITED FOR ARE DONE");
+      expect(second.stdin).toContain("- T1 (One): Contract merged");
+      detail = (await call("GET", `/api/projects/${key}`)).json;
+      expect(detail.board.tasks.find((t: { id: string }) => t.id === "T3").resumes).toBeNull();
+    } finally {
+      delete process.env.FAKE_WAIT;
+    }
+  });
+
   it("runs Claude Code in auto mode when the CLI has it, and falls back when it cannot use it", async () => {
     process.env.FAKE_FORMAT = "claude";
     process.env.FAKE_AUTO = "1";

@@ -27,8 +27,19 @@ Every task prompt copied from the app ends with a **REPORTING** section, so you 
 | `pr` | no | Pull request URL or branch. |
 | `verify` | no | How a human can check the result. |
 | `issues` | no | Problems: what failed, was skipped, is missing or needs a person. See below. |
+| `waitingFor` | no | With `blocked`: ids of tasks of the plan the chat waits for. See below. |
 
 Text fields are limited to 20 000 characters (`pr`: 2 000). Inbox files and pasted text may also hold a JSON array of reports.
+
+### Waiting for another task (`waitingFor`)
+
+A chat that cannot go on until another task of the plan is done — its code merged, its contract written — reports `blocked` with the ids of those tasks:
+
+```json
+{"task": "CLA-01", "status": "blocked", "reason": "The PRs open once CLD-01 is merged.", "waitingFor": ["CLD-01"]}
+```
+
+The task then needs nothing from the person: it shows as *waiting for CLD-01*, keeps its chat (which takes no other task meanwhile, so it finishes what it started in the same conversation), raises no problem, and the ids become dependencies of the task in the plan file, so it is not sent too early next time (one that would make a cycle is left out; a note in the task's history says what was added). When every task it waits for is done, the task is ready again for the same chat, ahead of the chat's other work; with automatic dispatch it is sent at once, with a note that lists what was finished (summary and PR) and asks the chat to go on where it stopped. A task waited for that was already done when the chat stopped does not count: the task stays blocked for the person. `"waitingFor": "CLD-01"` (one id) is read too.
 
 ### Problems (`issues`)
 
@@ -88,7 +99,7 @@ node /path/to/ai-tracking-system/packages/reporter/bin/aitrack-report.mjs \
   --task T-03 --status blocked --reason "Needs the colour palette from T-01"
 ```
 
-Options: `--project`, `--agent`, `--summary`, `--reason`, `--pr`, `--verify`, `--issues <json>`, `--server` (default `$AITRACK_SERVER` or `http://127.0.0.1:4317`), `--inbox` (default `<repo root>/.aitrack/inbox`), `--no-http`.
+Options: `--project`, `--agent`, `--summary`, `--reason`, `--pr`, `--verify`, `--issues <json>`, `--waiting-for <ids>` (comma-separated), `--server` (default `$AITRACK_SERVER` or `http://127.0.0.1:4317`), `--inbox` (default `<repo root>/.aitrack/inbox`), `--no-http`.
 
 ### 3. Inbox file
 

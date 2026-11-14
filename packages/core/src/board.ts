@@ -18,6 +18,8 @@ export type BoardStatus = "waiting" | "ready" | Exclude<RuntimeStatus, "idle">;
 
 export type Reason =
   | { kind: "dependency"; task: string; status: BoardStatus }
+  /** The chat stopped until these tasks are done; it gets the task back then. */
+  | { kind: "waiting_for"; tasks: string[] }
   | { kind: "agent_busy"; agent: string; tasks: string[] }
   | { kind: "blocked"; reason: string }
   | { kind: "failed"; reason: string }
@@ -34,6 +36,9 @@ export interface TaskRuntime {
   verify?: string;
   /** Problems from the latest report that listed any; cleared when the task is sent, done without problems, approved or reopened. */
   issues: TaskIssue[];
+  /** Blocked until these tasks are done (from the chat's report), and since when. */
+  waitingFor?: string[];
+  waitingSince?: string;
   lastMessage?: string;
   updatedAt?: string;
   startedAt?: string;
@@ -53,6 +58,11 @@ export interface TaskView {
   candidates: string[];
   /** Why the task is not dispatchable, or why it is stuck. */
   reasons: Reason[];
+  /**
+   * The chat stopped this task until other tasks were done, and they are done now: the task goes
+   * back to the same chat, before its other work.
+   */
+  resumes?: string[];
   layer: number;
   /** Longest chain of work (estimated days) starting at this task. Higher means more urgent. */
   chain: number;
@@ -139,6 +149,13 @@ export function reduceEvents(tasks: Task[], events: TrackEvent[], requireApprova
     if (e.verify) r.verify = e.verify;
     if (e.issues) r.issues = e.issues;
     else if (e.type === "dispatched" || e.type === "done" || e.type === "approved" || e.type === "reopened") r.issues = [];
+    if (e.type === "blocked" && e.waitingFor?.length) {
+      r.waitingFor = e.waitingFor.filter((id) => id !== e.task);
+      r.waitingSince = e.ts;
+    } else if (e.type !== "note") {
+      r.waitingFor = undefined;
+      r.waitingSince = undefined;
+    }
   }
   return runtime;
 }
@@ -148,11 +165,26 @@ export function computeBoard(project: ProjectFile, events: TrackEvent[]): Board 
   const runtime = reduceEvents(project.tasks, events, project.settings.requireApproval);
   const agentsById = new Map(project.agents.map((a) => [a.id, a]));
 
-  // How many tasks each chat holds.
+  /**
+   * A task the chat stopped until other tasks are done: "waiting" while any of them is not done,
+   * "resume" once all are done after the chat stopped, or null — no such wait, or the tasks were
+   * already done when it stopped (then the chat needs the person, not those tasks).
+   */
+  const parked = (r: TaskRuntime | undefined): { state: "waiting" | "resume"; tasks: string[] } | null => {
+    if (!r || r.status !== "blocked" || !r.waitingFor?.length || !r.waitingSince) return null;
+    const tasks = r.waitingFor.filter((id) => graph.byId.has(id));
+    if (!tasks.length) return null;
+    const open = tasks.filter((id) => runtime.get(id)?.status !== "done");
+    if (open.length) return { state: "waiting", tasks: open };
+    const since = r.waitingSince;
+    return tasks.every((id) => (runtime.get(id)?.finishedAt ?? "") >= since) ? { state: "resume", tasks } : null;
+  };
+
+  // How many tasks each chat holds. A task waiting for others keeps its chat; one ready to go back does not.
   const holding = new Map<string, string[]>(project.agents.map((a) => [a.id, []]));
   for (const t of project.tasks) {
     const r = runtime.get(t.id);
-    if (r && HOLDING.includes(r.status)) {
+    if (r && HOLDING.includes(r.status) && parked(r)?.state !== "resume") {
       const who = r.agent && holding.has(r.agent) ? r.agent : t.agent;
       holding.get(who)?.push(t.id);
     }
@@ -178,8 +210,21 @@ export function computeBoard(project: ProjectFile, events: TrackEvent[]): Board 
     if (graph.cycle && graph.cycle.includes(task.id)) {
       reasons.push({ kind: "cycle", cycle: graph.cycle });
     }
+    const wait = parked(r);
+    let resumes: string[] | undefined;
 
-    if (r.status === "idle" || r.status === "failed") {
+    if (wait?.state === "resume") {
+      // Back to the chat that stopped it, which has its context.
+      const holder = r.agent && agentsById.has(r.agent) ? r.agent : task.agent;
+      status = "ready";
+      candidates = hasRoom(holder) && !graph.cycle ? [holder] : [];
+      if (!candidates.length) reasons.push({ kind: "agent_busy", agent: holder, tasks: holding.get(holder) ?? [] });
+      dispatchable = candidates.length > 0;
+      resumes = wait.tasks;
+    } else if (wait?.state === "waiting") {
+      status = "blocked";
+      reasons.push({ kind: "waiting_for", tasks: wait.tasks });
+    } else if (r.status === "idle" || r.status === "failed") {
       if (!depsDone) {
         for (const d of deps) {
           if (runtime.get(d)?.status !== "done") reasons.push({ kind: "dependency", task: d, status: statusOf(d) });
@@ -216,12 +261,16 @@ export function computeBoard(project: ProjectFile, events: TrackEvent[]): Board 
       layer: graph.layer.get(task.id) ?? 0,
       chain: graph.chain.get(task.id) ?? 0,
       critical: graph.critical.has(task.id),
+      ...(resumes && { resumes }),
     };
   });
 
   const byId = new Map(views.map((v) => [v.task.id, v]));
+  // A task going back to its chat comes before new work, so the chat finishes what it started.
   const urgency = (a: TaskView, b: TaskView) =>
-    b.chain - a.chain || graph.order.indexOf(a.task.id) - graph.order.indexOf(b.task.id);
+    Number(Boolean(b.resumes)) - Number(Boolean(a.resumes)) ||
+    b.chain - a.chain ||
+    graph.order.indexOf(a.task.id) - graph.order.indexOf(b.task.id);
 
   const agents: AgentView[] = project.agents.map((agent) => ({
     agent,
@@ -244,7 +293,8 @@ export function computeBoard(project: ProjectFile, events: TrackEvent[]): Board 
     failed: 0,
     total: views.length,
   };
-  for (const v of views) counts[v.status] += 1;
+  // A task the chat stopped until other tasks are done counts as waiting: it needs nothing from the person.
+  for (const v of views) counts[v.reasons.some((r) => r.kind === "waiting_for") ? "waiting" : v.status] += 1;
 
   return { tasks: views, byId, agents, graph, counts };
 }

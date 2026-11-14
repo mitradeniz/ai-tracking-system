@@ -11,6 +11,7 @@ import {
   localReason,
   problemsOf,
   runnerOf,
+  shownStatus,
   type IssueChoice,
   type Model,
   type Problem,
@@ -132,7 +133,7 @@ export function QuickTask({
     <div className="mini-quick" onClick={(e) => e.stopPropagation()}>
       <div className="mini-quick-head">
         <span className="mono">{taskId}</span>
-        <span className={`pill ${snap.dispatchable ? "sendable" : s}`}>{snap.dispatchable ? t("sendable") : t(`status_${s}`)}</span>
+        <span className={`pill ${snap.dispatchable ? "sendable" : shownStatus(snap)}`}>{snap.dispatchable ? t("sendable") : t(`status_${shownStatus(snap)}`)}</span>
         <span className="grow ellipsis" title={task.title}>
           {task.title}
         </span>

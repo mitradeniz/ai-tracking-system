@@ -5,7 +5,6 @@ import { useAppearance, useApplyAppearance } from "./appearance.ts";
 import { useTracker } from "./hooks.ts";
 import { chosenLang, I18nContext, initialLang, translator, type Lang, type T } from "./i18n.ts";
 import {
-  localError,
   activeRun,
   agentName,
   buildModel,
@@ -13,10 +12,13 @@ import {
   contextPercent,
   formatDuration,
   lastContextRun,
+  localError,
   localReason,
   problemsOf,
   PROVIDER_LABEL,
   runnerOf,
+  shownStatus,
+  waitingFor,
   type Model,
 } from "./model.ts";
 import { Bang, useNow } from "./components/Info.tsx";
@@ -87,7 +89,8 @@ function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
       const holding = (av?.holding ?? []).map((id) => model.snap.get(id)).filter((s): s is TaskSnapshot => Boolean(s));
       const sendable = (av?.dispatchable ?? []).map((id) => model.snap.get(id)).filter((s): s is TaskSnapshot => Boolean(s));
       const review = board.tasks.filter((s) => s.status === "review" && (s.agent ?? model.task.get(s.id)?.agent) === a.id);
-      const blocked = holding.find((s) => s.status === "blocked");
+      const blocked = holding.find((s) => s.status === "blocked" && !waitingFor(s));
+      const parked = holding.find((s) => waitingFor(s));
       const working = holding.find((s) => s.status === "in_progress");
       const sent = holding.find((s) => s.status === "dispatched");
       const mineAll = board.tasks.filter((s) => (s.agent ?? model.task.get(s.id)?.agent) === a.id);
@@ -121,6 +124,11 @@ function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
           ? `${blocked.id} · ${model.task.get(blocked.id)?.title ?? ""}`
           : `${blocked.id}${blocked.reason ? ` · ${localReason(blocked.reason, t)}` : ""}`;
         row.focus = blocked.id;
+      } else if (parked) {
+        row.state = "sent";
+        row.label = t("status_waiting");
+        row.text = `${parked.id} · ${t("card_waitingFor", { tasks: waitingFor(parked)!.join(", ") })}`;
+        row.focus = parked.id;
       } else if (working) {
         row.state = "working";
         row.label = t("status_in_progress");
@@ -219,7 +227,7 @@ export function MiniApp() {
   const counts = {
     ready: tasks.filter((s) => s.dispatchable).length,
     active: tasks.filter((s) => s.status === "in_progress" || s.status === "dispatched").length,
-    blocked: tasks.filter((s) => s.status === "blocked" || s.status === "failed").length,
+    blocked: tasks.filter((s) => (s.status === "blocked" && !waitingFor(s)) || s.status === "failed").length,
     review: tasks.filter((s) => s.status === "review").length,
   };
 
@@ -336,7 +344,11 @@ export function MiniApp() {
   const needsYou = tasks
     .filter(
       (s) =>
-        s.dispatchable || s.status === "review" || s.status === "blocked" || s.status === "failed" || (model ? problemsOf(model, s, t).length > 0 : false),
+        s.dispatchable ||
+        s.status === "review" ||
+        (s.status === "blocked" && !waitingFor(s)) ||
+        s.status === "failed" ||
+        (model ? problemsOf(model, s, t).length > 0 : false),
     )
     .sort((a, b) => Number(b.dispatchable) - Number(a.dispatchable) || b.chain - a.chain);
   const active = tasks.filter((s) => s.status === "in_progress" || s.status === "dispatched");
@@ -499,13 +511,13 @@ export function MiniApp() {
                           {t("approve")}
                         </button>
                       ) : (
-                        <span className={`pill ${s.status}`}>{t(`status_${s.status}`)}</span>
+                        <span className={`pill ${shownStatus(s)}`}>{t(`status_${shownStatus(s)}`)}</span>
                       ),
                     ),
                   )}
                 {settings.sections.active &&
                   section(t("sec_active"), active, (s) =>
-                    taskLine("active")(s, <span className={`pill ${s.status}`}>{t(`status_${s.status}`)}</span>),
+                    taskLine("active")(s, <span className={`pill ${shownStatus(s)}`}>{t(`status_${shownStatus(s)}`)}</span>),
                   )}
                 {settings.sections.done && section(t("sec_done"), done, (s) => taskLine("done")(s))}
               </>

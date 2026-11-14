@@ -3,7 +3,7 @@ import { splitReport } from "../src/components/Markdown.tsx";
 import type { TaskSnapshot } from "@aitrack/core";
 import type { RunSummary } from "../src/api.ts";
 import { translator } from "../src/i18n.ts";
-import { explainStep, permissionRules, problemsOf, type Model } from "../src/model.ts";
+import { cardNote, explainStep, permissionRules, problemsOf, shownStatus, type Model } from "../src/model.ts";
 import { choiceReply, continueAfterAllow } from "../src/problemActions.ts";
 
 describe("permission rules", () => {
@@ -36,7 +36,7 @@ describe("refused steps and decisions", () => {
   const t = translator("en");
   const model = (runs: Partial<RunSummary>[] = []) =>
     ({ task: new Map([["T1", { id: "T1", title: "One" }]]), runners: { runs } }) as unknown as Model;
-  const snap = (extra: Partial<TaskSnapshot>) => ({ id: "T1", status: "blocked", ...extra }) as TaskSnapshot;
+  const snap = (extra: Partial<TaskSnapshot>) => ({ id: "T1", status: "blocked", reasons: [], ...extra }) as TaskSnapshot;
 
   it("says what each refused step does and how risky it is", () => {
     expect(explainStep("Bash sysctl -n hw.model")).toMatchObject({ what: "system", risk: "read", rules: ["Bash(sysctl:*)"] });
@@ -83,6 +83,16 @@ describe("refused steps and decisions", () => {
     expect(onlyQuestion.map((p) => p.title)).toEqual([t("issue_blocked")]);
     const onlyRefused = problemsOf(model(), snap({ reason: "Docker is not running.", issues: [{ title: "Permission denied: Bash docker info" }] }), t);
     expect(onlyRefused.map((p) => p.title)).toEqual([t("issue_blocked"), t("issue_refusedOne")]);
+  });
+
+  it("shows a task that waits for another one as waiting, without a problem", () => {
+    const parked = snap({ reason: "Needs CLD-01 merged", reasons: [{ kind: "waiting_for", tasks: ["CLD-01"] }] });
+    expect(shownStatus(parked)).toBe("waiting");
+    expect(problemsOf(model(), parked, t)).toEqual([]);
+    expect(cardNote(model(), parked, t)).toBe(t("card_waitingFor", { tasks: "CLD-01" }));
+    const back = snap({ status: "ready", reasons: [], resumes: ["CLD-01"] });
+    expect(cardNote(model(), back, t)).toBe(t("card_resumes", { tasks: "CLD-01" }));
+    expect(shownStatus(snap({ reason: "Which repo?", reasons: [{ kind: "blocked", reason: "Which repo?" }] }))).toBe("blocked");
   });
 
   it("tells the chat what was allowed and what the person picked", () => {

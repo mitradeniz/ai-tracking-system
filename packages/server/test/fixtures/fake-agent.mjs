@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // A stand-in for the agent CLIs in tests. FAKE_FORMAT picks the output format (codex, claude,
-// gemini, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep).
+// gemini, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done).
 import { appendFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -54,6 +54,8 @@ const final =
     ? "Here is the project file.\n```json\n" + JSON.stringify(plan, null, 2) + "\n```\nT-01 can start right away."
     : scenario === "issues"
     ? "Done, with two open points.\n```aitrack-report\n" + JSON.stringify({ task, status: "done", summary: english ? "Payment form and API added" : "Ödeme formu ve API eklendi", issues }) + "\n```"
+    : scenario === "wait"
+    ? "I need T1 merged first.\n```aitrack-report\n" + JSON.stringify({ task, status: "blocked", reason: "Needs T1 merged", waitingFor: [process.env.FAKE_WAIT ?? "T1"] }) + "\n```"
     : scenario === "done" || scenario === "steps"
     ? "All done.\n```aitrack-report\n" + JSON.stringify({ task, status: "done", summary: "fake work", verify: "npm test" }) + "\n```"
     : "Here is my plan. Shall I go ahead?";

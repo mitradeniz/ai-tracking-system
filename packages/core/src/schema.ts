@@ -145,6 +145,11 @@ export const EventSchema = z.object({
   pr: z.string().max(2000).optional(),
   verify: z.string().max(20000).optional(),
   issues: z.array(TaskIssueSchema).max(30).optional().describe("Problems the chat reported; an empty list clears them."),
+  waitingFor: z
+    .array(z.string().min(1).max(80))
+    .max(20)
+    .optional()
+    .describe("With status blocked: tasks of the plan the chat waits for. The task goes back to the same chat when they are done."),
   source: z.enum(EVENT_SOURCES).default("ui"),
 });
 
@@ -181,6 +186,13 @@ function cleanReport(value: unknown): unknown {
   const drop = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== null));
   const out = drop(value as Record<string, unknown>);
   if (typeof out.status === "string") out.status = out.status.trim().toLowerCase();
+  // "waitingFor": "T-01" or ["T-01", …]; anything else is dropped.
+  if (typeof out.waitingFor === "string") out.waitingFor = [out.waitingFor];
+  if (Array.isArray(out.waitingFor)) {
+    const ids = [...new Set(out.waitingFor.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean))];
+    if (ids.length) out.waitingFor = ids.slice(0, 20);
+    else delete out.waitingFor;
+  } else if (out.waitingFor !== undefined) delete out.waitingFor;
   if (Array.isArray(out.issues)) {
     out.issues = out.issues
       .filter((i): i is Record<string, unknown> => Boolean(i) && typeof i === "object" && !Array.isArray(i))
@@ -213,6 +225,11 @@ export const ReportSchema = z.preprocess(cleanReport, z.object({
   pr: z.string().max(2000).optional(),
   verify: z.string().max(20000).optional(),
   issues: z.array(TaskIssueSchema).max(30).optional(),
+  waitingFor: z
+    .array(z.string().min(1).max(80))
+    .max(20)
+    .optional()
+    .describe("With status blocked: tasks of the plan the chat waits for. The task goes back to the same chat when they are done."),
 }));
 
 export type Agent = z.infer<typeof AgentSchema>;

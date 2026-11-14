@@ -139,6 +139,33 @@ describe("board", () => {
     expect(b.counts.ready).toBe(2);
     expect(b.counts.waiting).toBe(2);
   });
+
+  it("parks a task the chat stopped until another task is done, and gives it back to the same chat first", () => {
+    const p = project();
+    // T3 (chat b) waits for T1, which chat a is doing.
+    const parked = [ev("T1", "dispatched", { agent: "a" }), ev("T3", "dispatched", { agent: "b" }), ev("T3", "blocked", { reason: "Needs T1 merged", waitingFor: ["T1", "T3", "NOPE"] })];
+    let b = computeBoard(p, parked);
+    const t3 = b.byId.get("T3")!;
+    expect(t3.status).toBe("blocked");
+    expect(t3.reasons).toEqual([{ kind: "waiting_for", tasks: ["T1"] }]);
+    expect(b.agents.find((x) => x.agent.id === "b")!.holding).toEqual(["T3"]);
+
+    // T1 done: T3 is ready again, only for chat b, and comes before b's other work.
+    const resumed = [...parked, ev("T1", "done", { message: "Merged" })];
+    b = computeBoard(p, resumed);
+    const back = b.byId.get("T3")!;
+    expect(back).toMatchObject({ status: "ready", dispatchable: true, candidates: ["b"], resumes: ["T1"] });
+    expect(b.agents.find((x) => x.agent.id === "b")!.dispatchable[0]).toBe("T3");
+    expect(computeBoard(p, [...resumed, ev("T3", "dispatched", { agent: "b" })]).byId.get("T3")!.resumes).toBeUndefined();
+
+    // Waiting for a task that was already done when the chat stopped: that needs the person.
+    const stale = [ev("T1", "done"), ev("T3", "dispatched", { agent: "b" }), ev("T3", "blocked", { reason: "T1 is not merged", waitingFor: ["T1"] })];
+    expect(computeBoard(p, stale).byId.get("T3")!.reasons).toEqual([{ kind: "blocked", reason: "T1 is not merged" }]);
+
+    // A later report without a wait ends it.
+    const answered = [...parked, ev("T3", "started")];
+    expect(computeBoard(p, answered).byId.get("T3")!.status).toBe("in_progress");
+  });
 });
 
 describe("prompts", () => {
@@ -190,6 +217,16 @@ describe("reports", () => {
     const inline = 'Summary first. {"task":"T1","status":"review","summary":"ok"} and {"other":1}';
     expect(parseReports(inline).reports).toEqual([{ task: "T1", status: "review", summary: "ok" }]);
     expect(parseReports("Not a report at all.").reports).toEqual([]);
+  });
+
+  it("reads the tasks a chat waits for, given as a list or one id", () => {
+    const one = parseReports('{"task":"T3","status":"blocked","reason":"needs T1","waitingFor":"T1"}').reports[0]!;
+    expect(one.waitingFor).toEqual(["T1"]);
+    expect(reportToEvent(one, "paste").waitingFor).toEqual(["T1"]);
+    const list = parseReports('{"task":"T3","status":"blocked","waitingFor":["T1"," T2 ","T1",3,null]}').reports[0]!;
+    expect(list.waitingFor).toEqual(["T1", "T2"]);
+    const done = parseReports('{"task":"T3","status":"done","waitingFor":["T1"]}').reports[0]!;
+    expect(reportToEvent(done, "paste").waitingFor).toBeUndefined();
   });
 
   it("keeps the options a chat offers for a decision, and drops broken ones", () => {
