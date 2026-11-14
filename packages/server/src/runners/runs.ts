@@ -8,7 +8,7 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 import { limitReason, parseLimitReason, parseReports, renderBootstrapPrompt, renderTaskPrompt, type Report, type TaskIssue } from "@aitrack/core";
 import { HttpError, type ProjectManager } from "../manager.ts";
-import { agentPath, claudeHasAutoMode, which } from "./env.ts";
+import { agentPath, claudeHasAutoMode, resolveBinary, which } from "./env.ts";
 import { hookSnippets, type HookSignal } from "./hooks.ts";
 import { codexRecordedReset, usageLimit, type UsageLimit } from "./limits.ts";
 import { buildInvocation, OutputParser, PROVIDER_INFO, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
@@ -538,7 +538,7 @@ export class RunManager extends EventEmitter {
       throw new HttpError(400, (e as Error).message);
     }
     const envPath = await agentPath();
-    const binary = which(invocation.command, envPath);
+    const binary = await resolveBinary(provider, invocation.command, runner.binary, envPath);
     if (!binary) {
       const name = PROVIDER_INFO[provider].name;
       throw new HttpError(400, `${name} was not found (${invocation.command}). Install it, sign in once in a terminal, or set the program path in the chat's run settings.`);

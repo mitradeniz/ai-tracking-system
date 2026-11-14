@@ -31,9 +31,15 @@ const TOOL_LABEL: Record<string, string> = {
   cursor: "Cursor",
   other: "Chat",
 };
-export const GENERATORS = ["claude", "codex", "gemini", "copilot"] as const;
+export const GENERATORS = ["claude", "codex", "gemini", "copilot", "cursor"] as const;
 type Generator = (typeof GENERATORS)[number];
-export const CLI_NAME: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI", copilot: "Copilot CLI" };
+export const CLI_NAME: Record<string, string> = {
+  claude: "Claude Code",
+  codex: "Codex CLI",
+  gemini: "Gemini CLI",
+  copilot: "Copilot CLI",
+  cursor: "Cursor CLI",
+};
 
 interface ChatDraft extends AuthoringChat {
   key: string;
@@ -145,7 +151,7 @@ export function NewProjectWizard({
   // Suggested chats: one for each AI CLI found on this computer (Claude Code and Codex first).
   useEffect(() => {
     if (!providers || chatsTouched) return;
-    const order = ["claude", "codex", "copilot", "gemini"].filter((p) => installed.has(p));
+    const order = ["claude", "codex", "copilot", "gemini", "cursor"].filter((p) => installed.has(p));
     const picked = order.filter((p) => p === "claude" || p === "codex");
     const tools = picked.length ? picked : order.slice(0, 1);
     const list: ChatDraft[] = [];
@@ -336,7 +342,7 @@ export function NewProjectWizard({
           {providers === null ? (
             <span className="small muted">{t("np_lookingForCli")}</span>
           ) : (
-            ["claude", "codex", "copilot", "gemini"].map((p) => {
+            ["claude", "codex", "copilot", "gemini", "cursor"].map((p) => {
               const found = (providers ?? []).find((x) => x.id === p && x.path);
               return (
                 <span key={p} className={`badge ${found ? "found" : "missing"}`} title={found?.path ?? t("np_cliMissing")}>

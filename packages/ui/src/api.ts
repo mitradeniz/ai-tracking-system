@@ -30,7 +30,7 @@ export interface AgentPayload {
   bootstrapPrompts?: string[];
 }
 
-export type ProviderId = "codex" | "claude" | "copilot" | "gemini" | "custom";
+export type ProviderId = "codex" | "claude" | "copilot" | "gemini" | "cursor" | "custom";
 export type RunnerProvider = ProviderId | "manual";
 
 /** How a chat is run on this computer. Kept by the local tracker, never in the project file. */
@@ -87,7 +87,7 @@ export interface RunSummary {
   denials?: string[];
 }
 
-export type ManagerProvider = "claude" | "codex" | "gemini" | "copilot";
+export type ManagerProvider = "claude" | "codex" | "gemini" | "copilot" | "cursor";
 
 /** A CLI that takes the decisions while the person is away. */
 export interface ManagerSettings {
@@ -150,7 +150,7 @@ export interface RunnerState {
     until: string;
     known: boolean;
     /** Where the time comes from: the CLI's message or records, or the plan's window, day, week or month. */
-    basis: "message" | "codex" | "window" | "day" | "month" | "week" | "rate";
+    basis: "message" | "codex" | "window" | "day" | "month" | "week" | "cycle" | "rate";
     message: string;
   }>;
   defaultWorkdir: string;
@@ -264,7 +264,7 @@ export interface AuthoringCheck {
 
 export interface GenerateJob {
   id: string;
-  provider: "claude" | "codex" | "gemini" | "copilot";
+  provider: "claude" | "codex" | "gemini" | "copilot" | "cursor";
   state: "running" | "done" | "failed" | "stopped";
   startedAt: string;
   endedAt?: string;

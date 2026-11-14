@@ -9,7 +9,7 @@ export interface UsageLimit {
   /** True when the CLI said when it resets (in its message or its own records); false when it comes from the plan's windows. */
   known: boolean;
   /** Where the time comes from, for the person: "message", "codex", "window", "day", "month", "week", "rate". */
-  basis: "message" | "codex" | "window" | "day" | "month" | "week" | "rate";
+  basis: "message" | "codex" | "window" | "day" | "month" | "week" | "cycle" | "rate";
   message: string;
 }
 
@@ -107,6 +107,17 @@ export function resetTime(text: string, now = Date.now()): number | null {
     const at = Date.parse(m[1]!);
     if (Number.isFinite(at) && at > now) return at;
   }
+  // A day: "resets on Dec 1", "renews on December 1, 2026", "until 12/1/2026" (month first).
+  const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+  m = /(?:resets?|renews?|until|cycle ends|ends)\s+(?:on\s+)?(?:(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?|(\d{1,2})\/(\d{1,2})\/(\d{4}))(?![:\d])/i.exec(text);
+  if (m) {
+    const month = m[1] ? MONTHS.indexOf(m[1].toLowerCase()) : Number(m[4]) - 1;
+    const day = Number(m[2] ?? m[5]);
+    const year = Number(m[3] ?? m[6] ?? new Date(now).getFullYear());
+    let at = new Date(year, month, day).getTime();
+    if (!m[3] && !m[6] && at <= now) at = new Date(year + 1, month, day).getTime();
+    if (Number.isFinite(at) && at > now && month >= 0 && day >= 1 && day <= 31) return at;
+  }
   // "try again in 2 hours 13 minutes", "resets in 4h 30m", "retry in 34.5s".
   m = /(?:again|retry|resets?|reset|available|wait)\s+in\s+((?:\d+(?:\.\d+)?\s*(?:days?|d|hours?|hrs?|hr|h|minutes?|mins?|min|m|seconds?|secs?|sec|s)\b[\s,]*(?:and\s+)?)+)/i.exec(text);
   if (m) {
@@ -168,6 +179,10 @@ export function usageLimit(text: string, now = Date.now(), ctx: LimitContext = {
     return { until: nextMidnight(provider === "gemini" ? "America/Los_Angeles" : undefined, now) + 60_000, known: false, basis: "day", message };
   }
   if (/weekly|this week/i.test(text)) return { until: now + 24 * 3_600_000, known: false, basis: "week", message };
+  // Cursor counts usage per billing cycle, which starts on the day the plan did: it looks again a day later.
+  if (provider === "cursor" && /usage|limit|plan|billing|cycle|included/i.test(text)) {
+    return { until: now + 24 * 3_600_000, known: false, basis: "cycle", message };
+  }
   // A rate limit without a plan's words passes in a minute or two, the first time.
   const plan = /usage|hour|session|plan|quota|opus|sonnet|limit reached|hit your/i.test(text);
   if (!plan && !ctx.again) return { until: now + RATE_MS, known: false, basis: "rate", message };

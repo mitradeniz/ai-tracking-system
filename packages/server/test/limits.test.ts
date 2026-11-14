@@ -57,6 +57,16 @@ describe("usage limits", () => {
     });
   });
 
+  it("handles Cursor's billing cycle: the date when it is given, else a look a day later", () => {
+    expect(resetTime("You've hit your usage limit. Your included usage resets on Dec 1.", NOW)).toBe(new Date(2026, 11, 1).getTime());
+    expect(resetTime("Usage limit reached until 12/1/2026", NOW)).toBe(new Date(2026, 11, 1).getTime());
+    expect(usageLimit("You've hit your usage limit for this billing cycle.", NOW, { provider: "cursor" })).toMatchObject({
+      known: false,
+      basis: "cycle",
+      until: NOW + 24 * 3_600_000,
+    });
+  });
+
   it("reads the reset time from Codex's session records", () => {
     const lines = [
       JSON.stringify({ timestamp: "2026-11-14T09:00:00Z", type: "event_msg", payload: { type: "token_count", rate_limits: { primary: { used_percent: 40, window_minutes: 300, resets_in_seconds: 100 } } } }),

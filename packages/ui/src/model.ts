@@ -55,6 +55,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
   claude: "Claude Code",
   copilot: "Copilot",
   gemini: "Gemini",
+  cursor: "Cursor",
   custom: "CLI",
   manual: "",
 };
@@ -88,6 +89,7 @@ export const INSTALL: Record<string, { install: string; login: string }> = {
   codex: { install: "npm install -g @openai/codex", login: "codex login" },
   copilot: { install: "npm install -g @github/copilot", login: "copilot" },
   gemini: { install: "npm install -g @google/gemini-cli", login: "gemini" },
+  cursor: { install: "curl https://cursor.com/install -fsS | bash", login: "cursor-agent login" },
 };
 
 /** Errors the tracker explains in English, shown in the UI language. */

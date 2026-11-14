@@ -69,7 +69,7 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 | 🆕 **Yeni proje sihirbazı** | Klasörü, sohbetleri (bilgisayarındaki yapay zekâ CLI'larından önerilir) ve nasıl planlanacağını seç: Claude Code ya da Codex planından görevleri yazsın, başka bir yapay zekâ kopyala-yapıştırla yazsın ya da boş başla. JSON yazmak yok. |
 | ✏️ **Plan düzenleyici** | Görevleri ve promptları uygulamada ekle, değiştir, kaldır: görevi hangi sohbetin alacağı, neyi beklediği, talimatı, izinli yolları ve kabul kriteri. |
 | 🟢 **Sırada ne olduğunu bilen pano** | Görevler, bağlı oldukları işler bitince ve sohbetlerinde yer varken açılır. *Şimdi gönderilebilir* yeşil olanları tek bakışta gösterir; diğer her görev neden beklediğini söyler. |
-| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
+| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
 | ⚡ **Otomatik dağıtım** | Tek anahtar: boştaki sohbetler, en acil hazır görevlerini yeşile döner dönmez alır; aynı anda en fazla *N* tane. |
 | 🌙 **Yönetici** | Uyumaya mı gidiyorsun? Projeyi seçtiğin bir yapay zekâ CLI'ına devret: bekleyen sohbetlere yanıt verir, seçenek seçer, başka görevi bekleyenleri beklemeye alır, başarısız olanları yeniden gönderir, sonraya bırakılan işleri plana ekler. Ödeme, hesap, yasal şartlar, yayınlama ve riskli adımlar sende kalır; ne yaptığı ve sana ne bıraktığı listelenir. Çalışırken kayan pencere gibi bütün uygulamaların üstünde küçük bir göz süzülür: istediğin yere sürükle, tıkla, modellerin ne yaptığını, projenin yüzde kaçta olduğunu, neyin bozulduğunu ve son gelişmeleri aşağıya yansıtsın. |
 | 📋 **Önerilen görevler** | Sohbetin sonraya bıraktığı iş — değiştirilecek bir yer tutucu, eklenecek bir kontrol — sana soru olarak değil önerilen görev olarak gelir: plana ekle, yoksay ya da hepsini bir CLI'ın mevcut plana yerleştirmesine bırak; hiçbir şey yazılmadan önce önizlenir. |
@@ -654,7 +654,7 @@ Daha fazlası [SECURITY.md](SECURITY.md) içinde.
 <details>
 <summary><b>Benim yerime Claude'la ya da Codex'le konuşuyor mu?</b></summary>
 
-İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmi CLI'ı üzerinden — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle yürüttüğün sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
+İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmi CLI'ı üzerinden — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle yürüttüğün sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
 
 </details>
 

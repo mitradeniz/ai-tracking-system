@@ -69,7 +69,7 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 | 🆕 **New project wizard** | Pick the folder, the chats (suggested from the AI CLIs on your computer) and how to plan: Claude Code or Codex writes the tasks from your plan, any other AI does it by copy and paste, or you start empty. No JSON to write. |
 | ✏️ **Plan editor** | Add, change and remove tasks and prompts in the app: which chat takes a task, what it waits for, its instructions, allowed paths and acceptance criteria. |
 | 🟢 **A board that knows what's next** | Tasks unlock when their dependencies are done and their chat has room. *Ready to send* shows the green ones at a glance; every other task says why it is waiting. |
-| 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or any command run the task in their own session, in your repository. Output streams in live; you reply, approve and stop from the app or the floating window. |
+| 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI or any command run the task in their own session, in your repository. Output streams in live; you reply, approve and stop from the app or the floating window. |
 | ⚡ **Auto-dispatch** | One switch: free chats pick up their most urgent ready task, up to *N* at once, as soon as it turns green. |
 | 🌙 **Manager** | Going to bed? Hand the project to an AI CLI you choose: it answers waiting chats, picks options, parks tasks that wait for others, sends failed ones again and adds work left for later to the plan. Payments, accounts, legal terms, publishing and risky steps stay with you; what it did and what it left for you is listed. While it runs, a small eye floats above all your apps, like the floating window: drag it anywhere, click it and it projects what each model is doing, how far the project is, what broke and the latest news. |
 | 📋 **Proposed tasks** | Work a chat left for later — a placeholder to replace, a check to add — becomes a proposed task instead of a question for you: add it to the plan, ignore it, or let a CLI fold them all into the current plan, previewed before anything is written. |
@@ -654,7 +654,7 @@ More in [SECURITY.md](SECURITY.md).
 <details>
 <summary><b>Does it talk to Claude or Codex for me?</b></summary>
 
-Yes, if you want. A chat set to run by itself is started through its official CLI — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or your own command — with your sign-in; the session continues across tasks and you can reply from the app. Chats you run by hand keep working with copy and paste, and can report through hooks. See [docs/agent-runners.md](docs/agent-runners.md).
+Yes, if you want. A chat set to run by itself is started through its official CLI — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI or your own command — with your sign-in; the session continues across tasks and you can reply from the app. Chats you run by hand keep working with copy and paste, and can report through hooks. See [docs/agent-runners.md](docs/agent-runners.md).
 
 </details>
 

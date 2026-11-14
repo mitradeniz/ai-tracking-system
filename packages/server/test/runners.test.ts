@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProjectFileSchema, serializeProject } from "@aitrack/core";
 import { startServer, type RunningServer } from "../src/index.ts";
-import { clearAutoModeCache, helpHasAutoMode, parseCodexModels, parseCopilotModels } from "../src/runners/env.ts";
+import { clearAutoModeCache, helpHasAutoMode, parseCodexModels, parseCopilotModels, parseCursorModels } from "../src/runners/env.ts";
 import { claudeMemoryDir } from "../src/runners/runs.ts";
 import { normalizeHook } from "../src/runners/hooks.ts";
 import { normalizeRunner, RunnerStore } from "../src/runners/store.ts";
@@ -619,7 +619,52 @@ describe("provider adapters", () => {
     expect(gemini.args).toEqual(["-p", "P", "-o", "stream-json", "--skip-trust", "--session-id", "u", "--approval-mode", "plan", "-m", "m1"]);
     const copilot = buildInvocation({ runner: { ...base, provider: "copilot", access: "edit", allowedTools: "shell(git:*)" }, prompt: "P", cwd: "/w", resume: "s", newSessionId: "u" });
     expect(copilot.args).toEqual(["-p", "P", "-s", "--no-color", "--no-ask-user", "--session-id", "s", "--allow-tool", "write", "--allow-tool", "shell(git:*)", "--model", "m1"]);
+    const cursor = buildInvocation({ runner: { ...base, provider: "cursor", access: "edit" }, prompt: "P", cwd: "/w", resume: "c1", newSessionId: "u" });
+    expect(cursor.args).toEqual(["-p", "--output-format", "stream-json", "--trust", "--workspace", "/w", "--resume=c1", "--force", "--sandbox", "enabled", "--model", "m1", "P"]);
+    expect(cursor).toMatchObject({ command: "cursor-agent", format: "cursor" });
+    expect(cursor.sessionId).toBeUndefined();
+    const ask = buildInvocation({ runner: { ...base, provider: "cursor", access: "readonly", model: "auto" }, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(ask.args).toEqual(["-p", "--output-format", "stream-json", "--trust", "--workspace", "/w", "--mode", "ask", "P"]);
     expect(() => buildInvocation({ runner: { ...base, provider: "manual" }, prompt: "P", cwd: "/w", newSessionId: "u" })).toThrow();
+  });
+
+  it("reads Cursor CLI's stream and its model list", () => {
+    const c = new OutputParser("cursor");
+    c.feed(JSON.stringify({ type: "system", subtype: "init", apiKeySource: "login", cwd: "/w", session_id: "chat-1", model: "GPT-5", permissionMode: "default" }));
+    const tool = c.feed(JSON.stringify({ type: "tool_call", subtype: "started", call_id: "1", tool_call: { readToolCall: { args: { path: "README.md" } } }, session_id: "chat-1" }));
+    expect(tool).toEqual([{ kind: "tool" }, { kind: "activity", text: "⚙ read README.md" }]);
+    c.feed(JSON.stringify({ type: "tool_call", subtype: "started", call_id: "2", tool_call: { writeToolCall: { args: { path: "src/a.ts", fileText: "x" } } } }));
+    c.feed(JSON.stringify({ type: "tool_call", subtype: "completed", call_id: "2", tool_call: { writeToolCall: { args: {}, result: { success: {} } } } }));
+    c.feed(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Hel" }] }, timestamp_ms: 1 }));
+    c.feed(JSON.stringify({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "Done." }] }, session_id: "chat-1" }));
+    c.feed(JSON.stringify({ type: "result", subtype: "success", is_error: false, result: "Done.", session_id: "chat-1" }));
+    expect(c.sessionId).toBe("chat-1");
+    expect(c.tools).toBe(2);
+    expect(c.usage.model).toBe("GPT-5");
+    expect(c.finalMessage()).toBe("Done.");
+    expect(c.result?.ok).toBe(true);
+    expect(parseCursorModels("Available models:\n  auto - Auto (current)\n  gpt-5 - GPT-5\n  sonnet-4.5\nTip: use --model\n").map((m) => [m.id, m.label])).toEqual([
+      ["auto", "Auto"],
+      ["gpt-5", "GPT-5"],
+      ["sonnet-4.5", "sonnet-4.5"],
+    ]);
+  });
+
+  it("runs a task with Cursor CLI and continues its chat", async () => {
+    process.env.FAKE_SCENARIO = "done";
+    await setRunner("b", { provider: "cursor", extraArgs: "--fake-format cursor" });
+    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    await waitFor("T3", "done");
+    const state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.runs[0]).toMatchObject({ provider: "cursor", state: "finished", sessionId: "cursor-chat-1", tools: 1 });
+    expect(state.settings.chats.b.sessionId).toBe("cursor-chat-1");
+    const first = (await invocations()).at(-1)!;
+    expect(first.args.slice(0, 6)).toEqual(["-p", "--output-format", "stream-json", "--trust", "--workspace", first.cwd]);
+    expect(first.args.at(-1)).toContain("TASK T3");
+    // The next message goes to the same chat.
+    await call("POST", `/api/projects/${key}/agents/b/reply`, { text: "One more thing.", task: "T3" });
+    for (let i = 0; i < 50 && !(await invocations()).some((x) => x.args.includes("--resume=cursor-chat-1")); i += 1) await new Promise((r) => setTimeout(r, 60));
+    expect((await invocations()).some((x) => x.args.includes("--resume=cursor-chat-1") && x.args.at(-1) === "One more thing.")).toBe(true);
   });
 
   it("lets Claude Code run the usual work commands when it may edit files", () => {

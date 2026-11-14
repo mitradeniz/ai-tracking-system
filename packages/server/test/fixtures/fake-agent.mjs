@@ -17,6 +17,8 @@ const format = (args.includes("--fake-format") && args[args.indexOf("--fake-form
 let scenario = process.env.FAKE_SCENARIO || "done";
 let stdin = "";
 if (!process.stdin.isTTY) for await (const c of process.stdin) stdin += c;
+// Cursor CLI takes the prompt as its last argument.
+if (format === "cursor" && !stdin) stdin = args[args.length - 1] ?? "";
 // askonce: asks when it gets the task, finishes when it gets a reply.
 if (scenario === "askonce") scenario = stdin.includes("REPORTING") ? "ask" : "done";
 // limitonce: the plan's usage limit is used up, until it is told the limit has reset (or to go on).
@@ -111,7 +113,14 @@ if (scenario === "limit") {
   }
   process.exit(1);
 }
-if (format === "codex") {
+if (format === "cursor") {
+  const sid = args.find((a) => a.startsWith("--resume="))?.slice(9) ?? "cursor-chat-1";
+  out({ type: "system", subtype: "init", apiKeySource: "login", cwd: process.cwd(), session_id: sid, model: "Auto", permissionMode: "default" });
+  out({ type: "tool_call", subtype: "started", call_id: "1", tool_call: { shellToolCall: { args: { command: "npm test" } } }, session_id: sid });
+  out({ type: "tool_call", subtype: "completed", call_id: "1", tool_call: { shellToolCall: { args: { command: "npm test" }, result: { success: {} } } }, session_id: sid });
+  out({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: final }] }, session_id: sid });
+  out({ type: "result", subtype: "success", duration_ms: 10, duration_api_ms: 10, is_error: false, result: final, session_id: sid });
+} else if (format === "codex") {
   out({ type: "thread.started", thread_id: flag("resume") ?? "thread-123" });
   out({ type: "turn.started" });
   out({ type: "item.started", item: { id: "1", type: "command_execution", command: "npm test" } });

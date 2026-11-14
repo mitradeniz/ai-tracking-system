@@ -8,7 +8,7 @@
  * The CLIs run with the user's own login. Nothing here stores or forwards credentials.
  */
 
-export const PROVIDERS = ["codex", "claude", "copilot", "gemini", "custom"] as const;
+export const PROVIDERS = ["codex", "claude", "copilot", "gemini", "cursor", "custom"] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 export type Access = "readonly" | "edit" | "full";
 export type SessionMode = "keep" | "perTask";
@@ -170,6 +170,20 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     },
     resumeHint: "gemini --resume {{sessionId}}",
   },
+  cursor: {
+    id: "cursor",
+    name: "Cursor CLI",
+    // Installed as "cursor-agent"; newer installs also call it "agent" (see cursorAgent in env.ts).
+    bin: "cursor-agent",
+    models: [{ id: "auto", label: "Auto" }],
+    efforts: [],
+    access: {
+      readonly: "--mode ask",
+      edit: "--force --sandbox enabled",
+      full: "--force --sandbox disabled",
+    },
+    resumeHint: "cursor-agent --resume={{sessionId}}",
+  },
   custom: {
     id: "custom",
     name: "Custom command",
@@ -227,10 +241,10 @@ export interface Invocation {
   args: string[];
   /** Written to the process and closed; undefined closes stdin right away. */
   stdin?: string;
-  /** Session id fixed before the run (Claude Code, Copilot, Gemini); Codex reports its own. */
+  /** Session id fixed before the run (Claude Code, Copilot, Gemini); Codex and Cursor report their own. */
   sessionId?: string;
   /** How the output is read. */
-  format: "codex" | "claude" | "gemini" | "text";
+  format: "codex" | "claude" | "gemini" | "cursor" | "text";
   /** Claude Code: the permission mode asked for. */
   permissionMode?: string;
 }
@@ -317,6 +331,18 @@ export function buildInvocation(input: BuildInput): Invocation {
       if (model) args.push("-m", model);
       args.push(...extra);
       return { command: runner.binary || "gemini", args, sessionId: resume ?? newSessionId, format: "gemini" };
+    }
+    case "cursor": {
+      // Print mode with --force applies edits; the sandbox keeps commands inside the working folder.
+      // Read only: ask mode, which answers without changing anything.
+      const args = ["-p", "--output-format", "stream-json", "--trust", "--workspace", cwd];
+      if (resume) args.push(`--resume=${resume}`);
+      if (runner.access === "readonly") args.push("--mode", "ask");
+      else args.push("--force", "--sandbox", runner.access === "edit" ? "enabled" : "disabled");
+      if (model && model !== "auto") args.push("--model", model);
+      args.push(...extra);
+      args.push(prompt);
+      return { command: runner.binary || "cursor-agent", args, format: "cursor" };
     }
     case "custom": {
       const template = runner.command?.trim();
@@ -515,6 +541,46 @@ function parseGemini(o: Record<string, unknown>): StreamEvent[] {
   return [];
 }
 
+/** Cursor CLI's stream-json: like Claude Code's, with tool calls as their own lines. */
+function parseCursor(o: Record<string, unknown>): StreamEvent[] {
+  const type = String(o.type ?? "");
+  if (type === "system" && o.subtype === "init") {
+    const out: StreamEvent[] = [];
+    if (typeof o.session_id === "string") out.push({ kind: "session", id: o.session_id });
+    if (typeof o.model === "string") out.push({ kind: "usage", usage: { model: o.model } });
+    return out;
+  }
+  if (type === "assistant") {
+    // With partial output a line carries a delta; only whole messages are kept.
+    if (typeof o.timestamp_ms === "number") return [];
+    const content = (((o.message ?? {}) as { content?: unknown[] }).content ?? []) as Record<string, unknown>[];
+    return content.filter((b) => b.type === "text" && typeof b.text === "string" && b.text.trim()).map((b) => ({ kind: "message" as const, text: String(b.text) }));
+  }
+  if (type === "tool_call" && o.subtype === "started") {
+    const call = (o.tool_call ?? {}) as Record<string, { args?: Record<string, unknown>; name?: string; arguments?: unknown }>;
+    const [kind, body] = Object.entries(call)[0] ?? ["tool", {}];
+    const a = (body?.args ?? {}) as Record<string, unknown>;
+    const name = kind.replace(/ToolCall$/, "");
+    const text =
+      kind === "readToolCall"
+        ? `read ${clip(String(a.path ?? ""), 160)}`
+        : kind === "writeToolCall" || kind === "editToolCall"
+          ? `✎ ${clip(String(a.path ?? ""), 160)}`
+          : kind === "shellToolCall"
+            ? `$ ${clip(String(a.command ?? ""), 200)}`
+            : kind === "function"
+              ? describeToolInput(String((body as { name?: string }).name ?? "tool"), a)
+              : describeToolInput(name, a);
+    return [{ kind: "tool" }, { kind: "activity", text: text.startsWith("$") || text.startsWith("✎") ? text : `⚙ ${text}` }];
+  }
+  if (type === "result") {
+    const ok = o.is_error !== true && (o.subtype === undefined || o.subtype === "success");
+    return [{ kind: "result", ok, text: typeof o.result === "string" ? o.result : undefined, error: ok ? undefined : String(o.result || o.subtype || "error") }];
+  }
+  if (type === "error") return [{ kind: "error", text: String(o.message ?? o.error ?? "error") }];
+  return [];
+}
+
 /** Reads a CLI's stdout line by line and keeps the last assistant message. */
 export class OutputParser {
   private messages: string[] = [];
@@ -550,7 +616,9 @@ export class OutputParser {
         ? parseCodex(o as Record<string, unknown>)
         : this.format === "claude"
           ? parseClaude(o as Record<string, unknown>)
-          : parseGemini(o as Record<string, unknown>);
+          : this.format === "cursor"
+            ? parseCursor(o as Record<string, unknown>)
+            : parseGemini(o as Record<string, unknown>);
     for (const e of events) {
       if (e.kind === "session") this.sessionId = e.id;
       if (e.kind === "mode") this.mode = e.mode;

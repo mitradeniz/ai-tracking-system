@@ -141,6 +141,47 @@ async function version(file: string, envPath: string): Promise<string | null> {
   return line ? line.trim().slice(0, 80) : null;
 }
 
+/**
+ * Cursor's CLI: "cursor-agent", or "agent" in newer installs. "agent" is a common name, so it
+ * counts only when its help says it is Cursor's.
+ */
+const cursorCache = new Map<string, Promise<string | null>>();
+export function cursorAgent(envPath: string): Promise<string | null> {
+  const named = which("cursor-agent", envPath);
+  if (named) return Promise.resolve(named);
+  const hit = cursorCache.get(envPath);
+  if (hit) return hit;
+  const value = (async () => {
+    const generic = which("agent", envPath);
+    if (!generic) return null;
+    const help = await output(generic, ["--help"], envPath, 8000);
+    return help && /cursor/i.test(help) ? generic : null;
+  })();
+  cursorCache.set(envPath, value);
+  return value;
+}
+
+/** The program for a CLI: the path given, else its name on PATH (for Cursor, either of its names). */
+export async function resolveBinary(provider: string, command: string, explicit: string | undefined, envPath: string): Promise<string | null> {
+  const found = which(command, envPath);
+  if (found || explicit || provider !== "cursor") return found;
+  return cursorAgent(envPath);
+}
+
+/** `cursor-agent --list-models`: one model id per line, maybe with a name after it. */
+export function parseCursorModels(text: string): ModelChoice[] {
+  const out: ModelChoice[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\x1b\[[0-9;]*m/g, "").trim();
+    const m = /^(?:[-*•]\s*)?([a-z0-9][\w.:-]*)(?:\s+(?:[-–—:]\s*)?(.+))?$/i.exec(line);
+    if (!m || /^(available|models?|usage|tip|note)\b/i.test(line) || line.endsWith(":")) continue;
+    const id = m[1]!;
+    if (out.some((x) => x.id === id)) continue;
+    out.push({ id, label: m[2] ? m[2].replace(/\(current\)|\(default\)/gi, "").trim() || id : id });
+  }
+  return out.slice(0, 60);
+}
+
 /** Whether `claude --help` lists "auto" among the permission modes. */
 export function helpHasAutoMode(help: string): boolean {
   return /--permission-mode[^(]{0,200}\(choices:[^)]*["'`]auto["'`]/.test(help);
@@ -201,6 +242,11 @@ async function modelsOf(id: ProviderId, file: string, envPath: string): Promise<
     const list = out ? parseCopilotModels(out) : [];
     return list.length ? [...fallback, ...list.filter((m) => m.id !== "auto")] : fallback;
   }
+  if (id === "cursor") {
+    const out = await output(file, ["--list-models"], envPath, 10_000);
+    const list = out ? parseCursorModels(out) : [];
+    return list.length ? [...fallback, ...list.filter((m) => m.id !== "auto")] : fallback;
+  }
   return fallback;
 }
 
@@ -212,7 +258,7 @@ export function detectProviders(force = false): Promise<DetectedProvider[]> {
     return Promise.all(
       PROVIDERS.filter((id) => PROVIDER_INFO[id].bin).map(async (id) => {
         const info = PROVIDER_INFO[id];
-        const found = which(info.bin!, envPath);
+        const found = id === "cursor" ? await cursorAgent(envPath) : which(info.bin!, envPath);
         const canRun = Boolean(found) && process.platform !== "win32";
         const [ver, models, autoMode] = await Promise.all([
           canRun ? version(found!, envPath) : Promise.resolve(null),

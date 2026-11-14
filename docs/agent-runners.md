@@ -20,17 +20,20 @@ The tracker runs the official command line tools, with **your own sign-in, plan 
 | **Claude Code** | `claude -p --output-format stream-json --verbose --permission-mode auto (--session-id <uuid> \| --resume <id>)` | standard input | session id chosen by the tracker |
 | **GitHub Copilot CLI** | `copilot -p <prompt> -s --no-color --no-ask-user --session-id <uuid> --allow-tool write` | argument | the same `--session-id` |
 | **Gemini CLI** | `gemini -p <prompt> -o stream-json --skip-trust --approval-mode auto_edit (--session-id <uuid> \| --resume <uuid>)` | argument | session id chosen by the tracker |
-| **Custom command** | anything, e.g. `cursor-agent -p --output-format text {{prompt}}` | `{{prompt}}`, or standard input | `{{sessionId}}` is a stable id per chat |
+| **Cursor CLI** | `cursor-agent -p --output-format stream-json --trust --workspace <folder> --force --sandbox enabled [--resume=<id>] <prompt>` | argument | `session_id` from the first line |
+| **Custom command** | anything, e.g. `aider --message {{prompt}}` | `{{prompt}}`, or standard input | `{{sessionId}}` is a stable id per chat |
 
-The custom command is plain text output: everything it prints is the final message, and an `aitrack-report` block in it is read like any other. It is how other agents (Cursor CLI, Aider, your own scripts) can be plugged in; the tracker does not test those tools.
+Cursor's CLI is found as `cursor-agent`, or as `agent` in newer installs when its help says it is Cursor's. Install it with `curl https://cursor.com/install -fsS | bash` and sign in once with `cursor-agent login` (or set `CURSOR_API_KEY`).
+
+The custom command is plain text output: everything it prints is the final message, and an `aitrack-report` block in it is read like any other. It is how other agents (Aider, your own scripts) can be plugged in; the tracker does not test those tools.
 
 ### Access
 
-| Access | Codex | Claude Code | Copilot | Gemini |
-| --- | --- | --- | --- | --- |
-| Read only | `-s read-only` | `--permission-mode plan` | no extra permissions | `--approval-mode plan` |
-| **Edit files** (default) | `-s workspace-write` (+ optional network) | `--permission-mode auto` (or `acceptEdits`, see below) + the usual work commands | `--allow-tool write` | `--approval-mode auto_edit` |
-| Full access | `--dangerously-bypass-approvals-and-sandbox` | `--permission-mode bypassPermissions` | `--allow-all-tools` | `--approval-mode yolo` |
+| Access | Codex | Claude Code | Copilot | Gemini | Cursor |
+| --- | --- | --- | --- | --- | --- |
+| Read only | `-s read-only` | `--permission-mode plan` | no extra permissions | `--approval-mode plan` | `--mode ask` |
+| **Edit files** (default) | `-s workspace-write` (+ optional network) | `--permission-mode auto` (or `acceptEdits`, see below) + the usual work commands | `--allow-tool write` | `--approval-mode auto_edit` | `--force --sandbox enabled` (commands in Cursor's sandbox) |
+| Full access | `--dangerously-bypass-approvals-and-sandbox` | `--permission-mode bypassPermissions` | `--allow-all-tools` | `--approval-mode yolo` | `--force --sandbox disabled` |
 
 A headless run cannot ask for permission, so anything outside its access is refused and the refusal shows up in the output and as a problem on the task.
 
@@ -100,7 +103,7 @@ When a CLI says the plan's usage limit is used up (Claude Code's 5-hour or weekl
 
 1. from the CLI's message: an epoch, "try again in 2 hours 13 minutes", "resets 3pm (Europe/Istanbul)", "resets Mon 9am", `resets_in_seconds`;
 2. for Codex, from its own session records (`~/.codex/sessions`), which keep the reset time of each window;
-3. from the plan: 5 hours after the first run of the CLI's current window (Claude Code, Codex), midnight Pacific time for Gemini's daily quota, the 1st of the month for Copilot's premium requests; a weekly limit without a time is looked at again a day later;
+3. from the plan: 5 hours after the first run of the CLI's current window (Claude Code, Codex), midnight Pacific time for Gemini's daily quota, the 1st of the month for Copilot's premium requests, the date in the message for Cursor's billing cycle ("resets on Dec 1"); a weekly limit or a Cursor cycle without a date is looked at again a day later;
 4. a bare rate limit (429) waits 2 minutes; if it comes back at once, it is treated as the plan's limit.
 
 At that time each parked task goes on with its chat — the same conversation when there is one — and automatic dispatch resumes. Limits and windows survive a restart of the app (`~/.aitrack/limits.json`). The header shows *⏳ Claude Code limit · 15:00* while one lasts, with where the time comes from; clicking it goes on now (when you know the limit is over). A manager whose own CLI hits its limit looks again when it resets. `POST /api/projects/:key/limits/retry` 🔑 with `{agent}` does the same as the click.
