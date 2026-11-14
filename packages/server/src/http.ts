@@ -528,6 +528,14 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     control(ctx);
     send(ctx.res, 200, await supervisor().setSettings(key!, await readJson(ctx.req)));
   });
+  // A CLI waits for its usage limit: go on now (the person knows it is over).
+  route("POST", "/api/projects/:key/limits/retry", async (ctx, [key]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    if (typeof body.agent !== "string") throw new HttpError(400, '"agent" is required.');
+    await runs().retryLimit(key!, body.agent);
+    send(ctx.res, 200, runs().state(key!));
+  });
   route("POST", "/api/projects/:key/manager/run", async (ctx, [key]) => {
     control(ctx);
     const run = supervisor().run(key!, "manual");

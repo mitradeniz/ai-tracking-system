@@ -290,7 +290,7 @@ export function ManagerEye({
             </div>
 
             {limits.map((l) => (
-              <div key={l.cli} className="holo-limit" style={line()} title={l.message}>
+              <div key={l.cli} className="holo-limit" style={line()} title={`${t(`limit_basis_${l.basis}` as Key)}\n${l.message}`}>
                 ⏳ {t("eye_limit", { cli: l.cli, time: untilText(Date.parse(l.until)) })}
               </div>
             ))}

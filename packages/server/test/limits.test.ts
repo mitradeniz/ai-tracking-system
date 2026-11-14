@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextClockTime, resetTime, usageLimit } from "../src/runners/limits.ts";
+import { codexRecordedReset, nextClockTime, resetTime, usageLimit } from "../src/runners/limits.ts";
 
 // 2026-11-14 10:00 UTC: 13:00 in Istanbul.
 const NOW = Date.UTC(2026, 10, 14, 10, 0, 0);
@@ -24,8 +24,51 @@ describe("usage limits", () => {
     expect(usageLimit("Credit balance is too low", NOW)).toBeNull();
     expect(usageLimit("boom: not signed in", NOW)).toBeNull();
     expect(usageLimit("Claude AI usage limit reached|1794655200", NOW)).toMatchObject({ known: true, until: 1794655200 * 1000 + 60_000 });
-    expect(usageLimit("429 Too Many Requests", NOW)).toMatchObject({ known: false, until: NOW + 5 * 60_000 });
-    expect(usageLimit("Your weekly usage limit is reached.", NOW)).toMatchObject({ known: false, until: NOW + 30 * 60_000 });
+  });
+
+  it("without a time in the message, takes it from the plan, never from trying again and again", () => {
+    // A rate limit passes in a minute or two; when it comes back right away it is the plan's limit.
+    expect(usageLimit("429 Too Many Requests", NOW)).toMatchObject({ known: false, basis: "rate", until: NOW + 2 * 60_000 });
+    expect(usageLimit("429 Too Many Requests", NOW, { again: true, windowStart: NOW - 3_600_000 })).toMatchObject({
+      basis: "window",
+      until: NOW + 4 * 3_600_000 + 60_000,
+    });
+    // The 5-hour window: 5 hours after its first run.
+    expect(usageLimit("Claude usage limit reached.", NOW, { provider: "claude", windowStart: NOW - 2 * 3_600_000 })).toMatchObject({
+      known: false,
+      basis: "window",
+      until: NOW + 3 * 3_600_000 + 60_000,
+    });
+    // Codex's own records say when.
+    expect(usageLimit("You've hit your usage limit.", NOW, { provider: "codex", recorded: NOW + 1_800_000 })).toMatchObject({
+      known: true,
+      basis: "codex",
+      until: NOW + 1_800_000 + 60_000,
+    });
+    // Gemini's daily quota: midnight Pacific (08:00 UTC the next day in November).
+    expect(usageLimit("Quota exceeded: you have exhausted your daily quota", NOW, { provider: "gemini" })).toMatchObject({
+      basis: "day",
+      until: Date.UTC(2026, 10, 15, 8, 0, 0) + 60_000,
+    });
+    // Copilot's monthly premium requests: the 1st, 00:00 UTC.
+    expect(usageLimit("You have reached your monthly limit of premium requests.", NOW, { provider: "copilot" })).toMatchObject({
+      basis: "month",
+      until: Date.UTC(2026, 11, 1) + 60_000,
+    });
+  });
+
+  it("reads the reset time from Codex's session records", () => {
+    const lines = [
+      JSON.stringify({ timestamp: "2026-11-14T09:00:00Z", type: "event_msg", payload: { type: "token_count", rate_limits: { primary: { used_percent: 40, window_minutes: 300, resets_in_seconds: 100 } } } }),
+      JSON.stringify({
+        timestamp: "2026-11-14T09:50:00Z",
+        type: "event_msg",
+        payload: { type: "token_count", rate_limits: { primary: { used_percent: 100, window_minutes: 300, resets_in_seconds: 3600 }, secondary: { used_percent: 61, resets_in_seconds: 400000 } } },
+      }),
+    ];
+    expect(codexRecordedReset(lines, NOW)).toBe(Date.UTC(2026, 10, 14, 10, 50, 0));
+    expect(codexRecordedReset([lines[0]!], NOW)).toBeNull();
+    expect(codexRecordedReset([JSON.stringify({ payload: { rate_limits: { primary: { used_percent: 100, resets_at: 1794655200 } } } })], NOW)).toBe(1794655200 * 1000);
   });
 
   it("finds the next time a clock shows an hour, in a time zone", () => {

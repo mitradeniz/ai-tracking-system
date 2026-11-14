@@ -4,11 +4,24 @@
  */
 
 export interface UsageLimit {
-  /** When to try again (ms since epoch). */
+  /** When to go on (ms since epoch). */
   until: number;
-  /** False when the message did not say when the limit resets: the wait is a guess. */
+  /** True when the CLI said when it resets (in its message or its own records); false when it comes from the plan's windows. */
   known: boolean;
+  /** Where the time comes from, for the person: "message", "codex", "window", "day", "month", "week", "rate". */
+  basis: "message" | "codex" | "window" | "day" | "month" | "week" | "rate";
   message: string;
+}
+
+/** What the tracker knows about the CLI besides its message. */
+export interface LimitContext {
+  provider?: string;
+  /** When the CLI's current 5-hour window started: the first run on it after the last reset. */
+  windowStart?: number;
+  /** The reset time the CLI wrote in its own records (Codex sessions). */
+  recorded?: number | null;
+  /** The CLI hit a limit just before too, and that wait was short. */
+  again?: boolean;
 }
 
 /** Messages that mean "your plan's limit is used up, wait". Not a full context window or a too-long prompt. */
@@ -16,9 +29,9 @@ const LIMIT =
   /usage limit|(?:5-hour|five-hour|hourly|daily|weekly|monthly|session|opus|sonnet) limit|hit your (?:usage )?limit|limit (?:has been )?reached|limit will reset|rate[ _-]?limit|quota (?:exceeded|exhausted|reached)|exceeded your (?:current )?quota|resource_exhausted|too many requests|\b429\b|usage_limit/i;
 const NOT_A_LIMIT = /context (?:window|length|limit)|token limit|prompt is too long|max_tokens|credit balance is too low/i;
 
-/** Without a reset time: a short wait for a rate limit, a longer one for a plan's limit. */
-const GUESS_RATE_MS = 5 * 60_000;
-const GUESS_PLAN_MS = 30 * 60_000;
+/** The short window of Claude Code and Codex plans. */
+const WINDOW_MS = 5 * 3_600_000;
+const RATE_MS = 2 * 60_000;
 
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"];
 
@@ -124,12 +137,69 @@ export function resetTime(text: string, now = Date.now()): number | null {
   return null;
 }
 
-/** A usage limit in a CLI's error, or null when the error is something else. */
-export function usageLimit(text: string, now = Date.now()): UsageLimit | null {
+/** Midnight after now, in a time zone (or locally). */
+function nextMidnight(tz: string | undefined, now: number): number {
+  return nextClockTime(0, 0, null, tz, now);
+}
+
+/** The first day of next month, 00:00 UTC: when monthly allowances (Copilot premium requests) reset. */
+function nextMonth(now: number): number {
+  const d = new Date(now);
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1, 0, 0, 0);
+}
+
+/**
+ * A usage limit in a CLI's error, or null when the error is something else. When the message
+ * gives no time, the time comes from what is known about the plan, never from trying again and
+ * again: the CLI's own records, its 5-hour window, the day or the month its allowance is counted in.
+ */
+export function usageLimit(text: string, now = Date.now(), ctx: LimitContext = {}): UsageLimit | null {
   if (!text || !LIMIT.test(text) || NOT_A_LIMIT.test(text)) return null;
-  const at = resetTime(text, now);
-  const plan = /usage|hour|daily|weekly|monthly|session|plan|quota|opus|sonnet/i.test(text);
   const message = text.replace(/\s+/g, " ").trim().slice(0, 400);
-  if (at && at > now) return { until: at + 60_000, known: true, message };
-  return { until: now + (plan ? GUESS_PLAN_MS : GUESS_RATE_MS), known: false, message };
+  const at = resetTime(text, now);
+  if (at && at > now) return { until: at + 60_000, known: true, basis: "message", message };
+  if (ctx.recorded && ctx.recorded > now) return { until: ctx.recorded + 60_000, known: true, basis: "codex", message };
+  const provider = ctx.provider ?? "";
+  if (/monthly|this month|premium request/i.test(text) || (provider === "copilot" && /allowance|quota|premium/i.test(text))) {
+    return { until: nextMonth(now) + 60_000, known: false, basis: "month", message };
+  }
+  // Gemini counts its free quota per day, until midnight Pacific time.
+  if (/daily|per day|today|requests per day|RPD/i.test(text) || (provider === "gemini" && /quota|exhausted/i.test(text))) {
+    return { until: nextMidnight(provider === "gemini" ? "America/Los_Angeles" : undefined, now) + 60_000, known: false, basis: "day", message };
+  }
+  if (/weekly|this week/i.test(text)) return { until: now + 24 * 3_600_000, known: false, basis: "week", message };
+  // A rate limit without a plan's words passes in a minute or two, the first time.
+  const plan = /usage|hour|session|plan|quota|opus|sonnet|limit reached|hit your/i.test(text);
+  if (!plan && !ctx.again) return { until: now + RATE_MS, known: false, basis: "rate", message };
+  // The 5-hour window of Claude Code and Codex: it resets 5 hours after its first message.
+  const start = ctx.windowStart && ctx.windowStart > now - WINDOW_MS ? ctx.windowStart : now;
+  return { until: start + WINDOW_MS + 60_000, known: false, basis: "window", message };
+}
+
+/** Codex keeps the state of its limits in its session records: the reset time of the window that is used up. */
+export function codexRecordedReset(lines: string[], now = Date.now()): number | null {
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i]!;
+    if (!line.includes("rate_limits")) continue;
+    let o: Record<string, unknown>;
+    try {
+      o = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const payload = (o.payload ?? o.msg ?? o) as Record<string, unknown>;
+    const limits = (payload.rate_limits ?? (payload.info as Record<string, unknown> | undefined)?.rate_limits) as Record<string, unknown> | undefined;
+    if (!limits) continue;
+    const at = typeof o.timestamp === "string" ? Date.parse(o.timestamp) : now;
+    const resets: number[] = [];
+    for (const w of [limits.primary, limits.secondary]) {
+      if (!w || typeof w !== "object") continue;
+      const win = w as Record<string, unknown>;
+      if (Number(win.used_percent) < 100) continue;
+      if (typeof win.resets_at === "number") resets.push(win.resets_at > 1e12 ? win.resets_at : win.resets_at * 1000);
+      else if (typeof win.resets_in_seconds === "number") resets.push((Number.isFinite(at) ? at : now) + win.resets_in_seconds * 1000);
+    }
+    return resets.length ? Math.max(...resets) : null;
+  }
+  return null;
 }

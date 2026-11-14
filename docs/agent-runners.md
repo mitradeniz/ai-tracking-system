@@ -96,7 +96,14 @@ sequenceDiagram
 
 ## Usage limits
 
-When a CLI says the plan's usage limit is used up (Claude Code's 5-hour or weekly limit, Codex's usage limit, Gemini's quota, a rate limit), the run is not counted as failed. The task is parked with the time it goes on (`Usage limit: <CLI> · until <time>`), shown as waiting, and raises no problem; automatic dispatch sends nothing to chats on that CLI, and the manager leaves them alone. The reset time is read from the CLI's message (an epoch, "try again in 2 hours 13 minutes", "resets 3pm (Europe/Istanbul)", "resets Mon 9am", `resets_in_seconds`); without one the tracker waits 5 minutes for a rate limit or 30 for a plan limit, longer each time in a row (up to 4 hours). At that time each parked task goes on with its chat — the same conversation when there is one — and automatic dispatch resumes. Limits survive a restart of the app (`~/.aitrack/limits.json`). The header shows *⏳ Claude Code limit · 15:00* while one lasts. A manager whose own CLI hits its limit looks again when it resets.
+When a CLI says the plan's usage limit is used up (Claude Code's 5-hour or weekly limit, Codex's usage limit, Gemini's quota, a rate limit), the run is not counted as failed. The task is parked with the time it goes on (`Usage limit: <CLI> · until <time>`), shown as waiting, and raises no problem; automatic dispatch sends nothing to chats on that CLI, and the manager leaves them alone. The tracker does not poll the CLI to see whether the limit is over; it works out when it resets, once:
+
+1. from the CLI's message: an epoch, "try again in 2 hours 13 minutes", "resets 3pm (Europe/Istanbul)", "resets Mon 9am", `resets_in_seconds`;
+2. for Codex, from its own session records (`~/.codex/sessions`), which keep the reset time of each window;
+3. from the plan: 5 hours after the first run of the CLI's current window (Claude Code, Codex), midnight Pacific time for Gemini's daily quota, the 1st of the month for Copilot's premium requests; a weekly limit without a time is looked at again a day later;
+4. a bare rate limit (429) waits 2 minutes; if it comes back at once, it is treated as the plan's limit.
+
+At that time each parked task goes on with its chat — the same conversation when there is one — and automatic dispatch resumes. Limits and windows survive a restart of the app (`~/.aitrack/limits.json`). The header shows *⏳ Claude Code limit · 15:00* while one lasts, with where the time comes from; clicking it goes on now (when you know the limit is over). A manager whose own CLI hits its limit looks again when it resets. `POST /api/projects/:key/limits/retry` 🔑 with `{agent}` does the same as the click.
 
 ## Auto-dispatch
 

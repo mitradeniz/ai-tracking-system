@@ -144,7 +144,15 @@ export interface RunnerState {
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
   held?: string[];
   /** Chats whose CLI waits for its usage limit to reset; their tasks go on by themselves then. */
-  limits?: Array<{ agent: string; cli: string; until: string; known: boolean; message: string }>;
+  limits?: Array<{
+    agent: string;
+    cli: string;
+    until: string;
+    known: boolean;
+    /** Where the time comes from: the CLI's message or records, or the plan's window, day, week or month. */
+    basis: "message" | "codex" | "window" | "day" | "month" | "week" | "rate";
+    message: string;
+  }>;
   defaultWorkdir: string;
   defaultWorkdirExists?: boolean;
   planFolder?: string;
@@ -483,6 +491,8 @@ export const api = {
   stopRun: (id: string) => request<RunSummary>("POST", `/api/runs/${enc(id)}/stop`, {}),
   stopAll: (key: string) => request<{ stopped: number }>("POST", `/api/projects/${enc(key)}/runs/stop`, {}),
   activeRuns: () => request<{ count: number }>("GET", "/api/runs/active").then((r) => r.count),
+  /** A CLI waits for its usage limit: go on now. */
+  retryLimit: (key: string, agent: string) => request<RunnerState>("POST", `/api/projects/${enc(key)}/limits/retry`, { agent }),
   // The manager: a CLI that answers waiting chats and keeps the plan up to date while the person is away.
   saveManager: (key: string, patch: Partial<ManagerSettings>) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager`, patch),
   runManager: (key: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/run`, {}),

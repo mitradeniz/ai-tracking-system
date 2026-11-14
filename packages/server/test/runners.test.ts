@@ -517,13 +517,15 @@ describe("agent runners", () => {
     expect(Date.parse(state.limits[0].until)).toBeGreaterThan(Date.now() + 3_500_000);
     // Not a failure, nothing for the person: automatic dispatch and the manager leave it alone.
     expect(detail.events.some((e: { task: string; type: string }) => e.task === "T3" && e.type === "failed")).toBe(false);
-    const runs = running.runs as unknown as { limitEnded(id: string): Promise<void>; isLimited(k: string, a: string): boolean };
-    expect(runs.isLimited(key, "b")).toBe(true);
-    // The limit resets: the task goes on with its chat by itself.
-    await runs.limitEnded("claude|" + FAKE);
+    expect(state.limits[0].basis).toBe("message");
+    expect(running.runs.isLimited(key, "b")).toBe(true);
+    // The limit resets (here the person says it is over): the task goes on with its chat by itself.
+    expect((await call("POST", `/api/projects/${key}/limits/retry`, { agent: "b" }, false)).status).toBe(401);
+    expect((await call("POST", `/api/projects/${key}/limits/retry`, { agent: "b" })).status).toBe(200);
     await waitFor("T3", "done");
     state = (await call("GET", `/api/projects/${key}/runners`)).json;
     expect(state.limits).toEqual([]);
+    expect((await call("POST", `/api/projects/${key}/limits/retry`, { agent: "b" })).status).toBe(409);
     const last = (await invocations()).at(-1)!;
     expect(last.stdin).toMatch(/WAS STARTED BEFORE|usage limit has reset|ALREADY WORKED ON TASK/);
   });

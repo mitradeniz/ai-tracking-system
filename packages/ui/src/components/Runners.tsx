@@ -590,9 +590,19 @@ export function AutoDispatch({
         </label>
       )}
       {limits.map((l) => (
-        <span key={l.cli} className="badge limit" title={t("limit_badgeHint", { cli: l.cli, time: untilText(Date.parse(l.until)) })}>
+        <button
+          key={l.cli}
+          className="badge limit"
+          title={[t("limit_badgeHint", { cli: l.cli, time: untilText(Date.parse(l.until)) }), t(`limit_basis_${l.basis}` as Key), l.message, t("limit_retry")].join("\n\n")}
+          onClick={() =>
+            void api
+              .retryLimit(model.detail.key, l.agent)
+              .then(() => onInfo?.(t("limit_retried")))
+              .catch((e: Error) => onError(e.message))
+          }
+        >
           ⏳ {t("limit_badge", { cli: l.cli, time: untilText(Date.parse(l.until)) })}
-        </span>
+        </button>
       ))}
       {running > 0 && (
         <span className="badge busy">

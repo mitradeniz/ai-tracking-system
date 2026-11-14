@@ -275,7 +275,7 @@ export class Supervisor extends EventEmitter {
       run.state = "failed";
       run.error = clip((e as Error).message, 1000);
       // Its own CLI hit its usage limit: look again when it resets. Otherwise later, longer each time it fails in a row.
-      const limit = usageLimit(run.error);
+      const limit = usageLimit(run.error ?? "", Date.now(), { provider: run.provider });
       const n = this.failures.get(key) ?? 0;
       this.failures.set(key, n + 1);
       this.retryAt.set(key, limit?.known ? limit.until : Date.now() + Math.max(limit ? limit.until - Date.now() : 0, this.retryMs[Math.min(n, this.retryMs.length - 1)]!));

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { createWriteStream, existsSync, realpathSync, statSync, type WriteStream } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open as openFile, readdir, readFile, writeFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -10,7 +10,7 @@ import { limitReason, parseLimitReason, parseReports, renderBootstrapPrompt, ren
 import { HttpError, type ProjectManager } from "../manager.ts";
 import { agentPath, claudeHasAutoMode, which } from "./env.ts";
 import { hookSnippets, type HookSignal } from "./hooks.ts";
-import { usageLimit } from "./limits.ts";
+import { codexRecordedReset, usageLimit, type UsageLimit } from "./limits.ts";
 import { buildInvocation, OutputParser, PROVIDER_INFO, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
 import { normalizeRunner, splitDirs, type ProjectRunners, type RunnerStore } from "./store.ts";
 
@@ -63,11 +63,46 @@ export interface CliLimit {
   id: string;
   cli: string;
   until: number;
-  /** False when the CLI did not say when it resets: the time is a guess, tried again then. */
+  /** True when the CLI said when it resets; false when the time comes from the plan's windows. */
   known: boolean;
+  basis: UsageLimit["basis"];
   message: string;
-  /** Limits hit in a row without the CLI saying when: each guess waits longer. */
-  tries: number;
+}
+
+const WINDOW_MS = 5 * 3_600_000;
+
+/** The reset time Codex wrote in the records of a session, if a window of its limit is used up. */
+async function codexReset(threadId: string | undefined): Promise<number | null> {
+  if (!threadId || !/^[\w-]{8,80}$/.test(threadId)) return null;
+  const root = path.join(process.env.CODEX_HOME || path.join(homedir(), ".codex"), "sessions");
+  const desc = async (dir: string) => (await readdir(dir).catch(() => [] as string[])).filter((n) => /^\d+$/.test(n)).sort().reverse();
+  // Sessions are kept by date: look in the most recent days only.
+  let checked = 0;
+  for (const y of await desc(root)) {
+    for (const m of await desc(path.join(root, y))) {
+      for (const d of await desc(path.join(root, y, m))) {
+        if (checked++ > 7) return null;
+        const dir = path.join(root, y, m, d);
+        const file = (await readdir(dir).catch(() => [] as string[])).find((n) => n.endsWith(`${threadId}.jsonl`));
+        if (!file) continue;
+        try {
+          const handle = await openFile(path.join(dir, file), "r");
+          try {
+            const { size } = await handle.stat();
+            const length = Math.min(size, 256 * 1024);
+            const buffer = Buffer.alloc(length);
+            await handle.read(buffer, 0, length, size - length);
+            return codexRecordedReset(buffer.toString("utf8").split("\n"));
+          } finally {
+            await handle.close();
+          }
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /** The CLI account a chat uses, for its usage limit. */
@@ -83,7 +118,7 @@ export interface RunnerState {
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
   held: string[];
   /** Chats whose CLI waits for its usage limit to reset; their tasks go on by themselves then. */
-  limits: Array<{ agent: string; cli: string; until: string; known: boolean; message: string }>;
+  limits: Array<{ agent: string; cli: string; until: string; known: boolean; basis: UsageLimit["basis"]; message: string }>;
   defaultWorkdir: string;
   /** False when the project's code folder (settings.repoPath) does not exist yet. */
   defaultWorkdirExists: boolean;
@@ -207,6 +242,10 @@ export class RunManager extends EventEmitter {
   /** CLIs waiting for their usage limit to reset, and the timers that wake their chats up. */
   private limits = new Map<string, CliLimit>();
   private limitTimers = new Map<string, NodeJS.Timeout>();
+  /** When each CLI's current 5-hour window started: its first run after the last reset. */
+  private windows = new Map<string, number>();
+  /** The last limit each CLI hit, to tell a short rate limit from a plan's limit when it comes back. */
+  private lastLimit = new Map<string, { basis: UsageLimit["basis"]; at: number }>();
 
   constructor(
     private readonly manager: ProjectManager,
@@ -254,8 +293,10 @@ export class RunManager extends EventEmitter {
     await this.persistActive();
     // Limits that were running out when the app quit: wait for the rest, or go on now.
     try {
-      const saved = JSON.parse(await readFile(this.limitsFile, "utf8")) as CliLimit[];
-      for (const l of Array.isArray(saved) ? saved : []) if (l && typeof l.id === "string" && Number.isFinite(l.until)) this.setLimit(l, false);
+      const saved = JSON.parse(await readFile(this.limitsFile, "utf8")) as CliLimit[] | { limits?: CliLimit[]; windows?: Record<string, number> };
+      const list = Array.isArray(saved) ? saved : (saved.limits ?? []);
+      if (!Array.isArray(saved)) for (const [id, at] of Object.entries(saved.windows ?? {})) if (Number.isFinite(at)) this.windows.set(id, at);
+      for (const l of list) if (l && typeof l.id === "string" && Number.isFinite(l.until)) this.setLimit({ ...l, basis: l.basis ?? "message" }, false);
     } catch {
       // No limits.
     }
@@ -275,7 +316,7 @@ export class RunManager extends EventEmitter {
       held: [...this.held].filter((h) => h.startsWith(`${key}:`)).map((h) => h.slice(key.length + 1)),
       limits: Object.entries(this.store.project(key).chats).flatMap(([agent, runner]) => {
         const l = this.limits.get(limitKeyOf(runner));
-        return l ? [{ agent, cli: l.cli, until: new Date(l.until).toISOString(), known: l.known, message: l.message }] : [];
+        return l ? [{ agent, cli: l.cli, until: new Date(l.until).toISOString(), known: l.known, basis: l.basis, message: l.message }] : [];
       }),
       defaultWorkdir: base,
       defaultWorkdirExists: isDir(base),
@@ -538,6 +579,12 @@ export class RunManager extends EventEmitter {
       priorSession: runner.sessionId,
       limitKey: limitKeyOf(runner),
     };
+    // The first run on a CLI after its window reset starts a new 5-hour window.
+    const windowStart = this.windows.get(run.limitKey);
+    if (!windowStart || Date.now() - windowStart > WINDOW_MS) {
+      this.windows.set(run.limitKey, Date.now());
+      void this.persistLimits();
+    }
     this.runs.set(id, run);
     this.trimRuns();
     this.errors.delete(`${key}:${agent}`);
@@ -729,12 +776,17 @@ export class RunManager extends EventEmitter {
         // The plan's limit is used up: not a failure. The task waits and goes on when it resets.
         run.state = "failed";
         run.error = outcome.error;
-        const hit = usageLimit(outcome.error ?? "")!;
-        const prev = this.limits.get(run.limitKey);
-        const tries = hit.known ? 0 : (prev?.tries ?? 0) + 1;
-        // Without a time from the CLI, each guess in a row waits longer (up to 4 hours).
-        const until = hit.known ? hit.until : Date.now() + Math.min((hit.until - Date.now()) * 2 ** Math.max(0, tries - 1), 4 * 3_600_000);
-        this.setLimit({ id: run.limitKey, cli: name, until, known: hit.known, message: hit.message, tries });
+        // When it resets: from the CLI's message, else its own records, else the plan's window or day. Never by trying again and again.
+        const prev = this.lastLimit.get(run.limitKey);
+        const hit = usageLimit(outcome.error ?? "", Date.now(), {
+          provider: run.provider,
+          windowStart: this.windows.get(run.limitKey),
+          recorded: run.provider === "codex" ? await codexReset(run.sessionId) : null,
+          again: Boolean(prev && prev.basis === "rate" && Date.now() - prev.at < 15 * 60_000),
+        })!;
+        const until = hit.until;
+        this.lastLimit.set(run.limitKey, { basis: hit.basis, at: Date.now() });
+        this.setLimit({ id: run.limitKey, cli: name, until, known: hit.known, basis: hit.basis, message: hit.message });
         this.append(run, `⏳ ${name}: usage limit reached; the task goes on by itself at ${new Date(until).toISOString()}`);
         await this.forgetDeadSession(run, outcome.error ?? "");
         if (status !== "done" && status !== "review") {
@@ -1049,6 +1101,8 @@ export class RunManager extends EventEmitter {
     this.limitTimers.delete(id);
     if (this.closed || !this.limits.has(id)) return;
     this.limits.delete(id);
+    // A new window starts with the next run.
+    this.windows.delete(id);
     await this.persistLimits();
     for (const key of this.manager.keys()) {
       let board;
@@ -1077,9 +1131,18 @@ export class RunManager extends EventEmitter {
     }
   }
 
+  /** The person says the limit is over (a new plan, a reset they know of): go on now. */
+  async retryLimit(key: string, agent: string): Promise<void> {
+    const id = limitKeyOf(this.store.chat(key, agent));
+    if (!this.limits.has(id)) throw new HttpError(409, "This chat's CLI does not wait for a usage limit.");
+    this.lastLimit.delete(id);
+    await this.limitEnded(id);
+  }
+
   private async persistLimits(): Promise<void> {
     try {
-      await writeFile(this.limitsFile, JSON.stringify([...this.limits.values()], null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+      const data = { limits: [...this.limits.values()], windows: Object.fromEntries(this.windows) };
+      await writeFile(this.limitsFile, JSON.stringify(data, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
     } catch {
       // Best effort.
     }

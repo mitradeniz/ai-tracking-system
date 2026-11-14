@@ -5388,6 +5388,14 @@ details.advanced[open] {
 /* A CLI that waits for its usage limit to reset. */
 .badge.limit {
   border-color: rgba(255, 209, 102, 0.5);
+  background: transparent;
   color: #e8c46a;
+  font: inherit;
+  font-size: 11px;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.badge.limit:hover {
+  background: rgba(255, 209, 102, 0.12);
 }
