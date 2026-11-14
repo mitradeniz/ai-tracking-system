@@ -104,7 +104,7 @@ beforeEach(async () => {
   process.env.FAKE_SCENARIO = "done";
   process.env.FAKE_FORMAT = "codex";
   await writeFile(file, serializeProject(project));
-  running = await startServer({ port: 0, dataDir: path.join(dir, "data"), projects: [file], watch: false, controlToken: TOKEN });
+  running = await startServer({ port: 0, dataDir: path.join(dir, "data"), projects: [file], watch: false, controlToken: TOKEN, managerDelayMs: 80 });
   key = running.manager.list()[0]!.key;
 });
 
@@ -298,14 +298,9 @@ describe("agent runners", () => {
     delete process.env.FAKE_PLAN_ANSWER;
   });
 
-  it("lets a manager CLI answer a waiting chat, keep the plan up to date and leave the rest for the person", async () => {
+  it("lets a manager CLI answer a waiting chat, keep the plan up to date and leave the rest for the person", { timeout: 20000 }, async () => {
     process.env.FAKE_FORMAT = "claude";
-    process.env.FAKE_SCENARIO = "ask";
-    await setRunner("b", { provider: "claude" });
-    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
-    await waitFor("T3", "blocked");
-
-    process.env.FAKE_SCENARIO = "done";
+    process.env.FAKE_SCENARIO = "askonce";
     process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
       actions: [
         { type: "reply", task: "T3", text: "Yes, go ahead with the plan." },
@@ -315,30 +310,66 @@ describe("agent runners", () => {
       plan: { tasks: [{ title: "Write the launch notes", agent: "a", dependsOn: ["T3"] }] },
       summary: "Answered T3.",
     });
+    const managerCalls = async () => (await invocations()).filter((i) => i.stdin.includes("You are the manager")).length;
+    const managerState = async () => (await call("GET", `/api/projects/${key}/runners`)).json.manager;
     try {
+      await setRunner("b", { provider: "claude" });
       const settings = await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "claude", binary: FAKE });
       expect(settings.status).toBe(200);
       expect(settings.json.settings).toMatchObject({ enabled: true, provider: "claude", maxRunsPerHour: 6 });
       // Turning the manager on turns automatic dispatch on.
       expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.autoDispatch).toBe(true);
       expect((await call("POST", `/api/projects/${key}/manager/run`, {}, false)).status).toBe(401);
-      await call("POST", `/api/projects/${key}/manager/run`, {});
-      let state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
-      for (let i = 0; i < 100 && (state.running || state.log[0]?.state === "running"); i += 1) {
+
+      // Auto-dispatch sends T3; its chat asks something: the manager looks by itself, once.
+      await waitFor("T3", "blocked");
+      let state = await managerState();
+      for (let i = 0; i < 150 && state.log[0]?.state !== "done"; i += 1) {
         await new Promise((r) => setTimeout(r, 60));
-        state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+        state = await managerState();
       }
       const run = state.log[0];
-      expect(run).toMatchObject({ state: "done", trigger: "manual", summary: "Answered T3.", forYou: ["Buy the domain name."] });
+      expect(run).toMatchObject({ state: "done", trigger: "auto", summary: "Answered T3.", forYou: ["Buy the domain name."] });
       expect(run.actions.map((a: { type: string; ok: boolean }) => `${a.type}:${a.ok}`)).toEqual(["reply:true", "reply:false", "leave:true", "plan:true"]);
       await waitFor("T3", "done");
-      const replied = (await invocations()).find((i) => i.stdin === "Yes, go ahead with the plan.");
-      expect(replied).toBeTruthy();
+      expect((await invocations()).some((i) => i.stdin.includes("Yes, go ahead with the plan."))).toBe(true);
       const detail = (await call("GET", `/api/projects/${key}`)).json;
       expect(detail.project.tasks.some((t: { title: string }) => t.title === "Write the launch notes")).toBe(true);
       expect(detail.events.some((e: { source: string; message?: string }) => e.source === "manager" && e.message?.startsWith("Manager: replied"))).toBe(true);
-      // Nothing waits any more: a manual run says so.
+      // What follows (the reply's run, the new task) needs no decision: no second call, no polling.
+      await new Promise((r) => setTimeout(r, 500));
+      expect(await managerCalls()).toBe(1);
       expect((await call("POST", `/api/projects/${key}/manager/run`, {})).status).toBe(409);
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
+  it("tries a failed manager run again later, not on every change", async () => {
+    await running.close();
+    running = await startServer({ port: 0, dataDir: path.join(dir, "data"), projects: [file], watch: false, controlToken: TOKEN, managerDelayMs: 50, managerRetryMs: [600] });
+    key = running.manager.list()[0]!.key;
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_MANAGER_ANSWER = "not json";
+    try {
+      await call("POST", "/api/report", { project: "demo", task: "T3", agent: "b", status: "blocked", reason: "Which colour?" });
+      await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "claude", binary: FAKE });
+      const log = async () => (await call("GET", `/api/projects/${key}/runners`)).json.manager.log as Array<{ state: string; error?: string }>;
+      let list = await log();
+      for (let i = 0; i < 100 && list[0]?.state !== "failed"; i += 1) {
+        await new Promise((r) => setTimeout(r, 30));
+        list = await log();
+      }
+      expect(list).toHaveLength(1);
+      // A change right after the failure waits for the retry.
+      await call("POST", "/api/report", { project: "demo", task: "T1", agent: "a", status: "progress", summary: "Working." });
+      await new Promise((r) => setTimeout(r, 250));
+      expect(await log()).toHaveLength(1);
+      for (let i = 0; i < 100 && list.length < 2; i += 1) {
+        await new Promise((r) => setTimeout(r, 30));
+        list = await log();
+      }
+      expect(list.length).toBe(2);
     } finally {
       delete process.env.FAKE_MANAGER_ANSWER;
     }

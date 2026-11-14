@@ -30,9 +30,10 @@ export interface StartOptions {
   watch?: boolean;
   /** Token for the endpoints that start programs; read from or created in the data folder by default. */
   controlToken?: string;
-  /** How long the manager waits after a change before it looks, and how often it looks anyway (tests). */
+  /** How long the manager waits after a change before it looks (tests use a short wait). */
   managerDelayMs?: number;
-  managerTickMs?: number;
+  /** Waits before the manager tries again after a failed run. */
+  managerRetryMs?: number[];
 }
 
 export interface RunningServer {
@@ -75,7 +76,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
   const runs = new RunManager(manager, new RunnerStore(dataDir), dataDir);
 
   const generator = new ProjectGenerator();
-  const supervisor = new Supervisor(manager, runs, generator, dataDir, { delayMs: options.managerDelayMs, tickMs: options.managerTickMs });
+  const supervisor = new Supervisor(manager, runs, generator, dataDir, { delayMs: options.managerDelayMs, retryMs: options.managerRetryMs });
   supervisor.on("warning", (e: unknown) => manager.emit("warning", e));
   const server = createHttpServer(manager, { uiDir: options.uiDir, runs, generator, controlToken, supervisor });
   const preferred = options.port ?? 4317;

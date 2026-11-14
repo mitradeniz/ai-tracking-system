@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // A stand-in for the agent CLIs in tests. FAKE_FORMAT picks the output format (codex, claude,
 // gemini, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done,
-// followups: done with work left for later). A manager or plan-integration prompt is answered with FAKE_MANAGER_ANSWER
+// followups: done with work left for later, askonce: asks first and finishes after a reply). A manager or plan-integration prompt is answered with FAKE_MANAGER_ANSWER
 // or FAKE_PLAN_ANSWER.
 import { appendFileSync } from "node:fs";
 
@@ -13,9 +13,11 @@ if (args.includes("--help")) {
   process.exit(0);
 }
 const format = (args.includes("--fake-format") && args[args.indexOf("--fake-format") + 1]) || process.env.FAKE_FORMAT || "codex";
-const scenario = process.env.FAKE_SCENARIO || "done";
+let scenario = process.env.FAKE_SCENARIO || "done";
 let stdin = "";
 if (!process.stdin.isTTY) for await (const c of process.stdin) stdin += c;
+// askonce: asks when it gets the task, finishes when it gets a reply.
+if (scenario === "askonce") scenario = stdin.includes("REPORTING") ? "ask" : "done";
 if (process.env.FAKE_LOG) {
   appendFileSync(
     process.env.FAKE_LOG,

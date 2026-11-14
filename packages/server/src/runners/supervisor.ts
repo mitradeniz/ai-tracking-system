@@ -46,10 +46,13 @@ export interface ManagerState {
 }
 
 interface Options {
-  /** Wait this long after a change before looking (the board settles). */
+  /**
+   * Wait this long after a change before looking, so a report and the end of its run, or several
+   * chats that stop together, are looked at in one go.
+   */
   delayMs?: number;
-  /** Look again this often even without changes. */
-  tickMs?: number;
+  /** After a manager run failed (CLI limit, network), try again after these waits; the last one repeats. */
+  retryMs?: number[];
 }
 
 const STOPPED = "Stopped from the tracker.";
@@ -67,16 +70,25 @@ export interface Attention {
   stopped: boolean;
 }
 
+/**
+ * The manager does not poll: it looks at a project when something changes there (a report, a run
+ * that ended, a setting), and only calls its CLI when something new waits for a decision. Besides
+ * that, it wakes up only to try a failed run again or when the hourly limit frees up.
+ */
 export class Supervisor extends EventEmitter {
-  private timers = new Map<string, NodeJS.Timeout>();
+  private timers = new Map<string, { timer: NodeJS.Timeout; at: number }>();
   private busy = new Set<string>();
+  /** Projects that changed while the manager was looking: look again when it is done. */
+  private dirty = new Set<string>();
+  /** Failed runs in a row, and no automatic run before this time. */
+  private failures = new Map<string, number>();
+  private retryAt = new Map<string, number>();
   private logs = new Map<string, ManagerRun[]>();
   /** What the last run looked at, so the same situation is not sent twice. */
   private handled = new Map<string, string>();
-  private interval: NodeJS.Timeout | null = null;
   private closed = false;
   private readonly delayMs: number;
-  private readonly tickMs: number;
+  private readonly retryMs: number[];
 
   constructor(
     private readonly manager: ProjectManager,
@@ -86,22 +98,24 @@ export class Supervisor extends EventEmitter {
     options: Options = {},
   ) {
     super();
-    this.delayMs = options.delayMs ?? 60_000;
-    this.tickMs = options.tickMs ?? 10 * 60_000;
+    this.delayMs = options.delayMs ?? 15_000;
+    this.retryMs = options.retryMs?.length ? options.retryMs : [2 * 60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
   }
 
   start(): void {
+    // A report, a problem closed, a task added: something may wait for a decision now.
     this.manager.on("changed", ({ key }: { key: string }) => this.schedule(key));
-    this.interval = setInterval(() => {
-      for (const key of this.manager.keys()) this.schedule(key, 0);
-    }, this.tickMs);
-    this.interval.unref?.();
+    // A chat that stopped running leaves its question or failure for the manager.
+    this.runs.on("run", ({ key, run }: { key: string; run: { state: string } }) => {
+      if (run.state !== "running") this.schedule(key);
+    });
+    // What happened while the app was closed.
+    for (const key of this.managing()) this.schedule(key);
   }
 
   close(): void {
     this.closed = true;
-    if (this.interval) clearInterval(this.interval);
-    for (const t of this.timers.values()) clearTimeout(t);
+    for (const t of this.timers.values()) clearTimeout(t.timer);
     this.timers.clear();
   }
 
@@ -137,13 +151,18 @@ export class Supervisor extends EventEmitter {
     if (settings.enabled && !before.enabled) {
       await this.runs.saveProject(key, { autoDispatch: true });
       this.handled.delete(key);
-      this.schedule(key, 1000);
+      this.failures.delete(key);
+      this.retryAt.delete(key);
+      this.schedule(key, Math.min(1000, this.delayMs));
     }
     this.changed(key);
     return this.state(key);
   }
 
-  /** Looks at the project after a while, unless the manager is off or already looking. */
+  /**
+   * Looks at the project after a short wait, unless the manager is off. Changes that come in while
+   * a look is already planned join it; changes while the manager is looking bring one more look.
+   */
   schedule(key: string, delay = this.delayMs): void {
     if (this.closed) return;
     let enabled = false;
@@ -153,14 +172,22 @@ export class Supervisor extends EventEmitter {
       return;
     }
     if (!enabled) return;
+    if (this.busy.has(key)) {
+      this.dirty.add(key);
+      return;
+    }
+    const at = Math.max(Date.now() + delay, this.retryAt.get(key) ?? 0);
     const old = this.timers.get(key);
-    if (old) clearTimeout(old);
+    if (old) {
+      if (old.at <= at) return;
+      clearTimeout(old.timer);
+    }
     const timer = setTimeout(() => {
       this.timers.delete(key);
       void this.run(key, "auto").catch((e) => this.emit("warning", e));
-    }, delay);
+    }, at - Date.now());
     timer.unref?.();
-    this.timers.set(key, timer);
+    this.timers.set(key, { timer, at });
   }
 
   /**
@@ -172,6 +199,7 @@ export class Supervisor extends EventEmitter {
     if (trigger === "auto" && !settings.enabled) return null;
     if (this.busy.has(key)) {
       if (trigger === "manual") throw new HttpError(409, "The manager is already looking at this project.");
+      this.dirty.add(key);
       return null;
     }
     const { project, board, filePath } = this.manager.context(key);
@@ -194,7 +222,13 @@ export class Supervisor extends EventEmitter {
     if (trigger === "auto") {
       if (this.handled.get(key) === fingerprint) return null;
       const hourAgo = Date.now() - 3_600_000;
-      if (this.log(key).filter((r) => Date.parse(r.startedAt) > hourAgo).length >= settings.maxRunsPerHour) return null;
+      const recent = this.log(key).filter((r) => Date.parse(r.startedAt) > hourAgo);
+      if (recent.length >= settings.maxRunsPerHour) {
+        // Wake up once when the oldest of them is an hour old.
+        const oldest = Math.min(...recent.map((r) => Date.parse(r.startedAt)));
+        this.schedule(key, oldest + 3_600_000 - Date.now() + 1000);
+        return null;
+      }
     }
 
     this.busy.add(key);
@@ -225,14 +259,22 @@ export class Supervisor extends EventEmitter {
       await this.carryOut(key, answer, attention, run);
       run.state = "done";
       this.handled.set(key, fingerprint);
+      this.failures.delete(key);
+      this.retryAt.delete(key);
     } catch (e) {
       run.state = "failed";
       run.error = clip((e as Error).message, 1000);
+      // Try again later, waiting longer each time it fails in a row.
+      const n = this.failures.get(key) ?? 0;
+      this.failures.set(key, n + 1);
+      this.retryAt.set(key, Date.now() + this.retryMs[Math.min(n, this.retryMs.length - 1)]!);
+      this.dirty.add(key);
     } finally {
       run.endedAt = new Date().toISOString();
       this.busy.delete(key);
       this.record(key, run);
     }
+    if (this.dirty.delete(key)) this.schedule(key);
     return run;
   }
 

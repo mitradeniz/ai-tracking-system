@@ -96,7 +96,7 @@ The switch in the project header turns it on. Whenever something changes (a task
 
 ## The manager
 
-For the night, or any time you are away, the **Manager** switch next to auto-dispatch hands the project to an AI CLI you choose (Claude Code, Codex, Gemini or Copilot, with a model). It turns auto-dispatch on and looks at the project a minute after things settle and every 10 minutes, at most as many times an hour as you set (6 by default), and only when something needs a decision: a task blocked on a question, a failed task, refused steps, proposed tasks or notes. It skips a situation it has already handled.
+For the night, or any time you are away, the **Manager** switch next to auto-dispatch hands the project to an AI CLI you choose (Claude Code, Codex, Gemini or Copilot, with a model). It turns auto-dispatch on and does not poll: it is woken by what happens in the project — a report, a run that ended, a problem closed — and calls its CLI only when something new needs a decision: a chat that asks a question or waits for approval, a failed task, refused steps, proposed tasks or notes. It waits 15 seconds first, so a report and the end of its run, or several chats that stop together, are handled in one go, and it skips a situation it has already handled. Otherwise it wakes up only to try again after its own run failed (after 2, 5, 15, then every 30 minutes) or when the hourly limit you set (6 runs by default) frees up.
 
 It runs read-only in the plan's folder and answers with actions that the app checks and carries out:
 

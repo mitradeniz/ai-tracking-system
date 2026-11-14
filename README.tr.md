@@ -347,7 +347,7 @@ Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — art
 | **Canlı** | Komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur** — şeritten, görev panelinden ya da kayan pencereden — ya da **Tümünü durdur**. Durdurduğun sohbete sen bir şey gönderene kadar otomatik dağıtım yeni görev vermez. |
 | **Kurulum yardımı** | Kurulu olmayan bir CLI, onu kuran komutu gösterir; giriş yapılmamış olan, giriş komutunu gösterir. |
 | **Otomatik dağıtım** | Başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* çalıştırma. |
-| **Yönetici** | Yanındaki anahtar projeyi seçtiğin bir CLI'a devreder (örneğin gece için). Bir şey karar beklediğinde ve 10 dakikada bir bakar, saatte en fazla *N* kez; güvenle verebileceği kararları verir, gerisini sana bırakır. Bu sırada uygulama bilgisayarı uyanık tutar. Ayrıntılar: [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
+| **Yönetici** | Yanındaki anahtar projeyi seçtiğin bir CLI'a devreder (örneğin gece için). Sürekli kontrol etmez: bir sohbet soru sorduğunda, onay beklediğinde, başarısız olduğunda ya da sonraya iş bıraktığında uyanır, saatte en fazla *N* kez; güvenle verebileceği kararları verir, gerisini sana bırakır. Bu sırada uygulama bilgisayarı uyanık tutar. Ayrıntılar: [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
 | **Kendi açtığın oturumlar** | Claude Code ve Codex için tek satırlık bir kanca, kendi açtığın bir oturumda çalışırken görevleri *çalışıyor* ve *yanıtını bekliyor* olarak işaretler. |
 
 > [!IMPORTANT]
