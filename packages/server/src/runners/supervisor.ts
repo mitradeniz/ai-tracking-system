@@ -2,11 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { explainStep, jsonObjectsIn, parsePlan, REFUSED, type Board, type IntegrationPlan, type ProjectFile, type TaskView } from "@aitrack/core";
+import { explainStep, jsonObjectsIn, parseLimitReason, parsePlan, REFUSED, type Board, type IntegrationPlan, type ProjectFile, type TaskView } from "@aitrack/core";
 import { HttpError, type ProjectManager } from "../manager.ts";
 import { applyPlan, chatsTable, notesTable, openNotes, PLAN_RULES, PLAN_SHAPE, planTable, proposalsTable } from "../proposals.ts";
 import { writeFileAtomic } from "../store.ts";
 import type { ProjectGenerator } from "./generate.ts";
+import { usageLimit } from "./limits.ts";
 import { planFolder, type RunManager } from "./runs.ts";
 import type { ManagerSettings } from "./store.ts";
 
@@ -273,10 +274,11 @@ export class Supervisor extends EventEmitter {
     } catch (e) {
       run.state = "failed";
       run.error = clip((e as Error).message, 1000);
-      // Try again later, waiting longer each time it fails in a row.
+      // Its own CLI hit its usage limit: look again when it resets. Otherwise later, longer each time it fails in a row.
+      const limit = usageLimit(run.error);
       const n = this.failures.get(key) ?? 0;
       this.failures.set(key, n + 1);
-      this.retryAt.set(key, Date.now() + this.retryMs[Math.min(n, this.retryMs.length - 1)]!);
+      this.retryAt.set(key, limit?.known ? limit.until : Date.now() + Math.max(limit ? limit.until - Date.now() : 0, this.retryMs[Math.min(n, this.retryMs.length - 1)]!));
       this.dirty.add(key);
     } finally {
       run.endedAt = new Date().toISOString();
@@ -300,9 +302,11 @@ export class Supervisor extends EventEmitter {
         continue;
       }
       if (view.status !== "blocked" && view.status !== "failed") continue;
+      // A task parked by a usage limit goes on by itself when it resets; a chat whose CLI waits is left alone.
+      if (parseLimitReason(view.runtime.reason)) continue;
       if (view.reasons.some((r) => r.kind === "waiting_for")) continue;
       const agent = view.runtime.agent ?? view.task.agent;
-      if (this.runs.isBusy(key, agent)) continue;
+      if (this.runs.isBusy(key, agent) || this.runs.isLimited(key, agent)) continue;
       const stopped = (view.runtime.reason ?? "").startsWith(STOPPED);
       if (stopped && !settings.resumeStopped) continue;
       const runner = this.runs.store.chat(key, agent);

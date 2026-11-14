@@ -2,7 +2,7 @@ import type { TrackEvent } from "@aitrack/core";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { desktop } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
-import { agentName, formatDuration, formatTime, localMessage, localReason, problemsOf, PROVIDER_LABEL, type Model } from "../model.ts";
+import { agentName, formatDuration, formatTime, localMessage, localReason, problemsOf, PROVIDER_LABEL, untilText, type Model } from "../model.ts";
 import { usePref } from "../prefs.ts";
 import { useNow } from "./Info.tsx";
 import { CLI_NAME } from "./NewProject.tsx";
@@ -217,6 +217,7 @@ export function ManagerEye({
     .sort((a, b) => (a.ts < b.ts ? 1 : -1))
     .slice(0, 7);
   const lastRun = state.log[0];
+  const limits = [...new Map((model.runners?.limits ?? []).map((l) => [l.cli, l])).values()];
   const forYou = lastRun?.forYou.length ?? 0;
   const mood = errors.length ? "alert" : state.running || running.length ? "busy" : "watching";
   const status = state.running ? t("eye_looking") : errors.length ? t("eye_alert", { n: errors.length }) : t("eye_watching");
@@ -287,6 +288,12 @@ export function ManagerEye({
                 </div>
               </div>
             </div>
+
+            {limits.map((l) => (
+              <div key={l.cli} className="holo-limit" style={line()} title={l.message}>
+                ⏳ {t("eye_limit", { cli: l.cli, time: untilText(Date.parse(l.until)) })}
+              </div>
+            ))}
 
             <h4 style={line()}>{t("eye_models")}</h4>
             {running.length === 0 ? (

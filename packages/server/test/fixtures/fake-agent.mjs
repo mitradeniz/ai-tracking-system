@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // A stand-in for the agent CLIs in tests. FAKE_FORMAT picks the output format (codex, claude,
 // gemini, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done,
-// followups: done with work left for later, askonce: asks first and finishes after a reply). A manager or plan-integration prompt is answered with FAKE_MANAGER_ANSWER
+// followups: done with work left for later, askonce: asks first and finishes after a reply, limit / limitonce: the
+// plan's usage limit is used up, always or until told to go on). A manager or plan-integration prompt is answered with FAKE_MANAGER_ANSWER
 // or FAKE_PLAN_ANSWER.
 import { appendFileSync } from "node:fs";
 
@@ -18,6 +19,8 @@ let stdin = "";
 if (!process.stdin.isTTY) for await (const c of process.stdin) stdin += c;
 // askonce: asks when it gets the task, finishes when it gets a reply.
 if (scenario === "askonce") scenario = stdin.includes("REPORTING") ? "ask" : "done";
+// limitonce: the plan's usage limit is used up, until it is told the limit has reset (or to go on).
+if (scenario === "limitonce") scenario = /usage limit has reset|ALREADY WORKED ON TASK|WAS STARTED BEFORE/.test(stdin) ? "done" : "limit";
 if (process.env.FAKE_LOG) {
   appendFileSync(
     process.env.FAKE_LOG,
@@ -96,6 +99,16 @@ if (scenario === "noauth" && format === "claude") {
 }
 if (scenario === "fail") {
   process.stderr.write("boom: not signed in\n");
+  process.exit(1);
+}
+if (scenario === "limit") {
+  const at = Math.floor(Date.now() / 1000) + 3600;
+  if (format === "claude") {
+    out({ type: "system", subtype: "init", session_id: flag("--resume") ?? flag("--session-id") });
+    out({ type: "result", subtype: "success", is_error: true, result: `Claude AI usage limit reached|${at}`, session_id: flag("--session-id") });
+  } else {
+    out({ type: "error", message: "You've hit your usage limit. Upgrade to Pro or try again in 1 hour 2 minutes." });
+  }
   process.exit(1);
 }
 if (format === "codex") {

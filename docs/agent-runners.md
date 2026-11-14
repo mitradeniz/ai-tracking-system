@@ -90,6 +90,14 @@ sequenceDiagram
 
 **Stop** ends a run; the task stays with the chat as blocked, so you can reply or send it again. It is on the running line of the chat's lane, in the floating window, in the task drawer and its live output, and as **Stop all** next to automatic dispatch; the small buttons ask once more before they stop. Automatic dispatch gives a chat you stopped nothing new until you send it something (or switch automatic dispatch off and on); **Stop all** also switches automatic dispatch off. Runs that were going when the app quit are marked blocked on the next start.
 
+## Stopping, and going on
+
+**Stop** ends a run; the task stays with its chat, blocked, and automatic dispatch gives that chat nothing new. **Reply** continues the same conversation. **Send** again continues it too (with *same session*), and the prompt tells the chat it already worked on the task and was interrupted, so it goes on where it stopped instead of starting over. When no conversation was started (stopped before the CLI answered, or *a new session per task*), the chat is told to check what is already done in the working folder (git status, git diff) first. The same applies to a task sent again after it failed, or after the app was closed while it ran.
+
+## Usage limits
+
+When a CLI says the plan's usage limit is used up (Claude Code's 5-hour or weekly limit, Codex's usage limit, Gemini's quota, a rate limit), the run is not counted as failed. The task is parked with the time it goes on (`Usage limit: <CLI> · until <time>`), shown as waiting, and raises no problem; automatic dispatch sends nothing to chats on that CLI, and the manager leaves them alone. The reset time is read from the CLI's message (an epoch, "try again in 2 hours 13 minutes", "resets 3pm (Europe/Istanbul)", "resets Mon 9am", `resets_in_seconds`); without one the tracker waits 5 minutes for a rate limit or 30 for a plan limit, longer each time in a row (up to 4 hours). At that time each parked task goes on with its chat — the same conversation when there is one — and automatic dispatch resumes. Limits survive a restart of the app (`~/.aitrack/limits.json`). The header shows *⏳ Claude Code limit · 15:00* while one lasts. A manager whose own CLI hits its limit looks again when it resets.
+
 ## Auto-dispatch
 
 The switch in the project header turns it on. Whenever something changes (a task is done, a chat is set up, a run ends), every free chat that runs by itself gets its most urgent **ready** task, until the **At once** limit is reached. It never re-sends a task that failed, and never sends to chats that are run by hand.

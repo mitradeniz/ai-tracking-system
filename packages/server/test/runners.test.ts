@@ -494,6 +494,38 @@ describe("agent runners", () => {
     await waitFor("T1", "blocked");
     const state = (await call("GET", `/api/projects/${key}/runners`)).json;
     expect(state.runs[0].state).toBe("stopped");
+    // Sent again: the same conversation, told to go on from where it stopped.
+    process.env.FAKE_SCENARIO = "done";
+    await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+    await waitFor("T1", "done");
+    // The run was stopped before the CLI started a conversation: it checks the folder and goes on.
+    const again = (await invocations()).at(-1)!;
+    expect(again.stdin).toContain("TASK T1 WAS STARTED BEFORE and interrupted");
+  });
+
+  it("parks a task when the CLI's usage limit is used up, sends nothing else to that CLI, and goes on when it resets", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_SCENARIO = "limitonce";
+    await setRunner("b", { provider: "claude" });
+    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    await waitFor("T3", "blocked");
+    let detail = (await call("GET", `/api/projects/${key}`)).json;
+    const view = detail.board.tasks.find((t: { id: string }) => t.id === "T3");
+    expect(view.reason).toMatch(/^Usage limit: Claude Code · until \d{4}-/);
+    let state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.limits).toEqual([expect.objectContaining({ agent: "b", cli: "Claude Code", known: true })]);
+    expect(Date.parse(state.limits[0].until)).toBeGreaterThan(Date.now() + 3_500_000);
+    // Not a failure, nothing for the person: automatic dispatch and the manager leave it alone.
+    expect(detail.events.some((e: { task: string; type: string }) => e.task === "T3" && e.type === "failed")).toBe(false);
+    const runs = running.runs as unknown as { limitEnded(id: string): Promise<void>; isLimited(k: string, a: string): boolean };
+    expect(runs.isLimited(key, "b")).toBe(true);
+    // The limit resets: the task goes on with its chat by itself.
+    await runs.limitEnded("claude|" + FAKE);
+    await waitFor("T3", "done");
+    state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.limits).toEqual([]);
+    const last = (await invocations()).at(-1)!;
+    expect(last.stdin).toMatch(/WAS STARTED BEFORE|usage limit has reset|ALREADY WORKED ON TASK/);
   });
 
   it("leaves a chat the person stopped alone, and stops everything at once", async () => {

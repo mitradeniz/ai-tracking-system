@@ -5104,6 +5104,14 @@ details.advanced[open] {
   padding: 2px 0;
 }
 
+.holo-limit {
+  margin-top: 8px;
+  padding: 5px 8px;
+  border: 1px dashed #ffd166;
+  border-radius: 4px;
+  color: #ffd166;
+}
+
 /* A line opened in place: the whole text, and the one button that goes to the app. */
 .holo-item.expanded > button {
   background: color-mix(in srgb, var(--eye-main) 10%, transparent);
@@ -5375,4 +5383,11 @@ details.advanced[open] {
     width: calc(100vw - 32px);
     right: 16px;
   }
+}
+
+/* A CLI that waits for its usage limit to reset. */
+.badge.limit {
+  border-color: rgba(255, 209, 102, 0.5);
+  color: #e8c46a;
+  white-space: nowrap;
 }

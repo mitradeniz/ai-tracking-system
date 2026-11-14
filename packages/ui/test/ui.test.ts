@@ -95,6 +95,14 @@ describe("refused steps and decisions", () => {
     expect(shownStatus(snap({ reason: "Which repo?", reasons: [{ kind: "blocked", reason: "Which repo?" }] }))).toBe("blocked");
   });
 
+  it("shows a task parked by a usage limit as waiting, with the time it goes on", () => {
+    const until = new Date(Date.now() + 3_600_000).toISOString();
+    const parked = snap({ reason: `Usage limit: Claude Code · until ${until}` });
+    expect(shownStatus(parked)).toBe("waiting");
+    expect(problemsOf(model(), parked, t)).toEqual([]);
+    expect(cardNote(model(), parked, t)).toMatch(/^Claude Code reached its usage limit; it goes on by itself at /);
+  });
+
   it("keeps notes apart from problems: they need no answer", () => {
     const done = snap({
       status: "done",

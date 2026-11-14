@@ -386,6 +386,8 @@ Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — art
 | **Sohbet** | Açık tuttuğun bir sohbet gibi aynı oturumda devam eder — ya da her görevde yeni oturum. Var olan bir oturumun kimliğini yapıştırırsan tam *o* sohbet devam eder. |
 | **Durum** | İlk çıktıda *başladı*, sondaki rapordan *bitti*, ajan bir şey sorunca **yanıtını bekliyor** — **Yanıtla** ile cevap ver (<kbd>⌘</kbd><kbd>↵</kbd>). |
 | **Canlı** | Komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur** — şeritten, görev panelinden ya da kayan pencereden — ya da **Tümünü durdur**. Durdurduğun sohbete sen bir şey gönderene kadar otomatik dağıtım yeni görev vermez. |
+| **Durdur ve sürdür** | Durdurduktan sonra **Yanıtla** ya da yeniden **Gönder**, aynı sohbeti sürdürür; sohbete kaldığı yerden devam etmesi ve biten adımları tekrarlamaması söylenir. Henüz bir sohbet başlamamışsa önce klasörde neyin yapıldığına bakar. |
+| **Kullanım limitleri** | Bir CLI'ın plan limiti dolunca görev başarısız olmaz: ne zaman süreceği yazılı olarak bekler; bu arada o CLI'a yeni görev gitmez ve limit yenilenince sohbet kendiliğinden devam eder. Saat, CLI'ın kendi mesajından okunur (Claude Code, Codex, Gemini, Copilot); mesajda yoksa biraz sonra, her seferinde biraz daha uzun bekleyerek yeniden dener. |
 | **Kurulum yardımı** | Kurulu olmayan bir CLI, onu kuran komutu gösterir; giriş yapılmamış olan, giriş komutunu gösterir. |
 | **Otomatik dağıtım** | Başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* çalıştırma. |
 | **Yönetici** | Yanındaki anahtar projeyi seçtiğin bir CLI'a devreder (örneğin gece için). Sürekli kontrol etmez: bir sohbet soru sorduğunda, onay beklediğinde, başarısız olduğunda ya da sonraya iş bıraktığında uyanır; güvenle verebileceği kararları verir, gerisini sana bırakır; *Biten işleri de onaylasın* açıksa, onay isteyen projelerde raporu işin bittiğini gösteren görevleri de onaylar. Bu sırada uygulama bilgisayarı uyanık tutar. Ayrıntılar: [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
@@ -623,6 +625,7 @@ docs/               dosya biçimi, bildirim, ajan çalıştırıcılar, yapay ze
 | Sohbet başına çalıştırma ayarları | `~/.aitrack/runners.json` — proje dosyasına asla yazılmaz |
 | Çalıştırma çıktısı | `~/.aitrack/runs/` |
 | Yöneticinin yaptıkları | `~/.aitrack/manager/` |
+| Kullanım limitini bekleyen CLI'lar | `~/.aitrack/limits.json` |
 | Denetim anahtarı | `~/.aitrack/control-token` |
 | Uygulamanın kurulduğu yer | `~/.aitrack/install.json` |
 | Güncelleme ilerlemesi ve çıktısı | `~/.aitrack/update-status.json`, `~/.aitrack/update.log` |

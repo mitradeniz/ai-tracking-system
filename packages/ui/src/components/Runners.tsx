@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, copyText, desktop, type ChatRunner, type DetectedProvider, type RunLogEvent, type RunnerProvider, type RunSummary } from "../api.ts";
 import { RUNLOG_EVENT } from "../hooks.ts";
 import { useI18n, type Key, type T } from "../i18n.ts";
-import { activeRun, agentName, INSTALL, PROVIDER_LABEL, runnerOf, type Model } from "../model.ts";
+import { activeRun, agentName, INSTALL, PROVIDER_LABEL, runnerOf, untilText, type Model } from "../model.ts";
 import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
 
@@ -550,6 +550,8 @@ export function AutoDispatch({
   if (!settings) return null;
   const runnable = (model.detail.project?.agents ?? []).filter((a) => runnerOf(model, a.id));
   const running = model.runners?.runs.filter((r) => r.state === "running").length ?? 0;
+  // One badge per CLI that waits for its usage limit.
+  const limits = [...new Map((model.runners?.limits ?? []).map((l) => [l.cli, l])).values()];
   const toggle = async () => {
     if (!settings.autoDispatch && runnable.length === 0) {
       onSetup();
@@ -587,6 +589,11 @@ export function AutoDispatch({
           </select>
         </label>
       )}
+      {limits.map((l) => (
+        <span key={l.cli} className="badge limit" title={t("limit_badgeHint", { cli: l.cli, time: untilText(Date.parse(l.until)) })}>
+          ⏳ {t("limit_badge", { cli: l.cli, time: untilText(Date.parse(l.until)) })}
+        </span>
+      ))}
       {running > 0 && (
         <span className="badge busy">
           <span className="pulse" aria-hidden="true" />

@@ -1,5 +1,5 @@
 import type { Agent, BoardStatus, Reason, Task, TaskIssue, TaskSnapshot, TrackEvent } from "@aitrack/core";
-import { explainStep, REFUSED, type RefusedStep } from "@aitrack/core";
+import { explainStep, parseLimitReason, REFUSED, type RefusedStep } from "@aitrack/core";
 import type { ChatRunner, ProjectDetail, RunnerState, RunSummary } from "./api.ts";
 import type { T } from "./i18n.ts";
 
@@ -65,7 +65,16 @@ export function agentName(model: Model, id: string | null | undefined): string {
 }
 
 /** Reasons the tracker writes itself, shown in the UI language. */
+/** When a CLI's usage limit resets, as a short local time: "15:00", or "Mon 09:00" on another day. */
+export function untilText(until: number): string {
+  const d = new Date(until);
+  const today = d.toDateString() === new Date().toDateString();
+  return d.toLocaleString(undefined, today ? { hour: "2-digit", minute: "2-digit" } : { weekday: "short", hour: "2-digit", minute: "2-digit" });
+}
+
 export function localReason(reason: string, t: T): string {
+  const limit = parseLimitReason(reason);
+  if (limit) return t("run_reason_limit", { cli: limit.cli, time: untilText(limit.until) });
   if (reason === "Waiting for your reply.") return t("run_state_waiting");
   if (reason.startsWith("Stopped from the tracker.")) return t("run_reason_stopped");
   if (reason.startsWith("The run stopped when the app closed.")) return t("run_reason_closed");
@@ -143,7 +152,8 @@ export function waitingFor(s: TaskSnapshot): string[] | null {
 
 /** The status a pill shows: a task waiting for other tasks needs nothing from the person, so it is not shown as blocked. */
 export function shownStatus(s: TaskSnapshot): BoardStatus {
-  return waitingFor(s) ? "waiting" : s.status;
+  // Waiting for other tasks, or for a CLI's usage limit to reset: nothing for the person to do.
+  return waitingFor(s) || (s.status === "blocked" && parseLimitReason(s.reason)) ? "waiting" : s.status;
 }
 
 /** One short line under a card title. */
@@ -352,6 +362,7 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
     s.reason &&
     !askedAlready &&
     !waitingFor(s) &&
+    !parseLimitReason(s.reason) &&
     s.reason !== "Waiting for your reply." &&
     !s.reason.startsWith("Stopped from") &&
     !s.reason.startsWith("The run stopped")

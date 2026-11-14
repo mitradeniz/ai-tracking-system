@@ -6,10 +6,11 @@ import { EventEmitter } from "node:events";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
-import { parseReports, renderBootstrapPrompt, renderTaskPrompt, type Report, type TaskIssue } from "@aitrack/core";
+import { limitReason, parseLimitReason, parseReports, renderBootstrapPrompt, renderTaskPrompt, type Report, type TaskIssue } from "@aitrack/core";
 import { HttpError, type ProjectManager } from "../manager.ts";
 import { agentPath, claudeHasAutoMode, which } from "./env.ts";
 import { hookSnippets, type HookSignal } from "./hooks.ts";
+import { usageLimit } from "./limits.ts";
 import { buildInvocation, OutputParser, PROVIDER_INFO, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
 import { normalizeRunner, splitDirs, type ProjectRunners, type RunnerStore } from "./store.ts";
 
@@ -52,12 +53,37 @@ interface Run extends RunSummary {
   priorSession?: string;
   lastProgressAt: number;
   lastUsageEmit: number;
+  /** The CLI account this run uses: chats on the same one share its usage limit. */
+  limitKey: string;
 }
+
+/** A CLI whose usage limit is used up, until it resets. */
+export interface CliLimit {
+  /** Which CLI: "<provider>|<program path>". */
+  id: string;
+  cli: string;
+  until: number;
+  /** False when the CLI did not say when it resets: the time is a guess, tried again then. */
+  known: boolean;
+  message: string;
+  /** Limits hit in a row without the CLI saying when: each guess waits longer. */
+  tries: number;
+}
+
+/** The CLI account a chat uses, for its usage limit. */
+export function limitKeyOf(runner: { provider: string; binary?: string }): string {
+  return `${runner.provider}|${runner.binary ?? ""}`;
+}
+
+const CONTINUE_AFTER_LIMIT =
+  "The usage limit has reset. Continue the task where you stopped; do not redo the steps you finished. Report with the aitrack-report block when you are done or need something.";
 
 export interface RunnerState {
   settings: ProjectRunners;
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
   held: string[];
+  /** Chats whose CLI waits for its usage limit to reset; their tasks go on by themselves then. */
+  limits: Array<{ agent: string; cli: string; until: string; known: boolean; message: string }>;
   defaultWorkdir: string;
   /** False when the project's code folder (settings.repoPath) does not exist yet. */
   defaultWorkdirExists: boolean;
@@ -178,6 +204,9 @@ export class RunManager extends EventEmitter {
    * refused it), with the mode they ran in. They get the usual permissions until the app restarts.
    */
   private autoOff = new Map<string, string>();
+  /** CLIs waiting for their usage limit to reset, and the timers that wake their chats up. */
+  private limits = new Map<string, CliLimit>();
+  private limitTimers = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly manager: ProjectManager,
@@ -193,6 +222,10 @@ export class RunManager extends EventEmitter {
 
   private get activeFile(): string {
     return path.join(this.runsDir, "active.json");
+  }
+
+  private get limitsFile(): string {
+    return path.join(this.dataDir, "limits.json");
   }
 
   async init(): Promise<void> {
@@ -219,6 +252,13 @@ export class RunManager extends EventEmitter {
       // No interrupted runs.
     }
     await this.persistActive();
+    // Limits that were running out when the app quit: wait for the rest, or go on now.
+    try {
+      const saved = JSON.parse(await readFile(this.limitsFile, "utf8")) as CliLimit[];
+      for (const l of Array.isArray(saved) ? saved : []) if (l && typeof l.id === "string" && Number.isFinite(l.until)) this.setLimit(l, false);
+    } catch {
+      // No limits.
+    }
     this.manager.on("changed", ({ key }: { key: string }) => this.scheduleAuto(key));
     for (const key of this.manager.keys()) this.scheduleAuto(key);
   }
@@ -233,6 +273,10 @@ export class RunManager extends EventEmitter {
     return {
       settings: this.store.project(key),
       held: [...this.held].filter((h) => h.startsWith(`${key}:`)).map((h) => h.slice(key.length + 1)),
+      limits: Object.entries(this.store.project(key).chats).flatMap(([agent, runner]) => {
+        const l = this.limits.get(limitKeyOf(runner));
+        return l ? [{ agent, cli: l.cli, until: new Date(l.until).toISOString(), known: l.known, message: l.message }] : [];
+      }),
       defaultWorkdir: base,
       defaultWorkdirExists: isDir(base),
       planFolder: planFolder(ctx.filePath),
@@ -361,6 +405,10 @@ export class RunManager extends EventEmitter {
     }
     if (view.status === "waiting") throw new HttpError(409, `Task ${taskId} still waits for its dependencies.`);
     if (!eligible.includes(agent) && !HOLDING.has(view.status)) throw new HttpError(400, `Chat ${agent} cannot take task ${taskId}.`);
+    const limit = this.limits.get(limitKeyOf(runner));
+    if (options.auto && limit) {
+      throw new HttpError(409, `${limit.cli} waits for its usage limit until ${new Date(limit.until).toISOString()}.`);
+    }
 
     const resume = runner.session === "keep" ? runner.sessionId : undefined;
     const parts: string[] = [];
@@ -378,6 +426,14 @@ export class RunManager extends EventEmitter {
         return `- ${id} (${v?.task.title ?? id})${summary}${v?.runtime.pr ? ` · PR: ${v.runtime.pr}` : ""}`;
       });
       parts.push(`THE TASKS YOU WAITED FOR ARE DONE\n${done.join("\n")}\nContinue task ${taskId} where you stopped.`);
+    }
+    // Sent again after it was stopped, failed or hit a limit: go on from where it got to.
+    else if ((view.status === "blocked" || view.status === "failed") && view.runtime.agent === agent) {
+      parts.push(
+        resume
+          ? `YOU ALREADY WORKED ON TASK ${taskId} IN THIS CONVERSATION and were interrupted. Continue where you stopped; do not redo the steps you finished.`
+          : `TASK ${taskId} WAS STARTED BEFORE and interrupted. First check what is already done in the working folder (git status, git diff, the files the task names), then continue from there; do not redo finished work.`,
+      );
     }
     const extra = options.extra?.trim();
     if (extra) parts.push(`ADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\n${extra}`);
@@ -480,6 +536,7 @@ export class RunManager extends EventEmitter {
       lastUsageEmit: 0,
       freshSession: !resume && runner.session === "keep" ? invocation.sessionId : undefined,
       priorSession: runner.sessionId,
+      limitKey: limitKeyOf(runner),
     };
     this.runs.set(id, run);
     this.trimRuns();
@@ -668,6 +725,21 @@ export class RunManager extends EventEmitter {
         this.append(run, "■ Stopped.");
         const reason = run.stopNote ?? "Stopped from the tracker. Reply to continue or send it again.";
         if (stillOpen) await this.manager.addEvent(key, { type: "blocked", task, agent, reason }, "runner");
+      } else if (!outcome.ok && usageLimit(outcome.error ?? "")) {
+        // The plan's limit is used up: not a failure. The task waits and goes on when it resets.
+        run.state = "failed";
+        run.error = outcome.error;
+        const hit = usageLimit(outcome.error ?? "")!;
+        const prev = this.limits.get(run.limitKey);
+        const tries = hit.known ? 0 : (prev?.tries ?? 0) + 1;
+        // Without a time from the CLI, each guess in a row waits longer (up to 4 hours).
+        const until = hit.known ? hit.until : Date.now() + Math.min((hit.until - Date.now()) * 2 ** Math.max(0, tries - 1), 4 * 3_600_000);
+        this.setLimit({ id: run.limitKey, cli: name, until, known: hit.known, message: hit.message, tries });
+        this.append(run, `⏳ ${name}: usage limit reached; the task goes on by itself at ${new Date(until).toISOString()}`);
+        await this.forgetDeadSession(run, outcome.error ?? "");
+        if (status !== "done" && status !== "review") {
+          await this.manager.addEvent(key, { type: "blocked", task, agent, reason: limitReason(name, until), message: clip(hit.message, 1000) }, "runner");
+        }
       } else if (!outcome.ok) {
         run.state = "failed";
         run.error = outcome.error;
@@ -804,6 +876,7 @@ export class RunManager extends EventEmitter {
         const agent = view.agent.id;
         const runner = settings.chats[agent];
         if (!runner || runner.provider === "manual" || !view.hasRoom || this.activeFor(key, agent) || this.held.has(`${key}:${agent}`)) continue;
+        if (this.limits.has(limitKeyOf(runner))) continue;
         const next = view.dispatchable.find((id) => !taken.has(id) && board.byId.get(id)?.status === "ready");
         if (!next) continue;
         taken.add(next);
@@ -952,6 +1025,66 @@ export class RunManager extends EventEmitter {
     for (const r of finished.slice(0, Math.max(0, finished.length - 200))) this.runs.delete(r.id);
   }
 
+  /** True when the chat's CLI waits for its usage limit to reset. */
+  isLimited(key: string, agent: string): boolean {
+    return this.limits.has(limitKeyOf(this.store.chat(key, agent)));
+  }
+
+  /** Records a CLI's limit and wakes its chats up when it resets. */
+  private setLimit(limit: CliLimit, save = true): void {
+    this.limits.set(limit.id, limit);
+    const old = this.limitTimers.get(limit.id);
+    if (old) clearTimeout(old);
+    // Timers cannot wait longer than about 24 days; a limit is never that long.
+    const wait = Math.min(Math.max(limit.until - Date.now(), 1000), 2_000_000_000);
+    const timer = setTimeout(() => void this.limitEnded(limit.id).catch((e) => this.emit("warning", e)), wait);
+    timer.unref?.();
+    this.limitTimers.set(limit.id, timer);
+    if (save) void this.persistLimits();
+    for (const key of this.manager.keys()) this.emit("runners", { key });
+  }
+
+  /** The limit has reset: every task parked by it goes on with its chat, then automatic dispatch resumes. */
+  private async limitEnded(id: string): Promise<void> {
+    this.limitTimers.delete(id);
+    if (this.closed || !this.limits.has(id)) return;
+    this.limits.delete(id);
+    await this.persistLimits();
+    for (const key of this.manager.keys()) {
+      let board;
+      try {
+        board = this.manager.context(key).board;
+      } catch {
+        continue;
+      }
+      for (const view of board.tasks) {
+        if (view.status !== "blocked" || !parseLimitReason(view.runtime.reason)) continue;
+        const agent = view.runtime.agent ?? view.task.agent;
+        const runner = this.store.chat(key, agent);
+        if (limitKeyOf(runner) !== id || runner.provider === "manual" || this.activeFor(key, agent)) continue;
+        // The same conversation when one was started; else the task again, told to go on from where it got to.
+        const last = [...this.runs.values()].reverse().find((r) => r.key === key && r.agent === agent && r.task === view.task.id);
+        const noConversation = Boolean(last?.freshSession) && !last?.tools && !last?.usage?.output;
+        try {
+          if (noConversation) await this.start(key, view.task.id, agent, { auto: true });
+          else await this.reply(key, agent, CONTINUE_AFTER_LIMIT, view.task.id).catch(() => this.start(key, view.task.id, agent, { auto: true }));
+        } catch (e) {
+          this.errors.set(`${key}:${agent}`, (e as Error).message);
+        }
+      }
+      this.emit("runners", { key });
+      this.scheduleAuto(key);
+    }
+  }
+
+  private async persistLimits(): Promise<void> {
+    try {
+      await writeFile(this.limitsFile, JSON.stringify([...this.limits.values()], null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+    } catch {
+      // Best effort.
+    }
+  }
+
   private async persistActive(): Promise<void> {
     const active = [...this.runs.values()].filter((r) => r.state === "running").map((r) => this.summary(r));
     try {
@@ -966,6 +1099,8 @@ export class RunManager extends EventEmitter {
     this.closed = true;
     for (const t of this.autoTimers.values()) clearTimeout(t);
     this.autoTimers.clear();
+    for (const t of this.limitTimers.values()) clearTimeout(t);
+    this.limitTimers.clear();
     for (const run of this.runs.values()) {
       if (run.state !== "running") continue;
       run.stopRequested = true;

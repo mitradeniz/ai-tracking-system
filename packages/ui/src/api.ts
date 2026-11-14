@@ -143,6 +143,8 @@ export interface RunnerState {
   settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner> };
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
   held?: string[];
+  /** Chats whose CLI waits for its usage limit to reset; their tasks go on by themselves then. */
+  limits?: Array<{ agent: string; cli: string; until: string; known: boolean; message: string }>;
   defaultWorkdir: string;
   defaultWorkdirExists?: boolean;
   planFolder?: string;
