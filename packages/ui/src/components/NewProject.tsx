@@ -31,9 +31,9 @@ const TOOL_LABEL: Record<string, string> = {
   cursor: "Cursor",
   other: "Chat",
 };
-const GENERATORS = ["claude", "codex", "gemini", "copilot"] as const;
+export const GENERATORS = ["claude", "codex", "gemini", "copilot"] as const;
 type Generator = (typeof GENERATORS)[number];
-const CLI_NAME: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI", copilot: "Copilot CLI" };
+export const CLI_NAME: Record<string, string> = { claude: "Claude Code", codex: "Codex CLI", gemini: "Gemini CLI", copilot: "Copilot CLI" };
 
 interface ChatDraft extends AuthoringChat {
   key: string;
@@ -73,7 +73,7 @@ const draft = (tool: string, chats: ChatDraft[]): ChatDraft => ({ key: `c${(draf
 
 /** Installed CLIs, once per window. */
 let providersPromise: Promise<DetectedProvider[]> | null = null;
-function useProviders(): DetectedProvider[] | null {
+export function useProviders(): DetectedProvider[] | null {
   const [list, setList] = useState<DetectedProvider[] | null>(null);
   useEffect(() => {
     providersPromise ??= api.providers().catch(() => []);

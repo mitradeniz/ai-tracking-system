@@ -3,7 +3,7 @@ import { splitReport } from "../src/components/Markdown.tsx";
 import type { TaskSnapshot } from "@aitrack/core";
 import type { RunSummary } from "../src/api.ts";
 import { translator } from "../src/i18n.ts";
-import { cardNote, explainStep, permissionRules, problemsOf, shownStatus, type Model } from "../src/model.ts";
+import { cardNote, explainStep, localMessage, notesOf, permissionRules, problemsOf, shownStatus, type Model } from "../src/model.ts";
 import { choiceReply, continueAfterAllow } from "../src/problemActions.ts";
 
 describe("permission rules", () => {
@@ -93,6 +93,27 @@ describe("refused steps and decisions", () => {
     const back = snap({ status: "ready", reasons: [], resumes: ["CLD-01"] });
     expect(cardNote(model(), back, t)).toBe(t("card_resumes", { tasks: "CLD-01" }));
     expect(shownStatus(snap({ reason: "Which repo?", reasons: [{ kind: "blocked", reason: "Which repo?" }] }))).toBe("blocked");
+  });
+
+  it("keeps notes apart from problems: they need no answer", () => {
+    const done = snap({
+      status: "done",
+      issues: [
+        { title: "Placeholders in web/img", kind: "warning" },
+        { title: "Buy the domain", kind: "needs-you" },
+        { title: "Old note", kind: "warning", state: "resolved" },
+      ],
+    });
+    expect(problemsOf(model(), done, t).map((p) => p.title)).toEqual(["Buy the domain"]);
+    expect(notesOf(done).map((n) => [n.index, n.title])).toEqual([[0, "Placeholders in web/img"]]);
+  });
+
+  it("shows what the manager did in the person's language", () => {
+    const tr = translator("tr");
+    expect(localMessage("Manager: replied — Evet, devam et.", tr)).toBe("Yönetici yanıtladı: Evet, devam et.");
+    expect(localMessage('Manager: chose "Separate repo" for "Where does the code go?"', tr)).toBe("Yönetici “Where does the code go?” için “Separate repo” seçti");
+    expect(localMessage("Manager: left for you — Buy the domain.", tr)).toBe("Yönetici sana bıraktı: Buy the domain.");
+    expect(localMessage("Proposed tasks: Add CI → ignored", tr)).toBe("Önerilen görevler: Add CI → yoksayıldı");
   });
 
   it("tells the chat what was allowed and what the person picked", () => {

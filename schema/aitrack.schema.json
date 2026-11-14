@@ -455,6 +455,77 @@
                   "maxLength": 80
                 }
               },
+              "followUps": {
+                "description": "Work the chat left for later; proposed as new tasks.",
+                "maxItems": 10,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 300,
+                      "description": "The work, as a short task title."
+                    },
+                    "detail": {
+                      "description": "What was done instead for now (a placeholder, a mock) and what done looks like.",
+                      "type": "string",
+                      "maxLength": 4000
+                    },
+                    "agent": {
+                      "description": "The chat that should do it, if known.",
+                      "type": "string",
+                      "maxLength": 80
+                    },
+                    "after": {
+                      "description": "Tasks it has to wait for.",
+                      "maxItems": 10,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      }
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ]
+                }
+              },
+              "proposals": {
+                "description": "Set by the app: proposed tasks added to the plan or ignored.",
+                "maxItems": 50,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 160
+                    },
+                    "state": {
+                      "type": "string",
+                      "enum": [
+                        "open",
+                        "added",
+                        "ignored"
+                      ]
+                    },
+                    "task": {
+                      "description": "The task it became.",
+                      "type": "string",
+                      "maxLength": 80
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "state"
+                  ]
+                }
+              },
               "source": {
                 "default": "ui",
                 "type": "string",
@@ -465,7 +536,8 @@
                   "paste",
                   "import",
                   "runner",
-                  "hook"
+                  "hook",
+                  "manager"
                 ]
               }
             },

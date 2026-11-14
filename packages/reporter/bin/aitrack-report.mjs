@@ -22,7 +22,8 @@ Options:
   --reason <text>      why it is blocked or failed
   --pr <url|branch>    pull request or branch
   --verify <text>      how to verify the result
-  --issues <json>      problems: '[{"title":"…","detail":"…","kind":"missing","fix":"<prompt>"}]'
+  --issues <json>      problems for a person: '[{"title":"…","detail":"…","kind":"needs-you","fix":"<prompt>"}]'
+  --follow-ups <json>  work left for later, proposed as tasks: '[{"title":"…","detail":"…","after":["T-02"]}]'
   --waiting-for <ids>  with --status blocked: tasks it waits for, comma-separated (T-01,T-02);
                        the task comes back to this chat when they are done
   --server <url>       default: $AITRACK_SERVER or http://127.0.0.1:4317
@@ -115,13 +116,17 @@ async function main() {
   if (args["waiting-for"]) {
     report.waitingFor = args["waiting-for"].split(",").map((id) => id.trim()).filter(Boolean);
   }
-  if (args.issues) {
+  for (const [flag, field] of [
+    ["issues", "issues"],
+    ["follow-ups", "followUps"],
+  ]) {
+    if (!args[flag]) continue;
     try {
-      const issues = JSON.parse(args.issues);
-      if (!Array.isArray(issues)) throw new Error("not a list");
-      report.issues = issues;
+      const list = JSON.parse(args[flag]);
+      if (!Array.isArray(list)) throw new Error("not a list");
+      report[field] = list;
     } catch (e) {
-      process.stderr.write(`--issues must be a JSON list: ${e.message}\n`);
+      process.stderr.write(`--${flag} must be a JSON list: ${e.message}\n`);
       process.exit(2);
     }
   }

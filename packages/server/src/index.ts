@@ -5,6 +5,7 @@ import { ProjectManager } from "./manager.ts";
 import { ProjectGenerator } from "./runners/generate.ts";
 import { RunManager } from "./runners/runs.ts";
 import { RunnerStore } from "./runners/store.ts";
+import { Supervisor } from "./runners/supervisor.ts";
 import { defaultDataDir, Store } from "./store.ts";
 
 export { createHttpServer, VERSION } from "./http.ts";
@@ -16,6 +17,7 @@ export { ensureControlToken } from "./control.ts";
 export { RunManager } from "./runners/runs.ts";
 export { ProjectGenerator, type GenerateJob } from "./runners/generate.ts";
 export type { RunSummary, RunnerState } from "./runners/runs.ts";
+export { Supervisor, type ManagerRun, type ManagerState } from "./runners/supervisor.ts";
 export { PROVIDER_INFO, type ChatRunner, type ProviderId } from "./runners/providers.ts";
 
 export interface StartOptions {
@@ -28,6 +30,9 @@ export interface StartOptions {
   watch?: boolean;
   /** Token for the endpoints that start programs; read from or created in the data folder by default. */
   controlToken?: string;
+  /** How long the manager waits after a change before it looks, and how often it looks anyway (tests). */
+  managerDelayMs?: number;
+  managerTickMs?: number;
 }
 
 export interface RunningServer {
@@ -36,6 +41,7 @@ export interface RunningServer {
   manager: ProjectManager;
   runs: RunManager;
   generator: ProjectGenerator;
+  supervisor: Supervisor;
   server: Server;
   controlToken: string;
   /** The UI address with the control token, for opening in a browser. */
@@ -69,7 +75,9 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
   const runs = new RunManager(manager, new RunnerStore(dataDir), dataDir);
 
   const generator = new ProjectGenerator();
-  const server = createHttpServer(manager, { uiDir: options.uiDir, runs, generator, controlToken });
+  const supervisor = new Supervisor(manager, runs, generator, dataDir, { delayMs: options.managerDelayMs, tickMs: options.managerTickMs });
+  supervisor.on("warning", (e: unknown) => manager.emit("warning", e));
+  const server = createHttpServer(manager, { uiDir: options.uiDir, runs, generator, controlToken, supervisor });
   const preferred = options.port ?? 4317;
   let port = -1;
   let lastError: unknown;
@@ -87,6 +95,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
   const url = `http://127.0.0.1:${port}`;
   manager.serverUrl = url;
   await runs.init();
+  supervisor.start();
   if (options.watch !== false) manager.startWatching();
 
   return {
@@ -95,11 +104,13 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
     manager,
     runs,
     generator,
+    supervisor,
     server,
     controlToken,
     controlUrl: `${url}/#token=${controlToken}`,
     close: () =>
       new Promise<void>((resolve) => {
+        supervisor.close();
         void runs.close();
         generator.close();
         manager.stopWatching();

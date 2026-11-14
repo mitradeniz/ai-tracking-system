@@ -26,7 +26,8 @@ Every task prompt copied from the app ends with a **REPORTING** section, so you 
 | `reason` | for `blocked` / `failed` | Why. Shown on the board. |
 | `pr` | no | Pull request URL or branch. |
 | `verify` | no | How a human can check the result. |
-| `issues` | no | Problems: what failed, was skipped, is missing or needs a person. See below. |
+| `issues` | no | Problems: what failed or what a person must do or decide. See below. |
+| `followUps` | no | Work left for later, proposed as new tasks. See below. |
 | `waitingFor` | no | With `blocked`: ids of tasks of the plan the chat waits for. See below. |
 
 Text fields are limited to 20 000 characters (`pr`: 2 000). Inbox files and pasted text may also hold a JSON array of reports.
@@ -40,6 +41,18 @@ A chat that cannot go on until another task of the plan is done — its code mer
 ```
 
 The task then needs nothing from the person: it shows as *waiting for CLD-01*, keeps its chat (which takes no other task meanwhile, so it finishes what it started in the same conversation), raises no problem, and the ids become dependencies of the task in the plan file, so it is not sent too early next time (one that would make a cycle is left out; a note in the task's history says what was added). When every task it waits for is done, the task is ready again for the same chat, ahead of the chat's other work; with automatic dispatch it is sent at once, with a note that lists what was finished (summary and PR) and asks the chat to go on where it stopped. A task waited for that was already done when the chat stopped does not count: the task stays blocked for the person. `"waitingFor": "CLD-01"` (one id) is read too.
+
+### Work left for later (`followUps`)
+
+A chat that worked around something — a placeholder instead of an image another tool could not make, a check it had no time to add — finishes its task and writes down the rest, instead of stopping for the person:
+
+```json
+"followUps": [
+  {"title": "Replace the placeholder images", "detail": "web/img/*.svg are placeholders until the reference pack exists.", "agent": "codex-c", "after": ["T-05"]}
+]
+```
+
+Only `title` is needed; `agent` is the chat that should do it, `after` the tasks it must wait for (one id is read too). Each one becomes a **proposed task**: the board shows *Chats left N tasks for later*, and the task drawer lists them too. A proposal can be **added to the plan** (a new task `<task>-F1`, … for the chosen chat, depending on the task it came from and on `after`, with the prompts and milestone of that task), **ignored** (and brought back later), or folded in with the others by an AI CLI: **Fold into the current plan** sends the plan, the open proposals and the open notes to Claude Code, Codex, Gemini or Copilot, which answers with new tasks, links to tasks that already cover a proposal, and proposals to ignore; the app checks the answer (known chats, existing dependencies, no cycles) and shows it before anything is written. The same work proposed again by the same task is not listed twice. With the CLI: `--follow-ups '[{"title":"…"}]'`. API: `POST /api/projects/:key/proposals/add` (`{id, agent?}`), `…/proposals/state` (`{ids, state: "ignored" | "open"}`), `…/proposals/integrate` (`{provider, model?}`, a job like the plan generator's), `…/proposals/preview` (`{answer}`) and `…/proposals/apply` (`{plan}`).
 
 ### Problems (`issues`)
 
@@ -56,7 +69,7 @@ A report can list what did not go as planned, so it is not buried in the summary
 ]
 ```
 
-`kind` is `error` (default), `missing`, `needs-you` or `warning`; `fix` is a prompt that would solve it. A decision only the person can make can carry `choices`, up to five options shown as buttons, the recommended one first: `"choices": [{"label": "Separate repository", "reply": "I move the commits there and go on.", "recommended": true}, {"label": "Same repository"}]`. `label` is the button, `reply` what the chat is told when it is picked (the label when left out). The task prompt asks chats to write `title` and `detail` in the project's language (`settings.language`), in plain words. The app marks such tasks with a red **!**, lists the problems in the task drawer and keeps each fix prompt ready to copy or send to the chat. Problems stay until the task is sent again, reported `done` without problems, approved or reopened; a report with `"issues": []` clears them. In the drawer each one can be marked **Resolved** or **Ignore**d (`POST /api/projects/:key/tasks/:task/issues` with `{index, title, state: "resolved" | "ignored" | "open"}`, or `{issues: [{index, title}, …], state}` for several in one event); a closed problem no longer counts, is listed under *Resolved and ignored* and can be opened again. With the CLI: `--issues '[{"title":"…","fix":"…"}]'`.
+`kind` is `error` (default), `missing`, `needs-you` or `warning`. A `warning` is a **note**: it needs no answer, raises no **!**, and is listed under *Notes* in the task drawer, where it can be marked seen or folded into the plan with the proposals; anything else is a problem for the person, so the prompt asks chats to report only what failed or what a person must do or decide, to write work for later as `followUps` and plain information in the `summary`; `fix` is a prompt that would solve it. A decision only the person can make can carry `choices`, up to five options shown as buttons, the recommended one first: `"choices": [{"label": "Separate repository", "reply": "I move the commits there and go on.", "recommended": true}, {"label": "Same repository"}]`. `label` is the button, `reply` what the chat is told when it is picked (the label when left out). The task prompt asks chats to write `title` and `detail` in the project's language (`settings.language`), in plain words. The app marks such tasks with a red **!**, lists the problems in the task drawer and keeps each fix prompt ready to copy or send to the chat. Problems stay until the task is sent again, reported `done` without problems, approved or reopened; a report with `"issues": []` clears them. In the drawer each one can be marked **Resolved** or **Ignore**d (`POST /api/projects/:key/tasks/:task/issues` with `{index, title, state: "resolved" | "ignored" | "open"}`, or `{issues: [{index, title}, …], state}` for several in one event); a closed problem no longer counts, is listed under *Resolved and ignored* and can be opened again. With the CLI: `--issues '[{"title":"…","fix":"…"}]'`.
 
 Reports are read leniently: `null` means a field is not set, an unknown `kind` falls back to `error`, and when a chat forgets the `aitrack-report` fence, a JSON object with `task` and `status` in its final message (or in a ```` ```json ```` block) is taken as the report.
 
@@ -99,7 +112,7 @@ node /path/to/ai-tracking-system/packages/reporter/bin/aitrack-report.mjs \
   --task T-03 --status blocked --reason "Needs the colour palette from T-01"
 ```
 
-Options: `--project`, `--agent`, `--summary`, `--reason`, `--pr`, `--verify`, `--issues <json>`, `--waiting-for <ids>` (comma-separated), `--server` (default `$AITRACK_SERVER` or `http://127.0.0.1:4317`), `--inbox` (default `<repo root>/.aitrack/inbox`), `--no-http`.
+Options: `--project`, `--agent`, `--summary`, `--reason`, `--pr`, `--verify`, `--issues <json>`, `--follow-ups <json>`, `--waiting-for <ids>` (comma-separated), `--server` (default `$AITRACK_SERVER` or `http://127.0.0.1:4317`), `--inbox` (default `<repo root>/.aitrack/inbox`), `--no-http`.
 
 ### 3. Inbox file
 

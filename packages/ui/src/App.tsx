@@ -6,6 +6,8 @@ import { Menu, type MenuItem } from "./components/Menu.tsx";
 import { NewProjectWizard, PlanWithAIDialog } from "./components/NewProject.tsx";
 import { CodeFolderBanner, ProjectList, ProjectSettingsDialog, RemoveProjectDialog } from "./components/Projects.tsx";
 import { AutoDispatch, RunnerDialog } from "./components/Runners.tsx";
+import { ManagerDialog, ManagerSwitch } from "./components/Manager.tsx";
+import { ProposalsDialog, ProposalsStrip } from "./components/Proposals.tsx";
 import { SettingsDialog } from "./components/Settings.tsx";
 import { TaskDrawer } from "./components/TaskDrawer.tsx";
 import { PromptsDialog, TaskEditorDialog } from "./components/TaskEditor.tsx";
@@ -54,6 +56,8 @@ export function App() {
     | "planAI"
     | "projectSettings"
     | "removeProject"
+    | "proposals"
+    | "manager"
     | null
   >(null);
   const [taskEdit, setTaskEdit] = useState<{ taskId?: string; agentId?: string }>({});
@@ -387,6 +391,14 @@ export function App() {
                         onInfo={(m) => toast(m, "done")}
                       />
                     )}
+                    {model && (
+                      <ManagerSwitch
+                        model={model}
+                        onOpen={() => setDialog("manager")}
+                        onError={(m) => toast(m, "failed")}
+                        onInfo={(m) => toast(m, "done")}
+                      />
+                    )}
                     <button className="btn small" onClick={() => setDialog("paste")}>
                       {t("pasteReport")}
                     </button>
@@ -514,6 +526,7 @@ export function App() {
                     onError={(m) => toast(localError(m, t), "failed")}
                   />
                 )}
+                {model && <ProposalsStrip model={model} onOpen={() => setDialog("proposals")} />}
                 {model && noTasks && (
                   <div className="empty-plan">
                     <div>
@@ -567,6 +580,30 @@ export function App() {
           onError={(m) => toast(localError(m, t), "failed")}
           onInfo={(m) => toast(m, "done")}
           onRunnerSettings={runnerSettings}
+        />
+      )}
+      {dialog === "proposals" && model && (
+        <ProposalsDialog
+          model={model}
+          onClose={() => setDialog(null)}
+          onInfo={(m) => toast(m, "done")}
+          onError={(m) => toast(m, "failed")}
+          onOpenTask={(id) => {
+            setDialog(null);
+            setOpenTask(id);
+          }}
+        />
+      )}
+      {dialog === "manager" && model && (
+        <ManagerDialog
+          model={model}
+          onClose={() => setDialog(null)}
+          onInfo={(m) => toast(m, "done")}
+          onError={(m) => toast(m, "failed")}
+          onOpenTask={(id) => {
+            setDialog(null);
+            setOpenTask(id);
+          }}
         />
       )}
       {dialog === "runner" && model && runnerAgent && model.agent.has(runnerAgent) && (

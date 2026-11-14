@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // A stand-in for the agent CLIs in tests. FAKE_FORMAT picks the output format (codex, claude,
-// gemini, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done).
+// gemini, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done,
+// followups: done with work left for later). A manager or plan-integration prompt is answered with FAKE_MANAGER_ANSWER
+// or FAKE_PLAN_ANSWER.
 import { appendFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -49,8 +51,16 @@ const plan = {
   ],
   prompts: { context: { title: "Shared context", body: "We build a landing page with a signup form." } },
 };
+// The manager and the plan integration get their answer from the environment.
+const role = stdin.includes("You are the manager of the project") ? "manager" : stdin.includes("You keep the plan of the project") ? "integrate" : null;
 const final =
-  scenario === "project"
+  role === "manager"
+    ? "```json\n" + (process.env.FAKE_MANAGER_ANSWER ?? '{"actions":[]}') + "\n```"
+    : role === "integrate"
+    ? "```json\n" + (process.env.FAKE_PLAN_ANSWER ?? '{"tasks":[]}') + "\n```"
+    : scenario === "followups"
+    ? "Done with placeholders.\n```aitrack-report\n" + JSON.stringify({ task, status: "done", summary: "Screens built with placeholder images", followUps: [{ title: "Replace placeholder images", detail: "Placeholders in web/img until the reference pack exists.", agent: "a", after: ["T1"] }, { title: "Add web checks to CI" }] }) + "\n```"
+    : scenario === "project"
     ? "Here is the project file.\n```json\n" + JSON.stringify(plan, null, 2) + "\n```\nT-01 can start right away."
     : scenario === "issues"
     ? "Done, with two open points.\n```aitrack-report\n" + JSON.stringify({ task, status: "done", summary: english ? "Payment form and API added" : "Ödeme formu ve API eklendi", issues }) + "\n```"

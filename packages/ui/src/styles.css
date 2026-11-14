@@ -4488,3 +4488,181 @@ details.advanced[open] {
   justify-content: center;
   text-align: center;
 }
+
+/* Proposed tasks: work chats left for later. */
+.proposals-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--review-line);
+  border-radius: var(--radius);
+  background: var(--glass);
+  min-width: 0;
+}
+
+.proposals-strip .grow {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proposals-icon {
+  color: var(--review);
+  font-weight: 600;
+}
+
+.proposal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 8px 0 4px;
+  max-height: 46vh;
+  overflow: auto;
+}
+
+.proposal {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+}
+
+.proposal-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.proposal-title {
+  font-weight: 600;
+}
+
+.proposal-detail {
+  white-space: pre-wrap;
+}
+
+.proposal-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.proposal-actions select {
+  max-width: 140px;
+}
+
+.section.integrate {
+  border-top: 1px solid var(--edge);
+  padding-top: 12px;
+}
+
+.integrate-preview {
+  margin: 4px 0 12px;
+  padding: 4px 12px 10px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+}
+
+.integrate-preview h4 {
+  margin: 10px 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.plan-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Notes a chat wrote on the way, and what it left for later, in the task drawer. */
+.note-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid var(--edge);
+  font-size: 13px;
+}
+
+.note-item:first-of-type {
+  border-top: 0;
+}
+
+/* The manager. */
+.manager-switch .count-dot {
+  display: inline-block;
+  min-width: 15px;
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--review);
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+}
+
+.manager-switch.on {
+  border-color: var(--review-line);
+}
+
+.mgr-log {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 40vh;
+  overflow: auto;
+}
+
+.mgr-run {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+}
+
+.mgr-run.mgr-failed {
+  border-color: var(--blocked-line);
+}
+
+.mgr-actions,
+.mgr-foryou {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mgr-actions {
+  list-style: none;
+  padding-left: 2px;
+}
+
+.section.notes .note-item + .row {
+  margin-top: 12px;
+}

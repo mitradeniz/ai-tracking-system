@@ -492,6 +492,21 @@ export class ProjectManager extends EventEmitter {
     return this.setIssueStates(key, taskId, [target], target.state);
   }
 
+  /** Marks proposed tasks added to the plan (as which task), ignored, or open again, in one event. */
+  async setProposalStates(
+    key: string,
+    updates: Array<{ id: string; state: "open" | "added" | "ignored"; task?: string }>,
+    source: EventSource = "ui",
+  ): Promise<TrackEvent> {
+    const { board } = this.context(key);
+    const known = new Map(board.proposals.map((p) => [p.id, p]));
+    const valid = updates.filter((u) => known.has(u.id));
+    if (!valid.length) throw new HttpError(409, "Those proposed tasks are no longer there.");
+    const what = valid.map((u) => `${known.get(u.id)!.title} → ${u.state === "added" ? (u.task ?? "added") : u.state}`).join("; ");
+    const first = known.get(valid[0]!.id)!;
+    return this.addEvent(key, { type: "note", task: first.from, message: `Proposed tasks: ${what}`.slice(0, 2000), proposals: valid }, source);
+  }
+
   /** Resolves, ignores or reopens several problems of a task at once, in one event. */
   async setIssueStates(
     key: string,
@@ -543,6 +558,8 @@ export class ProjectManager extends EventEmitter {
       pr: input.pr ? String(input.pr) : undefined,
       verify: input.verify ? String(input.verify) : undefined,
       issues: Array.isArray(input.issues) ? input.issues : undefined,
+      waitingFor: Array.isArray(input.waitingFor) ? input.waitingFor : undefined,
+      proposals: Array.isArray(input.proposals) ? input.proposals : undefined,
       source,
     });
     if (!parsed.success) throw new HttpError(400, parsed.error.issues.map((i) => i.message).join("; "));

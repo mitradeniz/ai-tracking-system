@@ -11,6 +11,7 @@ import {
   lastRunOf,
   localMessage,
   localReason,
+  notesOf,
   problemsOf,
   PROVIDER_LABEL,
   reasonText,
@@ -194,6 +195,15 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
   const canRunFix = Boolean(chosenRunner) && (s === "ready" || s === "failed");
   const problems = problemsOf(model, snap, t);
   const closed = closedIssuesOf(snap);
+  const notes = notesOf(snap);
+  const leftForLater = (model.detail.board?.proposals ?? []).filter((p) => p.from === task.id && p.state === "open");
+  const proposal = (id: string, add: boolean) => {
+    const p = leftForLater.find((x) => x.id === id)!;
+    const agentFor = p.agent && model.agent.has(p.agent) ? p.agent : task.agent;
+    (add ? api.addProposal(model.detail.key, id, agentFor) : api.setProposals(model.detail.key, [id], "ignored"))
+      .then((r) => onInfo?.(add ? t("prop_added", { task: (r as { created?: string[] }).created?.[0] ?? "" }) : t("prop_ignoredToast", { title: p.title })))
+      .catch((e: Error) => onError(e.message));
+  };
   const setIssue = (issue: { index: number; title: string }, state: "resolved" | "ignored" | "open") => {
     api
       .setIssueState(model.detail.key, task.id, { ...issue, state })
@@ -535,6 +545,62 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                     </div>
                   ))}
                 </details>
+              )}
+            </section>
+          )}
+
+          {(notes.length > 0 || leftForLater.length > 0) && (
+            <section className="section notes">
+              {notes.length > 0 && (
+                <>
+                  <div className="row">
+                    <h3 style={{ margin: 0 }}>
+                      {t("notes")} · {notes.length}
+                    </h3>
+                    <InfoTip text={t("notesHint")} />
+                  </div>
+                  {notes.map((n) => (
+                    <div className="note-item" key={`${n.index}-${n.title}`}>
+                      <div className="grow">
+                        <div>{n.title}</div>
+                        {n.detail && <div className="small muted">{n.detail}</div>}
+                      </div>
+                      <button
+                        className="btn small ghost"
+                        onClick={() =>
+                          void api
+                            .setIssueState(model.detail.key, task.id, { index: n.index, title: n.title, state: "resolved" })
+                            .then(() => onInfo?.(t("note_seenToast", { title: n.title })))
+                            .catch((e: Error) => onError(e.message))
+                        }
+                      >
+                        {t("note_seen")}
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
+              {leftForLater.length > 0 && (
+                <>
+                  <div className="row">
+                    <h3 style={{ margin: 0 }}>{t("prop_inDrawer", { n: leftForLater.length })}</h3>
+                    <InfoTip text={t("prop_hint")} />
+                  </div>
+                  {leftForLater.map((p) => (
+                    <div className="note-item" key={p.id}>
+                      <div className="grow">
+                        <div>{p.title}</div>
+                        {p.detail && <div className="small muted">{p.detail}</div>}
+                      </div>
+                      <button className="btn small" onClick={() => proposal(p.id, true)}>
+                        {t("prop_add")}
+                      </button>
+                      <button className="btn small ghost" onClick={() => proposal(p.id, false)}>
+                        {t("prop_ignore")}
+                      </button>
+                    </div>
+                  ))}
+                </>
               )}
             </section>
           )}

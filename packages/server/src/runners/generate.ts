@@ -47,6 +47,19 @@ export interface GenerateJob {
 interface Job extends GenerateJob {
   child: ChildProcess | null;
   stopRequested: boolean;
+  /** Settles when the job has ended. */
+  ended: Promise<void>;
+  end: () => void;
+}
+
+/** Any prompt answered by a CLI running read-only in a folder (the manager, integrating proposals). */
+export interface PromptRequest {
+  provider: GeneratorProvider;
+  model?: string;
+  effort?: string;
+  binary?: string;
+  cwd: string;
+  prompt: string;
 }
 
 const MAX_MINUTES = 20;
@@ -69,7 +82,27 @@ export class ProjectGenerator {
     if (!req.input.plan.trim() && !req.input.canReadRepository) throw new HttpError(400, "Describe the plan first.");
     const prompt = authoringPrompt(req.input);
     if (prompt.length > 400_000) throw new HttpError(400, "The plan is too long; shorten it or split it into milestones.");
+    return this.launch({ ...req, cwd, prompt });
+  }
 
+  /** Starts a CLI on a prompt, read-only in a folder; see start(). */
+  async startPrompt(req: PromptRequest): Promise<GenerateJob> {
+    if (!GENERATOR_PROVIDERS.includes(req.provider)) throw new HttpError(400, `Unknown CLI "${String(req.provider)}".`);
+    const cwd = path.resolve(req.cwd);
+    if (!existsSync(cwd) || !statSync(cwd).isDirectory()) throw new HttpError(400, `Folder not found: ${cwd}`);
+    return this.launch({ ...req, cwd });
+  }
+
+  /** The job once it has ended. */
+  async wait(id: string): Promise<GenerateJob> {
+    const job = this.jobs.get(id);
+    if (!job) throw new HttpError(404, `Unknown job "${id}"`);
+    await job.ended;
+    return this.view(job);
+  }
+
+  private async launch(req: PromptRequest): Promise<GenerateJob> {
+    const { cwd, prompt } = req;
     const invocation = buildInvocation({
       runner: {
         provider: req.provider,
@@ -98,6 +131,8 @@ export class ProjectGenerator {
       throw new HttpError(400, `${PROVIDER_INFO[req.provider].name} was not found. Install it and sign in once in a terminal, or choose "Use another AI".`);
     }
 
+    let end = () => undefined as void;
+    const ended = new Promise<void>((resolve) => (end = resolve));
     const job: Job = {
       id: `g-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`,
       provider: req.provider,
@@ -107,6 +142,8 @@ export class ProjectGenerator {
       tools: 0,
       child: null,
       stopRequested: false,
+      ended,
+      end,
     };
     this.jobs.set(job.id, job);
     this.trim();
@@ -133,6 +170,7 @@ export class ProjectGenerator {
       job.state = "failed";
       job.error = (e as Error).message;
       job.endedAt = new Date().toISOString();
+      job.end();
       return this.view(job);
     }
     job.child = child;
@@ -173,6 +211,7 @@ export class ProjectGenerator {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      queueMicrotask(() => job.end());
       job.child = null;
       job.endedAt = new Date().toISOString();
       job.tools = parser.tools;
@@ -251,7 +290,7 @@ export class ProjectGenerator {
   }
 
   private view(job: Job): GenerateJob {
-    const { child: _child, stopRequested: _stop, ...rest } = job;
+    const { child: _child, stopRequested: _stop, ended: _ended, end: _end, ...rest } = job;
     return { ...rest, activity: [...rest.activity] };
   }
 }

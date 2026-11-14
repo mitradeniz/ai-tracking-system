@@ -94,6 +94,25 @@ sequenceDiagram
 
 The switch in the project header turns it on. Whenever something changes (a task is done, a chat is set up, a run ends), every free chat that runs by itself gets its most urgent **ready** task, until the **At once** limit is reached. It never re-sends a task that failed, and never sends to chats that are run by hand.
 
+## The manager
+
+For the night, or any time you are away, the **Manager** switch next to auto-dispatch hands the project to an AI CLI you choose (Claude Code, Codex, Gemini or Copilot, with a model). It turns auto-dispatch on and looks at the project a minute after things settle and every 10 minutes, at most as many times an hour as you set (6 by default), and only when something needs a decision: a task blocked on a question, a failed task, refused steps, proposed tasks or notes. It skips a situation it has already handled.
+
+It runs read-only in the plan's folder and answers with actions that the app checks and carries out:
+
+| Action | What the app does |
+| --- | --- |
+| reply | continues the chat's session with the answer (or sends the task again with it) |
+| choose | picks one of the options the chat offered, and closes that problem |
+| allow | allows refused steps that are not risky, for that Claude Code chat, and lets it go on |
+| wait | parks the task until the tasks it waits for are done, as if the chat had reported `waitingFor` |
+| resend | sends a failed task again, with a note |
+| close | marks problems resolved or ignored |
+| plan | folds proposed tasks and notes into the plan, the same way as **Fold into the current plan** |
+| leave | leaves something for you, in one sentence |
+
+It acts only on the tasks it was shown, one action per task; never approves payments, enters credentials, accepts legal terms, publishes, deletes data, pushes to a main branch or allows risky steps — those are left for you, and chats run by hand are never touched. With *Also continue tasks I stopped* off, a task you stopped stays stopped. Every action is written to the task's history (`Manager: …`, source `manager`), and the manager dialog lists its recent runs, what each did and what it left for you (kept in `~/.aitrack/manager/`). **Look now** runs it once. While chats run or a manager is on, the desktop app keeps the computer from going to sleep on its own; a laptop still sleeps when its lid is closed.
+
 ## Hooks for sessions you open yourself
 
 Sessions you open by hand can report turn starts and ends. Add the snippet the run settings dialog shows (it has the right port), or:
@@ -153,6 +172,9 @@ The hook finds the chat by, in order: `AITRACK_CHAT` (start the session as `AITR
 | `POST /api/hook?tool=claude\|codex\|…` | hook payloads |
 | `POST /api/authoring/generate` 🔑 | `{provider: claude\|codex\|gemini\|copilot, cwd, input, model?}` — write a project plan with that CLI, read-only in `cwd` |
 | `GET /api/authoring/generate/:id` · `POST …/:id/stop` 🔑 | progress and answer of a plan being written; stop it |
+| `POST /api/projects/:key/manager` 🔑 | `{enabled, provider, model, effort, binary, maxRunsPerHour, resumeStopped}` — the manager; its state and log come with `GET …/runners` as `manager` |
+| `POST /api/projects/:key/manager/run` 🔑 | let the manager look once, now (409 when nothing waits for a decision) |
+| `POST /api/projects/:key/proposals/integrate` 🔑 | `{provider, model?}` — fold proposed tasks and notes into the plan with that CLI; see [reporting](agent-reporting.md#work-left-for-later-followups) |
 
 🔑 needs the `X-Aitrack-Token` header. Live updates arrive on `GET /api/stream` as `run`, `runlog` and `runners` events.
 

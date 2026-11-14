@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildGraph,
   computeBoard,
+  parsePlan,
   parseProjectFile,
   parseReports,
   ProjectFileSchema,
@@ -256,6 +257,39 @@ describe("reports", () => {
     const tr = renderTaskPrompt(project({ settings: { requireApproval: false, inboxDir: ".aitrack/inbox", language: "tr" } }), "T1", { serverUrl: "http://x" });
     expect(tr).toContain('"issues":[{"title"');
     expect(tr).toContain("in Turkish");
+  });
+
+  it("turns work left for later into proposed tasks, once each, and follows what the person did with them", () => {
+    const report = parseReports(
+      '{"task":"T1","status":"done","followUps":[{"title":"Replace placeholders","detail":"Images in web/img","after":"T3","agent":null},{"title":""},{"title":"Add CI checks"}]}',
+    ).reports[0]!;
+    expect(report.followUps).toEqual([{ title: "Replace placeholders", detail: "Images in web/img", after: ["T3"] }, { title: "Add CI checks" }]);
+    const p = project();
+    const first = { ...reportToEvent(report, "paste", new Date("2025-12-31T00:00:00Z")), id: "r1", agent: "a" };
+    // The same work reported again later is not proposed twice.
+    const again = { ...reportToEvent({ task: "T1", status: "done", followUps: [{ title: "add ci checks" }] }, "paste", new Date("2025-12-31T01:00:00Z")), id: "r2" };
+    let board = computeBoard(p, [first, again]);
+    expect(board.proposals.map((x) => [x.id, x.title, x.from, x.by, x.after, x.state])).toEqual([
+      ["r1:0", "Replace placeholders", "T1", "a", ["T3"], "open"],
+      ["r1:1", "Add CI checks", "T1", "a", [], "open"],
+    ]);
+    const update = ev("T1", "note", { proposals: [{ id: "r1:0", state: "added", task: "T1-F1" }, { id: "r1:1", state: "ignored" }] });
+    board = computeBoard(p, [first, again, update]);
+    expect(board.proposals.map((x) => [x.state, x.task])).toEqual([
+      ["added", "T1-F1"],
+      ["ignored", undefined],
+    ]);
+  });
+
+  it("reads the plan a CLI writes to fold proposed tasks in", () => {
+    const text = 'Here it is.\n```json\n{"tasks":[{"title":"CI","agent":"b","dependsOn":["T1"],"instructions":null,"covers":{"proposals":["r1:1"]}}],"links":[{"task":"T2","proposals":["r1:0"]}],"ignore":[],"summary":"ok"}\n```';
+    const plan = parsePlan(text);
+    expect(plan.tasks[0]).toEqual({ title: "CI", agent: "b", dependsOn: ["T1"], covers: { proposals: ["r1:1"] } });
+    expect(plan.links).toEqual([{ task: "T2", proposals: ["r1:0"] }]);
+    expect(plan.summary).toBe("ok");
+    expect(parsePlan('{"links":[{"task":"T2","proposals":["x"]}]}').tasks).toEqual([]);
+    expect(() => parsePlan("no plan here")).toThrow();
+    expect(() => parsePlan('{"tasks":[{"agent":"b"}]}')).toThrow();
   });
 
   it("turns reports into events", () => {

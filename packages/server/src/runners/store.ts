@@ -8,12 +8,29 @@ import { DEFAULT_RUNNER, PROVIDERS, type Access, type ChatRunner, type SessionMo
  * file: a shared or downloaded `.aitrack` file must not be able to make this computer run commands.
  */
 
+/** An AI CLI that runs the project while the person is away: answers chats, keeps the plan up to date. */
+export interface ManagerSettings {
+  enabled: boolean;
+  provider: "claude" | "codex" | "gemini" | "copilot";
+  model?: string;
+  effort?: string;
+  /** Program path when the CLI is not on PATH. */
+  binary?: string;
+  /** At most this many manager runs an hour. */
+  maxRunsPerHour: number;
+  /** Also let it continue tasks the person stopped. */
+  resumeStopped: boolean;
+}
+
+export const DEFAULT_MANAGER: ManagerSettings = { enabled: false, provider: "claude", maxRunsPerHour: 6, resumeStopped: true };
+
 export interface ProjectRunners {
   /** Give the next ready task to a chat as soon as it is free. */
   autoDispatch: boolean;
   /** At most this many runs at once in this project. */
   maxConcurrent: number;
   chats: Record<string, ChatRunner>;
+  manager: ManagerSettings;
 }
 
 interface RunnerFile {
@@ -21,7 +38,30 @@ interface RunnerFile {
   projects: Record<string, ProjectRunners>;
 }
 
-export const DEFAULT_PROJECT_RUNNERS: ProjectRunners = { autoDispatch: false, maxConcurrent: 2, chats: {} };
+export const DEFAULT_PROJECT_RUNNERS: ProjectRunners = { autoDispatch: false, maxConcurrent: 2, chats: {}, manager: { ...DEFAULT_MANAGER } };
+
+/** Validates manager settings coming from the UI or from disk. */
+export function normalizeManager(input: unknown, base: ManagerSettings = DEFAULT_MANAGER): ManagerSettings {
+  const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+  const provider = o.provider === "claude" || o.provider === "codex" || o.provider === "gemini" || o.provider === "copilot" ? o.provider : base.provider;
+  const pick = (k: "model" | "effort" | "binary", max: number) => (k in o ? str(o[k], max) : base[k]);
+  const model = pick("model", 200);
+  if (model && !/^[\w.:@/[\]-]+$/.test(model)) throw new Error(`"${model}" is not a model name the CLI understands.`);
+  const effort = pick("effort", 20);
+  if (effort && !/^[a-z]+$/.test(effort)) throw new Error(`Unknown effort level "${effort}".`);
+  const binary = pick("binary", 1000);
+  if (binary && !path.isAbsolute(binary)) throw new Error("The program path must be an absolute path.");
+  const max = Number(o.maxRunsPerHour);
+  return {
+    enabled: typeof o.enabled === "boolean" ? o.enabled : base.enabled,
+    provider,
+    model,
+    effort,
+    binary,
+    maxRunsPerHour: Number.isInteger(max) && max >= 1 && max <= 60 ? max : base.maxRunsPerHour,
+    resumeStopped: typeof o.resumeStopped === "boolean" ? o.resumeStopped : base.resumeStopped,
+  };
+}
 
 const str = (v: unknown, max = 4000): string | undefined => {
   if (typeof v !== "string") return undefined;
@@ -94,10 +134,17 @@ function normalizeProject(input: unknown): ProjectRunners {
     }
   }
   const max = Number(o.maxConcurrent);
+  let manager: ManagerSettings;
+  try {
+    manager = normalizeManager(o.manager);
+  } catch {
+    manager = { ...DEFAULT_MANAGER };
+  }
   return {
     autoDispatch: o.autoDispatch === true,
     maxConcurrent: Number.isInteger(max) && max >= 1 && max <= 10 ? max : DEFAULT_PROJECT_RUNNERS.maxConcurrent,
     chats,
+    manager,
   };
 }
 
@@ -123,7 +170,7 @@ export class RunnerStore {
 
   project(key: string): ProjectRunners {
     const p = this.data.projects[key];
-    return p ? { ...p, chats: { ...p.chats } } : { ...DEFAULT_PROJECT_RUNNERS, chats: {} };
+    return p ? { ...p, chats: { ...p.chats }, manager: { ...p.manager } } : { ...DEFAULT_PROJECT_RUNNERS, chats: {}, manager: { ...DEFAULT_MANAGER } };
   }
 
   chat(key: string, agentId: string): ChatRunner {
@@ -131,13 +178,20 @@ export class RunnerStore {
   }
 
   async setChat(key: string, agentId: string, runner: ChatRunner): Promise<void> {
-    const p = (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {} });
+    const p = (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {}, manager: { ...DEFAULT_MANAGER } });
     p.chats[agentId] = runner;
     await this.save();
   }
 
+  async setManager(key: string, patch: unknown): Promise<ManagerSettings> {
+    const p = (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {}, manager: { ...DEFAULT_MANAGER } });
+    p.manager = normalizeManager(patch, p.manager);
+    await this.save();
+    return { ...p.manager };
+  }
+
   async setProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number }): Promise<ProjectRunners> {
-    const p = (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {} });
+    const p = (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {}, manager: { ...DEFAULT_MANAGER } });
     if (typeof patch.autoDispatch === "boolean") p.autoDispatch = patch.autoDispatch;
     if (typeof patch.maxConcurrent === "number" && Number.isInteger(patch.maxConcurrent)) {
       p.maxConcurrent = Math.min(10, Math.max(1, patch.maxConcurrent));

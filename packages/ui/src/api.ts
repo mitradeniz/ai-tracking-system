@@ -1,4 +1,4 @@
-import type { BoardSnapshot, Issue, ProjectFile, TrackEvent } from "@aitrack/core";
+import type { BoardSnapshot, IntegrationPlan, Issue, ProjectFile, TrackEvent } from "@aitrack/core";
 
 export interface ProjectSummary {
   key: string;
@@ -87,7 +87,58 @@ export interface RunSummary {
   denials?: string[];
 }
 
+export type ManagerProvider = "claude" | "codex" | "gemini" | "copilot";
+
+/** A CLI that takes the decisions while the person is away. */
+export interface ManagerSettings {
+  enabled: boolean;
+  provider: ManagerProvider;
+  model?: string;
+  effort?: string;
+  binary?: string;
+  maxRunsPerHour: number;
+  /** Also continue tasks the person stopped. */
+  resumeStopped: boolean;
+}
+
+export interface ManagerAction {
+  type: string;
+  task?: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface ManagerRun {
+  id: string;
+  trigger: "auto" | "manual";
+  provider: ManagerProvider;
+  state: "running" | "done" | "failed";
+  startedAt: string;
+  endedAt?: string;
+  summary?: string;
+  actions: ManagerAction[];
+  /** What it left for the person. */
+  forYou: string[];
+  error?: string;
+}
+
+export interface ManagerState {
+  settings: ManagerSettings;
+  running: boolean;
+  log: ManagerRun[];
+}
+
+/** What writing a plan changed. */
+export interface ApplyResult {
+  created: string[];
+  linked: string[];
+  ignored: string[];
+  closedNotes: number;
+  errors: string[];
+}
+
 export interface RunnerState {
+  manager?: ManagerState;
   settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner> };
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
   held?: string[];
@@ -423,6 +474,19 @@ export const api = {
   stopRun: (id: string) => request<RunSummary>("POST", `/api/runs/${enc(id)}/stop`, {}),
   stopAll: (key: string) => request<{ stopped: number }>("POST", `/api/projects/${enc(key)}/runs/stop`, {}),
   activeRuns: () => request<{ count: number }>("GET", "/api/runs/active").then((r) => r.count),
+  // The manager: a CLI that answers waiting chats and keeps the plan up to date while the person is away.
+  saveManager: (key: string, patch: Partial<ManagerSettings>) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager`, patch),
+  runManager: (key: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/run`, {}),
+  // Work chats left for later.
+  addProposal: (key: string, id: string, agent?: string) =>
+    request<ApplyResult>("POST", `/api/projects/${enc(key)}/proposals/add`, { id, agent }),
+  setProposals: (key: string, ids: string[], state: "ignored" | "open") =>
+    request<TrackEvent>("POST", `/api/projects/${enc(key)}/proposals/state`, { ids, state }),
+  integrateProposals: (key: string, provider: ManagerProvider, model?: string) =>
+    request<GenerateJob>("POST", `/api/projects/${enc(key)}/proposals/integrate`, { provider, model }),
+  previewPlan: (key: string, answer: string) =>
+    request<{ plan: IntegrationPlan; dropped: string[] }>("POST", `/api/projects/${enc(key)}/proposals/preview`, { answer }),
+  applyPlan: (key: string, plan: IntegrationPlan) => request<ApplyResult>("POST", `/api/projects/${enc(key)}/proposals/apply`, { plan }),
   runLog: (id: string, after = 0) =>
     request<{ lines: string[]; next: number; run: RunSummary }>("GET", `/api/runs/${enc(id)}/log?after=${after}`),
 };

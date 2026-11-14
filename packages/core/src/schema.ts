@@ -132,7 +132,22 @@ export const TaskIssueSchema = z.object({
     .describe("Set by the person in the app when the problem is resolved or ignored; chats leave it out."),
 });
 
-export const EVENT_SOURCES = ["ui", "http", "file", "paste", "import", "runner", "hook"] as const;
+/** Work a chat left for later instead of stopping: becomes a proposed task until someone adds it to the plan or ignores it. */
+export const FollowUpSchema = z.object({
+  title: z.string().min(1).max(300).describe("The work, as a short task title."),
+  detail: z.string().max(4000).optional().describe("What was done instead for now (a placeholder, a mock) and what done looks like."),
+  agent: z.string().max(80).optional().describe("The chat that should do it, if known."),
+  after: z.array(z.string().min(1).max(80)).max(10).optional().describe("Tasks it has to wait for."),
+});
+
+/** What happened to a proposed task (set by the app). */
+export const ProposalUpdateSchema = z.object({
+  id: z.string().min(1).max(160),
+  state: z.enum(["open", "added", "ignored"]),
+  task: z.string().max(80).optional().describe("The task it became."),
+});
+
+export const EVENT_SOURCES = ["ui", "http", "file", "paste", "import", "runner", "hook", "manager"] as const;
 
 export const EventSchema = z.object({
   id: z.string().min(1),
@@ -150,6 +165,8 @@ export const EventSchema = z.object({
     .max(20)
     .optional()
     .describe("With status blocked: tasks of the plan the chat waits for. The task goes back to the same chat when they are done."),
+  followUps: z.array(FollowUpSchema).max(10).optional().describe("Work the chat left for later; proposed as new tasks."),
+  proposals: z.array(ProposalUpdateSchema).max(50).optional().describe("Set by the app: proposed tasks added to the plan or ignored."),
   source: z.enum(EVENT_SOURCES).default("ui"),
 });
 
@@ -193,6 +210,23 @@ function cleanReport(value: unknown): unknown {
     if (ids.length) out.waitingFor = ids.slice(0, 20);
     else delete out.waitingFor;
   } else if (out.waitingFor !== undefined) delete out.waitingFor;
+  // Work left for later: objects with a title; "after" may be one id.
+  if (Array.isArray(out.followUps)) {
+    const list = out.followUps
+      .filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === "object" && !Array.isArray(f))
+      .map((f) => {
+        const item = drop(f);
+        if (typeof item.after === "string") item.after = [item.after];
+        if (Array.isArray(item.after)) item.after = item.after.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim());
+        else delete item.after;
+        if (typeof item.agent !== "string" || !item.agent.trim()) delete item.agent;
+        return item;
+      })
+      .filter((f) => typeof f.title === "string" && f.title.trim() !== "")
+      .slice(0, 10);
+    if (list.length) out.followUps = list;
+    else delete out.followUps;
+  } else if (out.followUps !== undefined) delete out.followUps;
   if (Array.isArray(out.issues)) {
     out.issues = out.issues
       .filter((i): i is Record<string, unknown> => Boolean(i) && typeof i === "object" && !Array.isArray(i))
@@ -230,8 +264,11 @@ export const ReportSchema = z.preprocess(cleanReport, z.object({
     .max(20)
     .optional()
     .describe("With status blocked: tasks of the plan the chat waits for. The task goes back to the same chat when they are done."),
+  followUps: z.array(FollowUpSchema).max(10).optional(),
 }));
 
+export type FollowUp = z.infer<typeof FollowUpSchema>;
+export type ProposalUpdate = z.infer<typeof ProposalUpdateSchema>;
 export type Agent = z.infer<typeof AgentSchema>;
 export type Prompt = z.infer<typeof PromptSchema>;
 export type Task = z.infer<typeof TaskSchema>;

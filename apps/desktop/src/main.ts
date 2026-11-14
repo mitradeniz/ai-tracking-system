@@ -7,6 +7,7 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  powerSaveBlocker,
   screen,
   session,
   shell,
@@ -441,6 +442,25 @@ function createWindow(): void {
   });
 }
 
+/**
+ * While chats run or a manager looks after a project, the computer must not go to sleep on its own:
+ * the work would stop until someone wakes it. The screen may still turn off; closing a laptop's lid
+ * still puts it to sleep.
+ */
+function keepAwakeWhileWorking(): void {
+  let blocker: number | null = null;
+  const check = () => {
+    const busy = Boolean(running && (running.runs.activeTotal() > 0 || running.supervisor.managing().length > 0));
+    if (busy && blocker === null) blocker = powerSaveBlocker.start("prevent-app-suspension");
+    if (!busy && blocker !== null) {
+      powerSaveBlocker.stop(blocker);
+      blocker = null;
+    }
+  };
+  check();
+  setInterval(check, 30_000).unref?.();
+}
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -483,6 +503,7 @@ if (!gotLock) {
     registerIpc();
     buildMenu();
     createWindow();
+    keepAwakeWhileWorking();
     for (const f of pendingFiles.splice(0)) await addProjectFile(f);
 
     app.on("activate", () => {

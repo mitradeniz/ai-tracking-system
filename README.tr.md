@@ -59,6 +59,8 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 | 🟢 **Sırada ne olduğunu bilen pano** | Görevler, bağlı oldukları işler bitince ve sohbetlerinde yer varken açılır. *Şimdi gönderilebilir* yeşil olanları tek bakışta gösterir; diğer her görev neden beklediğini söyler. |
 | 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
 | ⚡ **Otomatik dağıtım** | Tek anahtar: boştaki sohbetler, en acil hazır görevlerini yeşile döner dönmez alır; aynı anda en fazla *N* tane. |
+| 🌙 **Yönetici** | Uyumaya mı gidiyorsun? Projeyi seçtiğin bir yapay zekâ CLI'ına devret: bekleyen sohbetlere yanıt verir, seçenek seçer, başka görevi bekleyenleri beklemeye alır, başarısız olanları yeniden gönderir, sonraya bırakılan işleri plana ekler. Ödeme, hesap, yasal şartlar, yayınlama ve riskli adımlar sende kalır; ne yaptığı ve sana ne bıraktığı listelenir. |
+| 📋 **Önerilen görevler** | Sohbetin sonraya bıraktığı iş — değiştirilecek bir yer tutucu, eklenecek bir kontrol — sana soru olarak değil önerilen görev olarak gelir: plana ekle, yoksay ya da hepsini bir CLI'ın mevcut plana yerleştirmesine bırak; hiçbir şey yazılmadan önce önizlenir. |
 | ❗ **Sade bir dille sorunlar** | Sohbetin yapamadığı, atladığı ya da senden beklediği şeyler her yerde kırmızı **!** ile işaretlenir, senin dilinde açıklanır ve düzenlemeye, kopyalamaya ya da göndermeye hazır bir çözüm promptuyla gelir. Bir karar, sohbetin seçenekleriyle buton olarak gelir; reddedilen adımlar, her birinin ne yaptığını söyleyen tek bir kartta **İzin ver ve devam et** ile gelir. Çözüldü olarak işaretle ya da yoksay. |
 | ⏱️ **Çalıştırma bilgileri** | Geçen süre, araç çağrıları, tokenlar, turlar, liste fiyatı ve oturumun bağlamının ne kadar dolu olduğu — canlı. |
 | ✍️ **Kendi promptların** | Gönderirken talimat ekle, sohbetin oturumuna istediğin an yaz, kayıtlı promptlarını tut. |
@@ -345,6 +347,7 @@ Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — art
 | **Canlı** | Komutlar, düzenlemeler ve mesajlar görev paneline akar; istediğin an **Durdur** — şeritten, görev panelinden ya da kayan pencereden — ya da **Tümünü durdur**. Durdurduğun sohbete sen bir şey gönderene kadar otomatik dağıtım yeni görev vermez. |
 | **Kurulum yardımı** | Kurulu olmayan bir CLI, onu kuran komutu gösterir; giriş yapılmamış olan, giriş komutunu gösterir. |
 | **Otomatik dağıtım** | Başlıktaki anahtar: boştaki sohbetler en acil hazır görevlerini alır, aynı anda en fazla *N* çalıştırma. |
+| **Yönetici** | Yanındaki anahtar projeyi seçtiğin bir CLI'a devreder (örneğin gece için). Bir şey karar beklediğinde ve 10 dakikada bir bakar, saatte en fazla *N* kez; güvenle verebileceği kararları verir, gerisini sana bırakır. Bu sırada uygulama bilgisayarı uyanık tutar. Ayrıntılar: [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
 | **Kendi açtığın oturumlar** | Claude Code ve Codex için tek satırlık bir kanca, kendi açtığın bir oturumda çalışırken görevleri *çalışıyor* ve *yanıtını bekliyor* olarak işaretler. |
 
 > [!IMPORTANT]
@@ -458,7 +461,7 @@ Bir rapor **sorunları** da listeleyebilir — başarısız olan, atlanan, eksik
 }
 ```
 
-Başka bir görevi beklemesi gereken sohbet `"waitingFor": ["T-01"]` ile `blocked` bildirir: görev sorun açmadan bekler, bekleme plana bağımlılık olarak yazılır ve T-01 bitince görev aynı sohbete geri döner. Sohbetin kendisinin veremeyeceği bir karar `choices` taşıyabilir — `[{"label": "Ayrı repo", "reply": "Commit'leri oraya taşırım.", "recommended": true}, …]` — ve buton olarak gösterilir.
+Başka bir görevi beklemesi gereken sohbet `"waitingFor": ["T-01"]` ile `blocked` bildirir: görev sorun açmadan bekler, bekleme plana bağımlılık olarak yazılır ve T-01 bitince görev aynı sohbete geri döner. Sonraya bıraktığı işleri `"followUps": [{"title": "Yer tutucu görselleri değiştir", "after": ["T-05"]}]` ile yazar ve bunlar önerilen görev olarak görünür; bilgi notları özete gider, `warning` türü bir sorun değil nottur. Sohbetin kendisinin veremeyeceği bir karar `choices` taşıyabilir — `[{"label": "Ayrı repo", "reply": "Commit'leri oraya taşırım.", "recommended": true}, …]` — ve buton olarak gösterilir.
 
 Ayrıntılar ve rapor şeması: [docs/agent-reporting.md](docs/agent-reporting.md) (İngilizce).
 
@@ -562,6 +565,7 @@ docs/               dosya biçimi, bildirim, ajan çalıştırıcılar, yapay ze
 | Görev durumu (olay günlüğü) | `~/.aitrack/events/` |
 | Sohbet başına çalıştırma ayarları | `~/.aitrack/runners.json` — proje dosyasına asla yazılmaz |
 | Çalıştırma çıktısı | `~/.aitrack/runs/` |
+| Yöneticinin yaptıkları | `~/.aitrack/manager/` |
 | Denetim anahtarı | `~/.aitrack/control-token` |
 | Uygulamanın kurulduğu yer | `~/.aitrack/install.json` |
 | Güncelleme ilerlemesi ve çıktısı | `~/.aitrack/update-status.json`, `~/.aitrack/update.log` |

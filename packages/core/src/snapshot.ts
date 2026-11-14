@@ -1,4 +1,4 @@
-import type { Board, BoardStatus, Reason } from "./board.ts";
+import type { Board, BoardStatus, Proposal, Reason } from "./board.ts";
 import type { TaskIssue } from "./schema.ts";
 
 /** JSON-friendly view of a board, sent to the UI. Task definitions come from the project itself. */
@@ -41,6 +41,7 @@ export interface BoardSnapshot {
   order: string[];
   cycle: string[] | null;
   layers: number;
+  proposals: Proposal[];
 }
 
 export function serializeBoard(board: Board): BoardSnapshot {
@@ -79,5 +80,6 @@ export function serializeBoard(board: Board): BoardSnapshot {
     order: board.graph.order,
     cycle: board.graph.cycle,
     layers: tasks.reduce((max, t) => Math.max(max, t.layer + 1), 0),
+    proposals: board.proposals,
   };
 }

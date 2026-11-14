@@ -6,3 +6,5 @@ export * from "./io.ts";
 export * from "./snapshot.ts";
 export * from "./edit.ts";
 export * from "./authoring.ts";
+export * from "./steps.ts";
+export * from "./plan.ts";

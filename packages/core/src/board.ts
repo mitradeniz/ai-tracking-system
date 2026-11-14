@@ -1,6 +1,64 @@
 import { buildGraph, type TaskGraph } from "./graph.ts";
 import type { Agent, ProjectFile, Task, TaskIssue, TrackEvent } from "./schema.ts";
 
+/** Work a chat left for later, proposed as a new task. */
+export interface Proposal {
+  /** "<event id>:<index>". */
+  id: string;
+  /** The task it came from. */
+  from: string;
+  /** The chat that proposed it. */
+  by?: string;
+  ts: string;
+  title: string;
+  detail?: string;
+  /** The chat that should do it, as the proposing chat suggested. */
+  agent?: string;
+  after: string[];
+  state: "open" | "added" | "ignored";
+  /** The task it became, once added. */
+  task?: string;
+}
+
+/**
+ * The proposed tasks of a project, oldest first: every follow-up chats reported, with what
+ * happened to it. A chat that reports the same work again for the same task does not add it twice.
+ */
+export function reduceProposals(events: TrackEvent[]): Proposal[] {
+  const sorted = [...events].sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  const list: Proposal[] = [];
+  const byId = new Map<string, Proposal>();
+  const seen = new Set<string>();
+  for (const e of sorted) {
+    (e.followUps ?? []).forEach((f, i) => {
+      const key = `${e.task}\u0000${f.title.trim().toLowerCase()}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      const p: Proposal = {
+        id: `${e.id}:${i}`,
+        from: e.task,
+        ...(e.agent && { by: e.agent }),
+        ts: e.ts,
+        title: f.title.trim(),
+        ...(f.detail && { detail: f.detail }),
+        ...(f.agent && { agent: f.agent }),
+        after: f.after ?? [],
+        state: "open",
+      };
+      list.push(p);
+      byId.set(p.id, p);
+    });
+    for (const u of e.proposals ?? []) {
+      const p = byId.get(u.id);
+      if (!p) continue;
+      p.state = u.state;
+      if (u.task) p.task = u.task;
+      else if (u.state === "open") delete p.task;
+    }
+  }
+  return list;
+}
+
 /**
  * Runtime status of a task, derived from its events:
  * - idle: never sent to a chat (or reopened)
@@ -80,6 +138,8 @@ export interface AgentView {
 
 export interface Board {
   tasks: TaskView[];
+  /** Work chats left for later, proposed as new tasks. */
+  proposals: Proposal[];
   byId: Map<string, TaskView>;
   agents: AgentView[];
   graph: TaskGraph;
@@ -296,7 +356,7 @@ export function computeBoard(project: ProjectFile, events: TrackEvent[]): Board 
   // A task the chat stopped until other tasks are done counts as waiting: it needs nothing from the person.
   for (const v of views) counts[v.reasons.some((r) => r.kind === "waiting_for") ? "waiting" : v.status] += 1;
 
-  return { tasks: views, byId, agents, graph, counts };
+  return { tasks: views, byId, agents, graph, counts, proposals: reduceProposals(events) };
 }
 
 /** Tasks a chat should take next, most urgent first. */

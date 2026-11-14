@@ -123,6 +123,7 @@ export function reportToEvent(report: Report, source: EventSource, now: Date = n
     verify: report.verify,
     issues: report.issues,
     waitingFor: report.status === "blocked" ? report.waitingFor : undefined,
+    followUps: report.followUps,
     source,
   });
 }

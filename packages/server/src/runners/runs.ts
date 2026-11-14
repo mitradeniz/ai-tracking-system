@@ -145,7 +145,8 @@ export function runnerPreamble(taskId: string, runner: ChatRunner, language = "E
   const lines = [
     `You were started by AI Tracking System for task ${taskId}. Nobody watches this session live: a person reads your final message in the tracker and can reply to it.`,
     `- Reporting: skip the HTTP call and the report files described below. Just end your final message with the aitrack-report block; the tracker reads it from your output.`,
-    `- Solve what you can yourself before asking. Find missing facts with read-only commands (the folders, git, this computer, running services). When a choice is low-risk and easy to undo, take the sensible option, note it as a "warning" issue and carry on.`,
+    `- Solve what you can yourself before asking. Find missing facts with read-only commands (the folders, git, this computer, running services). When a choice is low-risk and easy to undo, take the sensible option, say so in the summary and carry on.`,
+    `- Do not stop for something another chat will provide (images, a reference pack, an API that is not merged) or a check that cannot run here: use a placeholder or a mock, finish the task, and list the rest under "followUps" with the task it needs in "after". They become proposed tasks.`,
     `- If your permissions refuse a step, do not stop for it: find another way or finish the rest without it, and list the refused step under "issues".`,
     `- Report status "blocked" only for what you cannot decide or do yourself: a choice between real alternatives, or something only a person can do. Put one clear question in ${language} in "reason", and give each decision as one "needs-you" issue with "choices", your recommendation first.`,
     `- If you cannot go on until another task of the plan is done (its code merged, its contract written), do not ask the person to send this task again. Report status "blocked" with "waitingFor": ["<task id>"] and a one-line "reason"; do not add an issue for the wait. The tracker sends this task back to you, in this conversation, when those tasks are done.`,
@@ -309,6 +310,16 @@ export class RunManager extends EventEmitter {
   }
 
   // ---- runs -------------------------------------------------------------------------------------
+
+  /** Whether a chat has a run going on. */
+  isBusy(key: string, agentId: string): boolean {
+    return Boolean(this.activeFor(key, agentId));
+  }
+
+  /** Chats the person stopped, which automatic dispatch leaves alone. */
+  isHeld(key: string, agentId: string): boolean {
+    return this.held.has(`${key}:${agentId}`);
+  }
 
   private activeFor(key: string, agentId: string): Run | undefined {
     return [...this.runs.values()].find((r) => r.key === key && r.agent === agentId && r.state === "running");

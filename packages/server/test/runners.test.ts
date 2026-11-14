@@ -250,6 +250,100 @@ describe("agent runners", () => {
     }
   });
 
+  it("turns work a chat left for later into proposed tasks, adds or ignores them, and folds them in with a CLI", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_SCENARIO = "followups";
+    await setRunner("b", { provider: "claude" });
+    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    await waitFor("T3", "done");
+    let detail = (await call("GET", `/api/projects/${key}`)).json;
+    const proposals = detail.board.proposals;
+    expect(proposals.map((p: { title: string; state: string }) => [p.title, p.state])).toEqual([
+      ["Replace placeholder images", "open"],
+      ["Add web checks to CI", "open"],
+    ]);
+    expect(proposals[0]).toMatchObject({ from: "T3", by: "b", agent: "a", after: ["T1"] });
+
+    // One added with defaults: after the task it came from and what it waits for, for the chat it names.
+    const added = await call("POST", `/api/projects/${key}/proposals/add`, { id: proposals[0].id });
+    expect(added.status).toBe(201);
+    expect(added.json.created).toEqual(["T3-F1"]);
+    detail = (await call("GET", `/api/projects/${key}`)).json;
+    expect(detail.project.tasks.find((t: { id: string }) => t.id === "T3-F1")).toMatchObject({ agent: "a", dependsOn: ["T3", "T1"], prompts: ["p"] });
+    expect(detail.board.proposals[0]).toMatchObject({ state: "added", task: "T3-F1" });
+
+    // The other one folded in by a CLI: preview first, then written.
+    process.env.FAKE_PLAN_ANSWER = JSON.stringify({
+      tasks: [{ title: "CI: web checks", agent: "b", dependsOn: ["T3", "NOPE"], instructions: "Add lint and tests for web.", covers: { proposals: [proposals[1].id] } }],
+      summary: "One task for CI.",
+    });
+    await setRunner("b", { provider: "claude" });
+    const job = await call("POST", `/api/projects/${key}/proposals/integrate`, { provider: "claude", binary: FAKE });
+    expect(job.status).toBe(201);
+    let ended = job.json;
+    for (let i = 0; i < 100 && ended.state === "running"; i += 1) {
+      await new Promise((r) => setTimeout(r, 60));
+      ended = (await call("GET", `/api/authoring/generate/${job.json.id}`)).json;
+    }
+    expect(ended.state).toBe("done");
+    const preview = await call("POST", `/api/projects/${key}/proposals/preview`, { answer: ended.answer });
+    expect(preview.status).toBe(200);
+    expect(preview.json.plan.tasks[0]).toMatchObject({ id: "T3-F2", agent: "b", dependsOn: ["T3"] });
+    expect(preview.json.dropped).toEqual(["T3-F2: unknown dependency NOPE"]);
+    const applied = await call("POST", `/api/projects/${key}/proposals/apply`, { plan: preview.json.plan });
+    expect(applied.json).toMatchObject({ created: ["T3-F2"], errors: [] });
+    detail = (await call("GET", `/api/projects/${key}`)).json;
+    expect(detail.board.proposals.every((p: { state: string }) => p.state === "added")).toBe(true);
+    expect((await call("POST", `/api/projects/${key}/proposals/integrate`, { provider: "claude", binary: FAKE })).status).toBe(409);
+    delete process.env.FAKE_PLAN_ANSWER;
+  });
+
+  it("lets a manager CLI answer a waiting chat, keep the plan up to date and leave the rest for the person", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_SCENARIO = "ask";
+    await setRunner("b", { provider: "claude" });
+    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    await waitFor("T3", "blocked");
+
+    process.env.FAKE_SCENARIO = "done";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
+      actions: [
+        { type: "reply", task: "T3", text: "Yes, go ahead with the plan." },
+        { type: "reply", task: "T1", text: "Not waiting: must be refused." },
+        { type: "leave", message: "Buy the domain name." },
+      ],
+      plan: { tasks: [{ title: "Write the launch notes", agent: "a", dependsOn: ["T3"] }] },
+      summary: "Answered T3.",
+    });
+    try {
+      const settings = await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "claude", binary: FAKE });
+      expect(settings.status).toBe(200);
+      expect(settings.json.settings).toMatchObject({ enabled: true, provider: "claude", maxRunsPerHour: 6 });
+      // Turning the manager on turns automatic dispatch on.
+      expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.autoDispatch).toBe(true);
+      expect((await call("POST", `/api/projects/${key}/manager/run`, {}, false)).status).toBe(401);
+      await call("POST", `/api/projects/${key}/manager/run`, {});
+      let state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      for (let i = 0; i < 100 && (state.running || state.log[0]?.state === "running"); i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      }
+      const run = state.log[0];
+      expect(run).toMatchObject({ state: "done", trigger: "manual", summary: "Answered T3.", forYou: ["Buy the domain name."] });
+      expect(run.actions.map((a: { type: string; ok: boolean }) => `${a.type}:${a.ok}`)).toEqual(["reply:true", "reply:false", "leave:true", "plan:true"]);
+      await waitFor("T3", "done");
+      const replied = (await invocations()).find((i) => i.stdin === "Yes, go ahead with the plan.");
+      expect(replied).toBeTruthy();
+      const detail = (await call("GET", `/api/projects/${key}`)).json;
+      expect(detail.project.tasks.some((t: { title: string }) => t.title === "Write the launch notes")).toBe(true);
+      expect(detail.events.some((e: { source: string; message?: string }) => e.source === "manager" && e.message?.startsWith("Manager: replied"))).toBe(true);
+      // Nothing waits any more: a manual run says so.
+      expect((await call("POST", `/api/projects/${key}/manager/run`, {})).status).toBe(409);
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
   it("runs Claude Code in auto mode when the CLI has it, and falls back when it cannot use it", async () => {
     process.env.FAKE_FORMAT = "claude";
     process.env.FAKE_AUTO = "1";

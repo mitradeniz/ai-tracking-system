@@ -59,6 +59,8 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 | 🟢 **A board that knows what's next** | Tasks unlock when their dependencies are done and their chat has room. *Ready to send* shows the green ones at a glance; every other task says why it is waiting. |
 | 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI or any command run the task in their own session, in your repository. Output streams in live; you reply, approve and stop from the app or the floating window. |
 | ⚡ **Auto-dispatch** | One switch: free chats pick up their most urgent ready task, up to *N* at once, as soon as it turns green. |
+| 🌙 **Manager** | Going to bed? Hand the project to an AI CLI you choose: it answers waiting chats, picks options, parks tasks that wait for others, sends failed ones again and adds work left for later to the plan. Payments, accounts, legal terms, publishing and risky steps stay with you; what it did and what it left for you is listed. |
+| 📋 **Proposed tasks** | Work a chat left for later — a placeholder to replace, a check to add — becomes a proposed task instead of a question for you: add it to the plan, ignore it, or let a CLI fold them all into the current plan, previewed before anything is written. |
 | ❗ **Problems in plain words** | What a chat could not do, skipped or needs from you is marked with a red **!** everywhere, explained in your language, with a fix prompt ready to edit, copy or send. A decision comes with the chat's options as buttons; refused steps come on one card that says what each does, with **Allow and continue**. Mark a problem resolved or ignore it. |
 | ⏱️ **Run details** | Elapsed time, tool calls, tokens, turns, list price and how full the session's context is — live. |
 | ✍️ **Your own prompts** | Add instructions when sending, write to a chat's session at any time, keep a list of saved prompts. |
@@ -345,6 +347,7 @@ Set a chat up once — click the **⚙ by hand** badge on its lane — and **Sen
 | **Live** | Commands, edits and messages stream into the task drawer; **Stop** at any time — from the lane, the drawer or the floating window — or **Stop all**. A chat you stopped gets nothing new from auto-dispatch until you send it something. |
 | **Setup help** | A CLI that is not installed shows the command that installs it; one that is not signed in shows the command to sign in. |
 | **Auto-dispatch** | The switch in the header: free chats get their most urgent ready task, up to *N* runs at once. |
+| **Manager** | The switch next to it hands the project to a CLI you choose (for the night, say). It looks when something waits for a decision and every 10 minutes, at most *N* times an hour, answers what it safely can and leaves the rest for you. The app keeps the computer awake meanwhile. See [docs/agent-runners.md](docs/agent-runners.md#the-manager). |
 | **Your own sessions** | A one-line hook for Claude Code and Codex marks tasks *in progress* and *waiting for your reply* while you work in a session you opened yourself. |
 
 > [!IMPORTANT]
@@ -458,7 +461,7 @@ A report can also list **problems** — what failed, was skipped, is missing or 
 }
 ```
 
-A chat that must wait for another task reports `blocked` with `"waitingFor": ["T-01"]`: the task waits without a problem, the wait goes into the plan, and the task goes back to the same chat when T-01 is done. A decision the chat cannot take itself can carry `choices` — `[{"label": "Separate repository", "reply": "I move the commits there.", "recommended": true}, …]` — shown as buttons.
+A chat that must wait for another task reports `blocked` with `"waitingFor": ["T-01"]`: the task waits without a problem, the wait goes into the plan, and the task goes back to the same chat when T-01 is done. Work it leaves for later goes in `"followUps": [{"title": "Replace the placeholder images", "after": ["T-05"]}]` and shows up as proposed tasks; plain information goes in the summary, and a `warning` is a note, not a problem. A decision the chat cannot take itself can carry `choices` — `[{"label": "Separate repository", "reply": "I move the commits there.", "recommended": true}, …]` — shown as buttons.
 
 Details and the report schema: [docs/agent-reporting.md](docs/agent-reporting.md).
 
@@ -562,6 +565,7 @@ docs/               file format, reporting, agent runners, authoring with AI, im
 | Task status (event log) | `~/.aitrack/events/` |
 | Run settings per chat | `~/.aitrack/runners.json` — never in the project file |
 | Run output | `~/.aitrack/runs/` |
+| What the manager did | `~/.aitrack/manager/` |
 | Control token | `~/.aitrack/control-token` |
 | Where the app was installed from | `~/.aitrack/install.json` |
 | Update progress and output | `~/.aitrack/update-status.json`, `~/.aitrack/update.log` |

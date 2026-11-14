@@ -2,13 +2,15 @@ import { createReadStream, existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import path from "node:path";
-import { authoringPrompt, readGeneratedProject, ReportSchema, type AuthoringInput } from "@aitrack/core";
+import { authoringPrompt, parsePlan, readGeneratedProject, ReportSchema, type AuthoringInput, type IntegrationPlan } from "@aitrack/core";
 import { tokenMatches } from "./control.ts";
 import { HttpError, type ProjectManager } from "./manager.ts";
 import { detectProviders } from "./runners/env.ts";
 import { normalizeHook } from "./runners/hooks.ts";
 import { GENERATOR_PROVIDERS, type GeneratorProvider, type ProjectGenerator } from "./runners/generate.ts";
-import type { RunManager } from "./runners/runs.ts";
+import { applyPlan, checkPlan, integrationPrompt, openNotes, taskFromProposal } from "./proposals.ts";
+import { planFolder, type RunManager } from "./runners/runs.ts";
+import type { Supervisor } from "./runners/supervisor.ts";
 
 export const VERSION = "0.1.0";
 const MAX_BODY = 1024 * 1024;
@@ -44,6 +46,8 @@ export interface HttpOptions {
   generator?: ProjectGenerator;
   /** Required in the X-Aitrack-Token header by the endpoints that start programs. */
   controlToken?: string;
+  /** The manager that stands in for the person while they are away. */
+  supervisor?: Supervisor;
 }
 
 interface Ctx {
@@ -162,7 +166,7 @@ function serveStatic(ctx: Ctx, uiDir: string): void {
   createReadStream(file).pipe(ctx.res);
 }
 
-function stream(ctx: Ctx, manager: ProjectManager, runs?: RunManager): void {
+function stream(ctx: Ctx, manager: ProjectManager, runs?: RunManager, supervisor?: Supervisor): void {
   ctx.res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-store",
@@ -180,6 +184,7 @@ function stream(ctx: Ctx, manager: ProjectManager, runs?: RunManager): void {
   runs?.on("run", onRun);
   runs?.on("runlog", onRunLog);
   runs?.on("runners", onRunners);
+  supervisor?.on("manager", onRunners);
   const ping = setInterval(() => ctx.res.write(`: ping\n\n`), 25_000);
   ctx.req.on("close", () => {
     clearInterval(ping);
@@ -188,6 +193,7 @@ function stream(ctx: Ctx, manager: ProjectManager, runs?: RunManager): void {
     runs?.off("run", onRun);
     runs?.off("runlog", onRunLog);
     runs?.off("runners", onRunners);
+    supervisor?.off("manager", onRunners);
   });
 }
 
@@ -401,7 +407,7 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     }
     send(ctx.res, 201, { ok: true, ...(await manager.recordReport(parsed.data, "http")) });
   });
-  route("GET", "/api/stream", (ctx) => stream(ctx, manager, options.runs));
+  route("GET", "/api/stream", (ctx) => stream(ctx, manager, options.runs, options.supervisor));
 
   // ---- agent runners ----
   const runs = (): RunManager => {
@@ -511,7 +517,84 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     send(ctx.res, 200, { ok: true });
   });
   route("GET", "/api/providers", async (ctx) => send(ctx.res, 200, { providers: await detectProviders(ctx.url.searchParams.get("refresh") === "1") }));
-  route("GET", "/api/projects/:key/runners", (ctx, [key]) => send(ctx.res, 200, runs().state(key!)));
+  route("GET", "/api/projects/:key/runners", (ctx, [key]) =>
+    send(ctx.res, 200, { ...runs().state(key!), ...(options.supervisor && { manager: options.supervisor.state(key!) }) }),
+  );
+  const supervisor = (): Supervisor => {
+    if (!options.supervisor) throw new HttpError(404, "The manager is not available in this server.");
+    return options.supervisor;
+  };
+  route("POST", "/api/projects/:key/manager", async (ctx, [key]) => {
+    control(ctx);
+    send(ctx.res, 200, await supervisor().setSettings(key!, await readJson(ctx.req)));
+  });
+  route("POST", "/api/projects/:key/manager/run", async (ctx, [key]) => {
+    control(ctx);
+    const run = supervisor().run(key!, "manual");
+    // The answer comes back when the run has started; it is followed on the stream.
+    await Promise.race([run, new Promise((r) => setTimeout(r, 300))]);
+    send(ctx.res, 202, supervisor().state(key!));
+    void run.catch(() => undefined);
+  });
+  // Work chats left for later: add to the plan, ignore, or fold in with an AI CLI.
+  route("POST", "/api/projects/:key/proposals/add", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    const { project, board } = manager.context(key!);
+    const proposal = board.proposals.find((p) => p.id === body.id && p.state === "open");
+    if (!proposal) throw new HttpError(409, "That proposed task is no longer open.");
+    const task = taskFromProposal(project, proposal, typeof body.agent === "string" ? body.agent : undefined);
+    const result = await applyPlan(manager, key!, { tasks: [task], links: [], ignore: [] });
+    if (!result.created.length) throw new HttpError(400, result.errors.join("; ") || "The task could not be added.");
+    send(ctx.res, 201, result);
+  });
+  route("POST", "/api/projects/:key/proposals/state", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    const state = body.state;
+    if (state !== "ignored" && state !== "open") throw new HttpError(400, '"state" must be ignored or open.');
+    const ids = Array.isArray(body.ids) ? body.ids.filter((x): x is string => typeof x === "string").slice(0, 50) : [];
+    send(ctx.res, 201, await manager.setProposalStates(key!, ids.map((id) => ({ id, state }))));
+  });
+  route("POST", "/api/projects/:key/proposals/integrate", async (ctx, [key]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    const provider = String(body.provider ?? "") as GeneratorProvider;
+    if (!GENERATOR_PROVIDERS.includes(provider)) throw new HttpError(400, `Unknown CLI "${provider}".`);
+    const { project, board, filePath } = manager.context(key!);
+    if (!board.proposals.some((p) => p.state === "open") && !openNotes(board).length) throw new HttpError(409, "There is nothing to add to the plan.");
+    send(
+      ctx.res,
+      201,
+      await generator().startPrompt({
+        provider,
+        model: typeof body.model === "string" ? body.model : undefined,
+        effort: typeof body.effort === "string" ? body.effort : undefined,
+        binary: typeof body.binary === "string" && body.binary ? body.binary : undefined,
+        cwd: planFolder(filePath),
+        prompt: integrationPrompt(project, board),
+      }),
+    );
+  });
+  route("POST", "/api/projects/:key/proposals/preview", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    let plan: IntegrationPlan;
+    try {
+      plan = parsePlan(String(body.answer ?? ""));
+    } catch (e) {
+      throw new HttpError(422, (e as Error).message);
+    }
+    const { project, board } = manager.context(key!);
+    send(ctx.res, 200, checkPlan(project, board, plan));
+  });
+  route("POST", "/api/projects/:key/proposals/apply", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    let plan: IntegrationPlan;
+    try {
+      plan = parsePlan(JSON.stringify(body.plan ?? {}));
+    } catch (e) {
+      throw new HttpError(422, (e as Error).message);
+    }
+    send(ctx.res, 201, await applyPlan(manager, key!, plan));
+  });
   // Creates the project's code folder (settings.repoPath) as an empty git repository.
   route("POST", "/api/projects/:key/code-folder", async (ctx, [key]) => {
     control(ctx);
