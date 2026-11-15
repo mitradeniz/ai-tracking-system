@@ -536,6 +536,12 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     await runs().retryLimit(key!, body.agent);
     send(ctx.res, 200, runs().state(key!));
   });
+  // The person writes to the manager: it looks at once with the message and answers.
+  route("POST", "/api/projects/:key/manager/message", async (ctx, [key]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    send(ctx.res, 202, await supervisor().message(key!, typeof body.text === "string" ? body.text : ""));
+  });
   route("POST", "/api/projects/:key/manager/run", async (ctx, [key]) => {
     control(ctx);
     const run = supervisor().run(key!, "manual");

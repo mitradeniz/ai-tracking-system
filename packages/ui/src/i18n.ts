@@ -865,6 +865,15 @@ const en = {
   eye_forYou: "{n} left for you",
   eye_showInApp: "Show in the app",
   eye_openManager: "Open the manager",
+  eye_talk: "Write to the manager",
+  eye_talkPlaceholder: "e.g. Approve CLC-02, or tell Claude B to go on…",
+  eye_send: "Send",
+  eye_you: "You",
+  eye_managerSays: "Manager",
+  eye_thinking: "looking…",
+  eye_sendHint: "Enter sends, Shift+Enter makes a new line. It looks at once, acts within its rules and answers here.",
+  mgr_message: "You wrote",
+  mgr_reply: "Its answer",
 };
 
 export type Key = keyof typeof en;
@@ -1732,6 +1741,15 @@ const tr: Record<Key, string> = {
   eye_forYou: "sana {n} şey bıraktı",
   eye_showInApp: "Uygulamada göster",
   eye_openManager: "Yöneticiyi aç",
+  eye_talk: "Yöneticiye yaz",
+  eye_talkPlaceholder: "Ör. CLC-02'yi onayla ya da Claude B'ye devam etmesini söyle…",
+  eye_send: "Gönder",
+  eye_you: "Sen",
+  eye_managerSays: "Yönetici",
+  eye_thinking: "bakıyor…",
+  eye_sendHint: "Enter gönderir, Shift+Enter yeni satır açar. Hemen bakar, kuralları içinde gereğini yapar ve burada yanıtlar.",
+  mgr_message: "Senin yazdığın",
+  mgr_reply: "Yanıtı",
 };
 
 const dictionaries: Record<Lang, Record<Key, string>> = { en, tr };

@@ -5399,3 +5399,67 @@ details.advanced[open] {
 .badge.limit:hover {
   background: rgba(255, 209, 102, 0.12);
 }
+
+/* Writing to the manager from the eye. */
+.holo-talk {
+  margin: 4px 0 8px;
+}
+
+.holo-talk p {
+  margin: 0 0 3px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.holo-you b {
+  color: #ffd166;
+}
+
+.holo-answer b {
+  color: var(--eye-main);
+}
+
+.holo-thinking {
+  opacity: 0.7;
+  animation: eye-pulse 1.2s ease-in-out infinite;
+}
+
+.holo-err {
+  color: #ff8a80;
+  margin: 4px 0 0;
+}
+
+.holo-input {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  margin-top: 4px;
+}
+
+.holo-input textarea {
+  flex: 1;
+  min-width: 0;
+  resize: vertical;
+  max-height: 160px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--eye-main) 55%, transparent);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #eaffef;
+  font: inherit;
+  line-height: 1.4;
+}
+
+.holo-input textarea:focus {
+  outline: none;
+  border-color: var(--eye-main);
+  box-shadow: 0 0 8px var(--eye-glow);
+}
+
+.holo-input textarea::placeholder {
+  color: color-mix(in srgb, #eaffef 40%, transparent);
+}
+
+.mgr-said {
+  white-space: pre-wrap;
+}

@@ -85,6 +85,16 @@ function RunEntry({ run, lang, onOpenTask }: { run: ManagerRun; lang: string; on
           {formatTime(run.startedAt, lang)} · {t(run.trigger === "auto" ? "mgr_trigger_auto" : "mgr_trigger_manual")} · {CLI_NAME[run.provider] ?? run.provider}
         </span>
       </div>
+      {run.message && (
+        <div className="small mgr-said">
+          <strong>{t("mgr_message")}:</strong> {run.message}
+        </div>
+      )}
+      {run.reply && (
+        <div className="small mgr-said">
+          <strong>{t("mgr_reply")}:</strong> {run.reply}
+        </div>
+      )}
       {run.summary && <div className="small">{run.summary}</div>}
       {run.error && <div className="error small">{run.error}</div>}
       {run.actions.length > 0 && (

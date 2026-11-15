@@ -120,6 +120,9 @@ export interface ManagerRun {
   actions: ManagerAction[];
   /** What it left for the person. */
   forYou: string[];
+  /** What the person wrote to it for this look, and its answer. */
+  message?: string;
+  reply?: string;
   error?: string;
 }
 
@@ -496,6 +499,8 @@ export const api = {
   // The manager: a CLI that answers waiting chats and keeps the plan up to date while the person is away.
   saveManager: (key: string, patch: Partial<ManagerSettings>) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager`, patch),
   runManager: (key: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/run`, {}),
+  /** Writes to the manager: it looks at once with the message and answers. */
+  messageManager: (key: string, text: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/message`, { text }),
   // Work chats left for later.
   addProposal: (key: string, id: string, agent?: string) =>
     request<ApplyResult>("POST", `/api/projects/${enc(key)}/proposals/add`, { id, agent }),

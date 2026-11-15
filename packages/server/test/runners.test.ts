@@ -408,6 +408,37 @@ describe("agent runners", () => {
     }
   });
 
+  it("lets the person write to the manager: it looks at once, acts on the message and answers", { timeout: 20000 }, async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
+      actions: [{ type: "approve", task: "T1", note: "The person asked for it." }],
+      summary: "Approved T1 as asked.",
+      reply: "T1 onaylandı.",
+    });
+    try {
+      expect((await call("POST", `/api/projects/${key}/info`, { requireApproval: true })).status).toBe(200);
+      await call("POST", "/api/report", { project: "demo", task: "T1", agent: "a", status: "done", summary: "Built." });
+      // The manager is off and approving is off: the message is enough for this look.
+      await call("POST", `/api/projects/${key}/manager`, { provider: "claude", binary: FAKE });
+      expect((await call("POST", `/api/projects/${key}/manager/message`, { text: "T1'i onayla." }, false)).status).toBe(401);
+      expect((await call("POST", `/api/projects/${key}/manager/message`, { text: "  " })).status).toBe(400);
+      expect((await call("POST", `/api/projects/${key}/manager/message`, { text: "T1'i onayla." })).status).toBe(202);
+      let log = (await call("GET", `/api/projects/${key}/runners`)).json.manager.log;
+      for (let i = 0; i < 150 && log[0]?.state !== "done"; i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        log = (await call("GET", `/api/projects/${key}/runners`)).json.manager.log;
+      }
+      expect(log[0]).toMatchObject({ state: "done", trigger: "manual", message: "T1'i onayla.", reply: "T1 onaylandı." });
+      expect(log[0].actions[0]).toMatchObject({ type: "approve", task: "T1", ok: true });
+      const prompt = (await invocations()).filter((i) => i.stdin.includes("You are the manager")).at(-1)!.stdin;
+      expect(prompt).toContain("MESSAGE FROM THE PERSON");
+      expect(prompt).toContain("> T1'i onayla.");
+      expect((await call("GET", `/api/projects/${key}`)).json.board.tasks.find((t: { id: string }) => t.id === "T1").status).toBe("done");
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
   it("tries a failed manager run again later, not on every change", async () => {
     await running.close();
     running = await startServer({ port: 0, dataDir: path.join(dir, "data"), projects: [file], watch: false, controlToken: TOKEN, managerDelayMs: 50, managerRetryMs: [600] });

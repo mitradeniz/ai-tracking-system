@@ -145,6 +145,7 @@ Kenar çubuğundan, *Pencere* menüsünden ya da <kbd>⇧</kbd><kbd>⌘</kbd><kb
 - **Hatalar ve sorunlar**: başarısız olan ya da seni bekleyen görevler, kırmızıyla
 - **Son gelişmeler**: az önce ne oldu, yönetici ne yaptı ve sana ne bıraktı
 - bir satıra tıkla, yerinde açılsın ve tamamını oku; altındaki **Uygulamada göster** görevi ana pencerede açar
+- en altta **Yöneticiye yaz**: "CLC-02'yi onayla", "Claude B'ye devam etmesini söyle" — hemen bakar, kuralları içinde yapar ve orada yanıtlar
 - gözün üzerine gelip gizleyebilirsin; Yönetici anahtarının yanındaki göz geri getirir
 
 ### Kendine göre ayarla

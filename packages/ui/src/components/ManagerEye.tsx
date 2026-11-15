@@ -1,6 +1,6 @@
 import type { TrackEvent } from "@aitrack/core";
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { desktop } from "../api.ts";
+import { api, desktop } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import { agentName, formatDuration, formatTime, localMessage, localReason, problemsOf, PROVIDER_LABEL, untilText, type Model } from "../model.ts";
 import { usePref } from "../prefs.ts";
@@ -132,6 +132,23 @@ export function ManagerEye({
   const [open, setOpen] = useState(false);
   const [apex, setApex] = useState<number | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [talkError, setTalkError] = useState<string | null>(null);
+  const send = async () => {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setTalkError(null);
+    try {
+      await api.messageManager(key, text);
+      setDraft("");
+    } catch (e) {
+      setTalkError((e as Error).message);
+    } finally {
+      setSending(false);
+    }
+  };
   const toggle = (id: string) => setExpanded((cur) => (cur === id ? null : id));
   const dock = useRef<HTMLDivElement>(null);
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
@@ -217,6 +234,8 @@ export function ManagerEye({
     .sort((a, b) => (a.ts < b.ts ? 1 : -1))
     .slice(0, 7);
   const lastRun = state.log[0];
+  // The last few things the person wrote to the manager, oldest first, with its answers.
+  const talks = state.log.filter((r) => r.message).slice(0, 3).reverse();
   const limits = [...new Map((model.runners?.limits ?? []).map((l) => [l.cli, l])).values()];
   const forYou = lastRun?.forYou.length ?? 0;
   const mood = errors.length ? "alert" : state.running || running.length ? "busy" : "watching";
@@ -456,6 +475,41 @@ export function ManagerEye({
                 action={<ShowInApp label={t("eye_openManager")} onClick={onOpenManager} />}
               />
             )}
+            <h4 style={line()}>{t("eye_talk")}</h4>
+            {talks.map((run) => (
+              <div key={run.id} className="holo-talk" style={line()}>
+                <p className="holo-you">
+                  <b>{t("eye_you")}:</b> {run.message}
+                </p>
+                <p className="holo-answer">
+                  <b>{t("eye_managerSays")}:</b>{" "}
+                  {run.state === "running" ? <span className="holo-thinking">{t("eye_thinking")}</span> : run.state === "failed" ? <span className="holo-err">{run.error}</span> : run.reply ?? run.summary ?? "—"}
+                </p>
+              </div>
+            ))}
+            <div className="holo-input" style={line()}>
+              <textarea
+                value={draft}
+                rows={2}
+                maxLength={4000}
+                placeholder={t("eye_talkPlaceholder")}
+                title={t("eye_sendHint")}
+                aria-label={t("eye_talk")}
+                disabled={sending}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+                    e.preventDefault();
+                    void send();
+                  }
+                  if (e.key === "Escape") e.stopPropagation();
+                }}
+              />
+              <button className="holo-go" disabled={sending || !draft.trim()} onClick={() => void send()}>
+                {sending ? "…" : t("eye_send")}
+              </button>
+            </div>
+            {talkError && <p className="holo-err">{talkError}</p>}
           </section>
         </>
       )}

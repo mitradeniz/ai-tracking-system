@@ -37,6 +37,9 @@ export interface ManagerRun {
   actions: ManagerAction[];
   /** What it left for the person. */
   forYou: string[];
+  /** What the person wrote to it for this look, and its answer. */
+  message?: string;
+  reply?: string;
   error?: string;
 }
 
@@ -91,6 +94,8 @@ export class Supervisor extends EventEmitter {
   private handled = new Map<string, string>();
   /** Tasks the manager left for the person, and how they looked then: not shown to it again until they change. */
   private leftFor = new Map<string, string>();
+  /** What the person wrote to the manager and it has not read yet. */
+  private pending = new Map<string, string[]>();
   private closed = false;
   private readonly delayMs: number;
   private readonly retryMs: number[];
@@ -203,20 +208,42 @@ export class Supervisor extends EventEmitter {
    * Runs the manager once. An automatic run is skipped when there is nothing to do, when it would
    * look at exactly what the last run already handled, or when the hourly limit is reached.
    */
+  /**
+   * The person writes to the manager: it looks at once (or right after the look it is in) with the
+   * message, acts on it within its rules and answers. A message may ask it to approve finished work.
+   */
+  async message(key: string, text: string): Promise<ManagerState> {
+    const message = String(text ?? "").trim();
+    if (!message) throw new HttpError(400, "The message is empty.");
+    if (message.length > 4000) throw new HttpError(400, "The message is too long.");
+    this.manager.context(key);
+    this.pending.set(key, [...(this.pending.get(key) ?? []), message].slice(-5));
+    if (!this.busy.has(key)) {
+      const look = this.run(key, "manual").catch((e) => this.emit("warning", e));
+      await Promise.race([look, new Promise((r) => setTimeout(r, 300))]);
+    }
+    this.changed(key);
+    return this.state(key);
+  }
+
   async run(key: string, trigger: "auto" | "manual"): Promise<ManagerRun | null> {
     const settings = this.settings(key);
-    if (trigger === "auto" && !settings.enabled) return null;
+    const messages = this.pending.get(key) ?? [];
+    const asked = messages.length > 0;
+    if (trigger === "auto" && !settings.enabled && !asked) return null;
     if (this.busy.has(key)) {
-      if (trigger === "manual") throw new HttpError(409, "The manager is already looking at this project.");
+      if (trigger === "manual" && !asked) throw new HttpError(409, "The manager is already looking at this project.");
       this.dirty.add(key);
       return null;
     }
+    // What the person wrote may ask for an approval, even when approving is otherwise off.
+    const effective: ManagerSettings = asked ? { ...settings, approveDone: true } : settings;
     const { project, board, filePath } = this.manager.context(key);
     // A look the person asked for also shows what was left for them.
-    const attention = this.attention(key, board, settings, trigger === "manual");
+    const attention = this.attention(key, board, effective, trigger === "manual" || asked);
     const proposals = board.proposals.filter((p) => p.state === "open");
     const notes = openNotes(board);
-    if (!attention.length && !proposals.length && !notes.length) {
+    if (!asked && !attention.length && !proposals.length && !notes.length) {
       if (trigger === "manual") throw new HttpError(409, "Nothing waits for a decision right now.");
       return null;
     }
@@ -229,7 +256,7 @@ export class Supervisor extends EventEmitter {
         ]),
       )
       .digest("hex");
-    if (trigger === "auto") {
+    if (trigger === "auto" && !asked) {
       if (this.handled.get(key) === fingerprint) return null;
       const hourAgo = Date.now() - 3_600_000;
       const recent = this.log(key).filter((r) => Date.parse(r.startedAt) > hourAgo);
@@ -242,18 +269,20 @@ export class Supervisor extends EventEmitter {
     }
 
     this.busy.add(key);
+    this.pending.delete(key);
     const run: ManagerRun = {
       id: `m-${Date.now().toString(36)}-${randomUUID().slice(0, 6)}`,
-      trigger,
+      trigger: asked ? "manual" : trigger,
       provider: settings.provider,
       state: "running",
       startedAt: new Date().toISOString(),
       actions: [],
       forYou: [],
+      ...(asked && { message: messages.join("\n\n") }),
     };
     this.record(key, run);
     try {
-      const prompt = managerPrompt(project, board, attention, settings);
+      const prompt = managerPrompt(project, board, attention, effective, messages);
       const job = await this.generator.startPrompt({
         provider: settings.provider,
         model: settings.model,
@@ -266,7 +295,8 @@ export class Supervisor extends EventEmitter {
       if (ended.state !== "done" || !ended.answer) throw new Error(ended.error || "The manager gave no answer.");
       const answer = parseAnswer(ended.answer);
       run.summary = answer.summary;
-      await this.carryOut(key, answer, attention, run);
+      if (answer.reply) run.reply = answer.reply;
+      await this.carryOut(key, answer, attention, run, effective);
       run.state = "done";
       this.handled.set(key, fingerprint);
       this.failures.delete(key);
@@ -280,12 +310,18 @@ export class Supervisor extends EventEmitter {
       this.failures.set(key, n + 1);
       this.retryAt.set(key, limit?.known ? limit.until : Date.now() + Math.max(limit ? limit.until - Date.now() : 0, this.retryMs[Math.min(n, this.retryMs.length - 1)]!));
       this.dirty.add(key);
+      // What the person wrote is read again on the next look.
+      if (asked) this.pending.set(key, [...messages, ...(this.pending.get(key) ?? [])].slice(-5));
     } finally {
       run.endedAt = new Date().toISOString();
       this.busy.delete(key);
       this.record(key, run);
     }
-    if (this.dirty.delete(key)) this.schedule(key);
+    // A message that came in during this look gets its own look now, even with the manager off.
+    if (this.pending.get(key)?.length && run.state === "done") {
+      this.dirty.delete(key);
+      void this.run(key, "manual").catch((e) => this.emit("warning", e));
+    } else if (this.dirty.delete(key)) this.schedule(key);
     return run;
   }
 
@@ -322,8 +358,7 @@ export class Supervisor extends EventEmitter {
     return out;
   }
 
-  private async carryOut(key: string, answer: ManagerAnswer, attention: Attention[], run: ManagerRun): Promise<void> {
-    const settings = this.settings(key);
+  private async carryOut(key: string, answer: ManagerAnswer, attention: Attention[], run: ManagerRun, settings: ManagerSettings): Promise<void> {
     const listed = new Map(attention.map((a) => [a.view.task.id, a]));
     const acted = new Set<string>();
     const done = (type: string, task: string | undefined, ok: boolean, detail: string) => {
@@ -533,13 +568,15 @@ interface ManagerAnswer {
   actions: Array<Record<string, unknown>>;
   plan?: IntegrationPlan;
   summary?: string;
+  /** Its answer to what the person wrote. */
+  reply?: string;
 }
 
 /** Reads the manager's answer: the last JSON object with "actions" (and maybe "plan"). */
 export function parseAnswer(text: string): ManagerAnswer {
   const found = jsonObjectsIn(text)
     .map((o) => o.value)
-    .filter((v) => "actions" in v || "plan" in v);
+    .filter((v) => "actions" in v || "plan" in v || "reply" in v);
   const last = found[found.length - 1];
   if (!last) throw new Error("The manager's answer has no actions.");
   const actions = Array.isArray(last.actions) ? last.actions.filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === "object") : [];
@@ -551,7 +588,12 @@ export function parseAnswer(text: string): ManagerAnswer {
       plan = undefined;
     }
   }
-  return { actions: actions.slice(0, 40), ...(plan && { plan }), ...(typeof last.summary === "string" && { summary: clip(last.summary, 1000) }) };
+  return {
+    actions: actions.slice(0, 40),
+    ...(plan && { plan }),
+    ...(typeof last.summary === "string" && { summary: clip(last.summary, 1000) }),
+    ...(typeof last.reply === "string" && last.reply.trim() && { reply: last.reply.trim().slice(0, 4000) }),
+  };
 }
 
 /** How a task looks to the manager: when this changes, a task left for the person comes back to it. */
@@ -604,8 +646,15 @@ function attentionText(a: Attention): string {
 }
 
 /** What the manager is told: its job, the limits, the actions, and the project as it is now. */
-export function managerPrompt(project: ProjectFile, board: Board, attention: Attention[], settings: ManagerSettings): string {
+export function managerPrompt(project: ProjectFile, board: Board, attention: Attention[], settings: ManagerSettings, messages: string[] = []): string {
   const language = project.settings.language === "tr" ? "Turkish" : "English";
+  const fromPerson = messages.length
+    ? `MESSAGE FROM THE PERSON (written to you just now; it comes before your usual choices, never before NEVER)
+${messages.map((m) => `> ${m.replace(/\n/g, "\n> ")}`).join("\n\n")}
+Do what it asks with the actions you have, on the tasks listed below (a finished task in review may be approved when it asks). Answer it in "reply", in ${language}: what you did, or why you could not and what the person can do.
+
+`
+    : "";
   const proposals = board.proposals.filter((p) => p.state === "open");
   const notes = openNotes(board);
   return `You are the manager of the project "${project.project.name}" in AI Tracking System, standing in for the person while they are away. AI chats work on the tasks of the plan, and automatic dispatch sends ready tasks to free chats. Your job is to keep the work moving: decide what the person would decide when it is safe and easy to undo, answer the chats, and keep the plan up to date. You only read (you may look at the files in this folder); the app carries out the actions you return.
@@ -635,10 +684,10 @@ ${PLAN_RULES}
 - Write titles, instructions and acceptance in ${language}.
 
 Answer with one JSON object in a \`\`\`json fence, and nothing after it:
-{"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${settings.approveDone ? ',{"type":"approve","task":"<id>","note":"…"}' : ""}],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"}
+{"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${settings.approveDone ? ',{"type":"approve","task":"<id>","note":"…"}' : ""}],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"${messages.length ? ',"reply":"<your answer to the person>"' : ""}}
 Leave out what you do not use.
 
-ATTENTION (tasks waiting for a decision, failed${settings.approveDone ? ", or finished and waiting for approval" : ""})
+${fromPerson}ATTENTION (tasks waiting for a decision, failed${settings.approveDone ? ", or finished and waiting for approval" : ""})
 ${attention.length ? attention.map(attentionText).join("\n\n") : "(none)"}
 
 PROPOSALS (work chats left for later)

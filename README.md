@@ -145,6 +145,7 @@ Turn on the **Manager** and an eye pops up above every app, like the floating wi
 - **Errors and problems**: the tasks that failed or need you, in red
 - **Latest**: what just happened, what the manager did and what it left for you
 - click a line to open it in place and read it whole; **Show in the app** under it opens the task in the main window
+- **Write to the manager** at the bottom: "approve CLC-02", "tell Claude B to go on" — it looks at once, does it within its rules and answers right there
 - hover the eye to hide it; the eye next to the Manager switch brings it back
 
 ### Make it yours
