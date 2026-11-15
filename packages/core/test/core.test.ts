@@ -255,6 +255,10 @@ describe("reports", () => {
     expect(neededPermission(net, "codex")).toEqual({ kind: "network", inferred: true });
     expect(neededPermission({ title: "Localhost bağlantısı engelli", detail: "127.0.0.1 üzerinde dinleme EPERM ile reddedildi." }, "codex")).toEqual({ kind: "network", inferred: true });
     expect(neededPermission({ title: "Chromium could not start", detail: "browserType.launch: Operation not permitted" }, "deepseek")).toEqual({ kind: "command", inferred: true });
+    expect(neededPermission({ title: "Chromium açılamıyor", detail: "macOS Mach bootstrap kaydı Permission denied (1100) ile reddedildi ve süreç SIGTRAP ile kapandı." }, "codex")).toEqual({
+      kind: "command",
+      inferred: true,
+    });
     expect(neededPermission({ title: "Cannot write", detail: "/Users/me/shared/out is outside the sandbox: Operation not permitted" }, "codex")).toEqual({
       kind: "folder",
       value: "/Users/me/shared/out",

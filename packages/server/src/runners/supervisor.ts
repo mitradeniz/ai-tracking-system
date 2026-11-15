@@ -1024,7 +1024,8 @@ ACTIONS
 - wait: when a task cannot go on until other tasks of the plan are done, park it; it goes back to its chat when they are done.
 - resend: send a failed task again, with a short note on what to do differently.
 - close: mark problems of a task resolved or ignored when nothing has to be done about them.
-- leave: leave something for the person, in one clear sentence, when only they can do it.${reviewActions(settings)}${authorityActions(settings)}
+- leave: leave something for the person, in one clear sentence, when only they can do it.
+A problem marked [asks permission] or [needs permission] is not something its chat can fix: do not reply asking it to get the permission, another environment or a workaround${settings.fullAuthority ? "; grant it" : "; leave it for the person (one sentence, saying which permission)"}.${reviewActions(settings)}${authorityActions(settings)}
 - plan: fold the proposals and notes into the plan (rules below).
 At most one action per task, plus "close" (put "close" before the action it makes possible).
 ${

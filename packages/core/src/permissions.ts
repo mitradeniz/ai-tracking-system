@@ -41,9 +41,12 @@ const NETWORK =
 /** Listening on, or connecting to, this computer was refused (the sandbox keeps loopback closed). */
 const LOOPBACK =
   /(?:127\.0\.0\.1|localhost|loopback|::1)[^\n]{0,100}(?:EPERM|EACCES|not permitted|denied|engelli|reddedil|izin)|(?:EPERM|EACCES|listen)[^\n]{0,100}(?:127\.0\.0\.1|localhost|loopback)/i;
-/** The sandbox stopped a command (a browser that could not start, a write it does not allow). */
+/**
+ * The sandbox stopped a command: a write it does not allow, a process list, or a browser that could
+ * not register its Mach services on macOS (Chromium: bootstrap_check_in … Permission denied (1100)).
+ */
 const SANDBOX =
-  /\bsandbox\b[^\n]{0,40}(?:denied|blocked|refus|prevent|not allow|not permitted|engel)|(?:blocked|denied|refused|prevented|stopped|engellen)[^\n]{0,40}\bsandbox\b|sandbox-exec|seatbelt|operation not permitted|\bEPERM\b|read-only file system|\bEROFS\b|korumalı alan/i;
+  /bootstrap_check_in|mach[- ](?:bootstrap|port|register)|MachPortRendezvous|permission denied \(1100\)|\bsandbox\b[^\n]{0,40}(?:denied|blocked|refus|prevent|not allow|not permitted|engel)|(?:blocked|denied|refused|prevented|stopped|engellen)[^\n]{0,40}\bsandbox\b|sandbox-exec|seatbelt|operation not permitted|\bEPERM\b|read-only file system|\bEROFS\b|korumalı alan/i;
 /** An absolute folder named in the problem, with words that say it is outside what the chat may use. */
 const OUTSIDE = /(?:outside|not (?:allowed|writable)|read-only|dışında|yazılamıyor)/i;
 const FOLDER = /(?:^|[\s"'`(])((?:\/(?:Users|home|private|tmp|var|opt|Volumes|mnt)\/)[^\s"'`,;:)]+)/;
