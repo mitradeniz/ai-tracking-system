@@ -235,7 +235,7 @@ export function runnerPreamble(taskId: string, runner: ChatRunner, language = "E
     `- Reporting: skip the HTTP call and the report files described below. Just end your final message with the aitrack-report block; the tracker reads it from your output.`,
     `- Solve what you can yourself before asking. Find missing facts with read-only commands (the folders, git, this computer, running services). When a choice is low-risk and easy to undo, take the sensible option, say so in the summary and carry on.`,
     `- Do not stop for something another chat will provide (images, a reference pack, an API that is not merged) or a check that cannot run here: use a placeholder or a mock, finish the task, and list the rest under "followUps" with the task it needs in "after". They become proposed tasks.`,
-    `- If your permissions refuse a step, do not stop for it: find another way or finish the rest without it, and list the refused step under "issues".`,
+    `- If your permissions or the sandbox refuse a step, do not stop for it: find another way or finish the rest without it, and list it under "issues" with "permission" (see PERMISSIONS below) so the person can allow it for you. Do not ask the person to run it for you.`,
     `- Report status "blocked" only for what you cannot decide or do yourself: a choice between real alternatives, or something only a person can do. Put one clear question in ${language} in "reason", and give each decision as one "needs-you" issue with "choices", your recommendation first.`,
     `- If you cannot go on until another task of the plan is done (its code merged, its contract written), do not ask the person to send this task again. Report status "blocked" with "waitingFor": ["<task id>"] and a one-line "reason"; do not add an issue for the wait. The tracker sends this task back to you, in this conversation, when those tasks are done; meanwhile it may give you other tasks here, so leave your work committed or written down before you report.`,
     `- List anything that failed, was skipped or is missing under "issues" in the report, with a plain ${language} title, what is needed, and a prompt that would fix it.`,
@@ -582,10 +582,10 @@ export class RunManager extends EventEmitter {
       // Folders the person allowed for this chat; one that is gone would stop the CLI, so it is left out.
       for (const dir of splitDirs(runner.extraDirs)) if (isDir(dir) && !addDirs.includes(dir) && dir !== workdir) addDirs.push(dir);
     }
-    if (provider === "deepseek") {
+    if (provider === "deepseek" || provider === "codex") {
       for (const dir of splitDirs(runner.extraDirs)) if (isDir(dir) && !addDirs.includes(dir) && dir !== workdir) addDirs.push(dir);
       // In a git worktree, commits write to the repository's shared .git folder, outside the working
-      // folder: DeepSeek's sandbox lets the chat write there only when it is named.
+      // folder: the sandboxes of DeepSeek and Codex let the chat write there only when it is named.
       const common = gitCommonDir(workdir);
       if (common && !addDirs.includes(common) && !inside(common, workdir)) addDirs.push(common);
     }

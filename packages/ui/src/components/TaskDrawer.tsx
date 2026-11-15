@@ -22,7 +22,7 @@ import {
   type Model,
   type Problem,
 } from "../model.ts";
-import { allowSteps, choiceReply, continueAfterAllow, setProblemState } from "../problemActions.ts";
+import { allowSteps, choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, setProblemState, type PermissionGrant } from "../problemActions.ts";
 import { usePlanEditing } from "../editing.ts";
 import { InfoTip, PromptPicker, useNow } from "./Info.tsx";
 import { Markdown, splitReport } from "./Markdown.tsx";
@@ -236,6 +236,19 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
       true,
     );
     if (done === "sent") onInfo?.(t("problem_allowedContinue", { agent: agentName(model, msgAgent) }));
+  };
+  // A permission the chat asked for: add it to the chat's run settings for good, then let it go on.
+  const permit = async (problem: Problem, grant: PermissionGrant) => {
+    if (!msgAgent) return;
+    const done = await sendMessage(
+      continueAfterPermission(grant, t),
+      async () => {
+        if (grant.how !== "none") await api.saveRunner(model.detail.key, msgAgent, grant.patch);
+        await setProblemState(model.detail.key, task.id, problem, "resolved");
+      },
+      true,
+    );
+    if (done === "sent") onInfo?.(t("perm_done", { agent: agentName(model, msgAgent), what: grant.how === "full" ? t("perm_fullShort") : grant.shown }));
   };
   // An option the chat offered for a decision: tell it, and close the question.
   const choose = async (problem: Problem, choice: IssueChoice) => {
@@ -527,6 +540,16 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                   onSettings={p.settings && onRunnerSettings && msgAgent ? () => onRunnerSettings(msgAgent) : undefined}
                   onState={p.issues?.length ? (state) => closeProblem(p, state) : undefined}
                   onAllow={p.steps && msgRunner?.provider === "claude" && !running ? (risky) => void allow(p, risky) : undefined}
+                  permit={
+                    p.permission && msgRunner && msgAgent && msgRunner.provider !== "manual" && !running
+                      ? {
+                          grant: permissionGrant(msgRunner, p.permission),
+                          agent: agentName(model, msgAgent),
+                          cli: PROVIDER_LABEL[msgRunner.provider] || msgRunner.provider,
+                          onPermit: (g) => void permit(p, g),
+                        }
+                      : undefined
+                  }
                   onChoose={p.choices && !running ? (c) => void choose(p, c) : undefined}
                 />
               ))}
@@ -829,6 +852,7 @@ function ProblemCard({
   onState,
   onAllow,
   onChoose,
+  permit,
 }: {
   problem: Problem;
   canSend: boolean;
@@ -841,6 +865,8 @@ function ProblemCard({
   onAllow?: (risky: boolean) => void;
   /** Answers a decision with one of the chat's options. */
   onChoose?: (choice: IssueChoice) => void;
+  /** Allows what the chat asked for, for good, and lets it go on. */
+  permit?: { grant: PermissionGrant; agent: string; cli: string; onPermit: (grant: PermissionGrant) => void };
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -848,8 +874,10 @@ function ProblemCard({
   const [copied, setCopied] = useState(false);
   const risky = problem.steps?.filter((s) => s.risk === "risky").length ?? 0;
   const safe = (problem.steps?.length ?? 0) - risky;
+  const [confirmFull, setConfirmFull] = useState(false);
   // One main action per card: allowing steps or picking an option comes before sending the fix prompt.
-  const fixIsMain = !(onAllow && safe > 0);
+  const fixIsMain = !(onAllow && safe > 0) && !permit;
+  const asked = problem.permission ? (problem.permission.value ?? t(`perm_kind_${problem.permission.kind}` as Key)) : null;
   // A decision is answered with its options (or a reply below), not with a generic fix prompt.
   const showFix = Boolean(problem.fix) && !problem.choices;
   return (
@@ -865,6 +893,20 @@ function ProblemCard({
         <span className={`pill kind-${problem.kind}`}>{t(`problem_kind_${problem.kind}` as Key)}</span>
       </div>
       {problem.steps && <StepList steps={problem.steps} />}
+      {asked && (
+        <div className="small perm-asked">
+          {t("perm_asked", { what: "" })}
+          <code className="mono">{asked}</code>
+        </div>
+      )}
+      {permit && permit.grant.how === "full" && confirmFull && (
+        <div className="warn-box small">
+          <span>{t("perm_fullHint", { cli: permit.cli })}</span>
+          <button className="btn small danger" disabled={busy} onClick={() => permit.onPermit(permit.grant)}>
+            {t("perm_fullConfirm")}
+          </button>
+        </div>
+      )}
       {problem.choices && (
         <div className="problem-choices">
           {problem.choices.map((c, i) => (
@@ -882,6 +924,25 @@ function ProblemCard({
         </div>
       )}
       <div className="row wrap">
+        {permit && permit.grant.how !== "full" && (
+          <button
+            className="btn small primary"
+            disabled={busy}
+            title={
+              permit.grant.how === "none"
+                ? t("perm_noneHint", { cli: permit.cli })
+                : t("perm_allowHint", { agent: permit.agent, what: permit.grant.shown })
+            }
+            onClick={() => permit.onPermit(permit.grant)}
+          >
+            {t(permit.grant.how === "none" ? "perm_none" : "perm_allow")}
+          </button>
+        )}
+        {permit && permit.grant.how === "full" && !confirmFull && (
+          <button className="btn small ghost danger" disabled={busy} title={t("perm_fullHint", { cli: permit.cli })} onClick={() => setConfirmFull(true)}>
+            {t("perm_full")}
+          </button>
+        )}
         {onAllow && safe > 0 && (
           <button className="btn small primary" disabled={busy} title={t("problem_allowContinueHint")} onClick={() => onAllow(false)}>
             {t("problem_allowContinue")}

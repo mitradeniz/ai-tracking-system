@@ -1,6 +1,6 @@
 import { api, type ChatRunner } from "./api.ts";
 import type { T } from "./i18n.ts";
-import type { IssueChoice, Problem, RefusedStep } from "./model.ts";
+import type { IssueChoice, IssuePermission, Problem, RefusedStep } from "./model.ts";
 
 /** Entries of a list kept one per line (or comma-separated, for allowed tools). */
 function entries(text: string | undefined, commas: boolean): string[] {
@@ -46,4 +46,54 @@ export async function setProblemState(key: string, task: string, problem: Proble
   const issues = problem.issues ?? [];
   if (issues.length === 1) await api.setIssueState(key, task, { ...issues[0]!, state });
   else if (issues.length > 1) await api.setIssueStates(key, task, issues, state);
+}
+
+/** How a permission a chat asked for is given to it, from now on, with the CLI it runs on. */
+export interface PermissionGrant {
+  /** rule: an allowed-tools entry; folder: another folder; network: network in its sandbox;
+   * full: only full access covers it (this CLI has no finer setting); none: nothing to change. */
+  how: "rule" | "folder" | "network" | "full" | "none";
+  /** The change to the chat's run settings. */
+  patch: Partial<ChatRunner>;
+  /** What is allowed, for the person and the chat. */
+  shown: string;
+}
+
+/** The commands, in the shape the CLI's allowed-tools list takes. */
+const COMMAND_RULE: Partial<Record<string, (command: string) => string>> = {
+  claude: (c) => `Bash(${c}:*)`,
+  copilot: (c) => `shell(${c}:*)`,
+};
+/** CLIs that take other folders from the run settings. */
+const FOLDERS = new Set(["claude", "deepseek", "codex"]);
+
+export function permissionGrant(runner: ChatRunner, permission: IssuePermission): PermissionGrant {
+  const value = (permission.value ?? "").replace(/^\$\s*/, "").trim();
+  const p = runner.provider;
+  const none = (shown: string): PermissionGrant => ({ how: "none", patch: {}, shown });
+  if (runner.access === "full" || p === "manual" || p === "custom") return none(value || permission.kind);
+  const full: PermissionGrant = { how: "full", patch: { access: "full" }, shown: value || permission.kind };
+  if (permission.kind === "command") {
+    const rule = COMMAND_RULE[p];
+    if (!value) return full;
+    if (!rule) return full;
+    const entry = rule(value);
+    const tools = entries(runner.allowedTools, true);
+    return tools.includes(entry) ? none(entry) : { how: "rule", patch: { allowedTools: [...tools, entry].join("\n") }, shown: entry };
+  }
+  if (permission.kind === "network") {
+    // Codex keeps commands off the network in its sandbox unless it is allowed; Claude Code, Copilot and Gemini do not block it.
+    if (p === "codex") return { how: "network", patch: { network: true, ...(runner.access === "readonly" && { access: "edit" as const }) }, shown: "network" };
+    if (p === "claude" || p === "copilot" || p === "gemini") return none("network");
+    return { ...full, shown: "network" };
+  }
+  if (!value.startsWith("/") && !/^[A-Za-z]:\\/.test(value)) return full;
+  if (!FOLDERS.has(p)) return full;
+  const dirs = entries(runner.extraDirs, false);
+  return dirs.includes(value) ? none(value) : { how: "folder", patch: { extraDirs: [...dirs, value].join("\n") }, shown: value };
+}
+
+/** What the chat is told after the person allowed what it asked for. */
+export function continueAfterPermission(grant: PermissionGrant, t: T): string {
+  return [t("perm_reply", { what: grant.how === "full" ? t("perm_fullShort") : grant.shown }), t("allow_replyEnd")].join("\n");
 }

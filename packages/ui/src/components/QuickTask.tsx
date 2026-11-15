@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { api, copyText, dispatchTask } from "../api.ts";
-import { useI18n } from "../i18n.ts";
+import { useI18n, type Key } from "../i18n.ts";
 import {
   activeRun,
   agentName,
@@ -15,8 +15,9 @@ import {
   type IssueChoice,
   type Model,
   type Problem,
+  PROVIDER_LABEL,
 } from "../model.ts";
-import { allowSteps, choiceReply, continueAfterAllow, setProblemState } from "../problemActions.ts";
+import { allowSteps, choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, setProblemState, type PermissionGrant } from "../problemActions.ts";
 import { useNow } from "./Info.tsx";
 import { Markdown, splitReport } from "./Markdown.tsx";
 import { StopButton, stopRun } from "./Runners.tsx";
@@ -111,6 +112,16 @@ export function QuickTask({
       await setProblemState(key, taskId, { ...p, issues: picked.map((x) => x.issue) }, "resolved");
       const done = await deliver(continueAfterAllow(steps, t));
       return done?.how === "sent" ? t("problem_allowedContinue", { agent: agentName(model, owner) }) : done?.message;
+    });
+
+  /** Allows what the chat asked for, for good, and lets it go on. */
+  const permit = (p: Problem, grant: PermissionGrant) =>
+    run(async () => {
+      if (!owner) return;
+      if (grant.how !== "none") await api.saveRunner(key, owner, grant.patch);
+      await setProblemState(key, taskId, p, "resolved");
+      const done = await deliver(continueAfterPermission(grant, t));
+      return done?.how === "sent" ? t("perm_done", { agent: agentName(model, owner), what: grant.how === "full" ? t("perm_fullShort") : grant.shown }) : done?.message;
     });
 
   /** Answers a decision with one of the chat's options and closes the question. */
@@ -214,7 +225,33 @@ export function QuickTask({
               ))}
             </div>
           )}
+          {p.permission && (
+            <div className="small perm-asked">
+              {t("perm_asked", { what: "" })}
+              <code className="mono">{p.permission.value ?? t(`perm_kind_${p.permission.kind}` as Key)}</code>
+            </div>
+          )}
           <div className="row wrap">
+            {p.permission &&
+              runner &&
+              runner.provider !== "manual" &&
+              !runHere &&
+              (() => {
+                const grant = permissionGrant(runner, p.permission);
+                const cli = PROVIDER_LABEL[runner.provider] || runner.provider;
+                // Full access is a bigger step: it is given from the main window, where it is explained.
+                if (grant.how === "full") return null;
+                return (
+                  <button
+                    className="btn tiny primary"
+                    disabled={busy}
+                    title={grant.how === "none" ? t("perm_noneHint", { cli }) : t("perm_allowHint", { agent: agentName(model, owner), what: grant.shown })}
+                    onClick={() => void permit(p, grant)}
+                  >
+                    {t(grant.how === "none" ? "perm_none" : "perm_allow")}
+                  </button>
+                );
+              })()}
             {p.steps && runner?.provider === "claude" && !runHere && p.steps.some((x) => x.risk !== "risky") && (
               <button className="btn tiny primary" disabled={busy} title={t("problem_allowContinueHint")} onClick={() => void allow(p, false)}>
                 {t("problem_allowContinue")}

@@ -313,7 +313,7 @@ export function RunnerDialog({
                 <span className="small muted">{t("run_allowedToolsHint")}</span>
               </div>
             )}
-            {(p === "claude" || p === "deepseek") && (
+            {(p === "claude" || p === "deepseek" || p === "codex") && (
               <div className="field">
                 <label htmlFor="run-dirs">{t("run_extraDirs")}</label>
                 <textarea

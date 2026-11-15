@@ -329,6 +329,8 @@ export function buildInvocation(input: BuildInput): Invocation {
       else if (runner.access === "edit") {
         args.push("-s", "workspace-write");
         if (runner.network) args.push("-c", "sandbox_workspace_write.network_access=true");
+        // Other folders it may write to, besides its working folder (the plan's repository, the ones allowed for it).
+        for (const dir of addDirs) if (dir.startsWith("/")) args.push("--add-dir", dir);
       } else args.push("--dangerously-bypass-approvals-and-sandbox");
       if (model) args.push("-m", model);
       if (effort) args.push("-c", `model_reasoning_effort="${effort}"`);

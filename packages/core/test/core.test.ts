@@ -242,6 +242,10 @@ describe("reports", () => {
   });
 
   it("reads the tasks a chat waits for, given as a list or one id", () => {
+    const asks = parseReports(
+      '{"task":"T3","status":"blocked","issues":[{"title":"npm ci needs the network","kind":"needs-you","permission":{"kind":"network","value":"  npm   ci "}},{"title":"x","permission":"folder"},{"title":"y","permission":{"kind":"root"}}]}',
+    ).reports[0]!;
+    expect(asks.issues!.map((i) => i.permission)).toEqual([{ kind: "network", value: "npm ci" }, { kind: "folder" }, undefined]);
     const one = parseReports('{"task":"T3","status":"blocked","reason":"needs T1","waitingFor":"T1"}').reports[0]!;
     expect(one.waitingFor).toEqual(["T1"]);
     expect(reportToEvent(one, "paste").waitingFor).toEqual(["T1"]);

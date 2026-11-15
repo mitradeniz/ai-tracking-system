@@ -283,9 +283,12 @@ export interface Problem {
   steps?: RefusedStep[];
   /** A decision: the options the chat offered, as buttons. */
   choices?: IssueChoice[];
+  /** A permission the chat asked for, which the person can allow for it from now on. */
+  permission?: IssuePermission;
 }
 
 export type IssueChoice = NonNullable<TaskIssue["choices"]>[number];
+export type IssuePermission = NonNullable<TaskIssue["permission"]>;
 
 // What a refused step does and how risky it is: shared with the tracker, which lets a manager allow safe steps.
 export { explainStep, permissionRules, REFUSED, type RefusedStep, type StepRisk, type StepWhat } from "@aitrack/core";
@@ -329,6 +332,7 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
       fix: issueFix(s.id, title, i),
       issues: [{ index, title: i.title }],
       ...(i.choices?.length && { choices: i.choices }),
+      ...(i.permission && { permission: i.permission }),
     });
   });
   // Every step the CLI refused, on one card.

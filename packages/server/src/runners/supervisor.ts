@@ -818,7 +818,8 @@ function attentionText(a: Attention): string {
       const choices = i.choices?.length
         ? ` | options: ${i.choices.map((c, n) => `[${n}] ${c.label}${c.recommended ? " (recommended)" : ""}`).join(", ")}`
         : "";
-      lines.push(`  [${index}] ${i.kind ?? "error"}: ${clip(i.title, 200)}${i.detail ? ` — ${clip(i.detail, 400)}` : ""}${choices}`);
+      const asks = i.permission ? ` [asks permission: ${i.permission.kind}${i.permission.value ? ` ${clip(i.permission.value, 120)}` : ""}]` : "";
+      lines.push(`  [${index}] ${i.kind ?? "error"}: ${clip(i.title, 200)}${i.detail ? ` — ${clip(i.detail, 400)}` : ""}${choices}${asks}`);
     }
   }
   const refused = open.filter(({ i }) => i.title.startsWith(REFUSED));
@@ -895,7 +896,7 @@ At most one action per task, plus "close" (put "close" before the action it make
 
 NEVER: approve payments, enter or ask for credentials, accept legal terms, publish, delete data, push to a main branch${
     mergeAllowed(settings) ? ", merge into it other than with the \"merge\" action" : " or merge into it"
-  }, or allow [risky] steps. Leave those for the person.${
+  }, allow [risky] steps, or grant a problem marked [asks permission] (the person allows those for the chat for good). Leave those for the person.${
     settings.fullAuto
       ? " Never approve work whose checks fail or that does not do what the task asks: send it back instead."
       : approves(settings)

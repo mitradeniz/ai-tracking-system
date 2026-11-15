@@ -431,6 +431,29 @@
                         ]
                       }
                     },
+                    "permission": {
+                      "description": "The permission the chat needs to go on. The person can allow it for this chat from now on.",
+                      "type": "object",
+                      "properties": {
+                        "kind": {
+                          "type": "string",
+                          "enum": [
+                            "command",
+                            "network",
+                            "folder"
+                          ],
+                          "description": "command: a command the chat may not run; network: network access; folder: a folder outside its working folder."
+                        },
+                        "value": {
+                          "description": "The command's first words (e.g. \"npm ci\", \"open\") or the folder's absolute path.",
+                          "type": "string",
+                          "maxLength": 500
+                        }
+                      },
+                      "required": [
+                        "kind"
+                      ]
+                    },
                     "state": {
                       "description": "Set by the person in the app when the problem is resolved or ignored; chats leave it out.",
                       "type": "string",

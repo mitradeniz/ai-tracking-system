@@ -4,7 +4,8 @@ import type { TaskSnapshot } from "@aitrack/core";
 import type { RunSummary } from "../src/api.ts";
 import { translator } from "../src/i18n.ts";
 import { cardNote, explainStep, localMessage, notesOf, permissionRules, problemsOf, shownStatus, type Model } from "../src/model.ts";
-import { choiceReply, continueAfterAllow } from "../src/problemActions.ts";
+import { choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant } from "../src/problemActions.ts";
+import type { ChatRunner } from "../src/api.ts";
 
 describe("permission rules", () => {
   it("allows each command of a refused command line", () => {
@@ -134,5 +135,30 @@ describe("refused steps and decisions", () => {
     expect(reply).toContain("I move the commits there.");
     const tr = choiceReply(problem, { label: "Ayrı repo" }, translator("tr"));
     expect(tr.split("\n")).toEqual(['"Where does the code go?" konusunda seçimim: "Ayrı repo".', "Bununla devam et ve yeniden raporla."]);
+  });
+
+  it("gives a permission a chat asked for in the way its CLI takes it, for good", () => {
+    const base: ChatRunner = { provider: "claude", access: "edit", session: "keep", unattended: false, network: false, allowedTools: "Bash(npm test:*)" };
+    // Claude Code and Copilot: an entry in the allowed tools.
+    expect(permissionGrant(base, { kind: "command", value: "$ open" })).toEqual({ how: "rule", patch: { allowedTools: "Bash(npm test:*)\nBash(open:*)" }, shown: "Bash(open:*)" });
+    expect(permissionGrant(base, { kind: "command", value: "npm test" }).how).toBe("none");
+    expect(permissionGrant({ ...base, provider: "copilot", allowedTools: "" }, { kind: "command", value: "npm ci" }).patch).toEqual({ allowedTools: "shell(npm ci:*)" });
+    // Codex: network in its sandbox, other folders; a single command only with full access.
+    const codex: ChatRunner = { ...base, provider: "codex", allowedTools: undefined };
+    expect(permissionGrant(codex, { kind: "network" })).toEqual({ how: "network", patch: { network: true }, shown: "network" });
+    expect(permissionGrant(codex, { kind: "folder", value: "/Users/me/other" })).toEqual({ how: "folder", patch: { extraDirs: "/Users/me/other" }, shown: "/Users/me/other" });
+    expect(permissionGrant(codex, { kind: "command", value: "open" })).toMatchObject({ how: "full", patch: { access: "full" } });
+    expect(permissionGrant(codex, { kind: "folder", value: "relative/path" }).how).toBe("full");
+    // Claude Code does not block the network; full access needs nothing more.
+    expect(permissionGrant(base, { kind: "network" }).how).toBe("none");
+    expect(permissionGrant({ ...codex, access: "full" }, { kind: "command", value: "open" }).how).toBe("none");
+    const grant = permissionGrant(codex, { kind: "network" });
+    expect(continueAfterPermission(grant, translator("tr")).split("\n")[0]).toBe("Bundan sonra sana kalıcı olarak izin verildi: network.");
+  });
+
+  it("shows the permission a chat asked for on its problem", () => {
+    const snap = { id: "T1", status: "blocked", issues: [{ title: "Finder açılamadı", kind: "needs-you", permission: { kind: "command", value: "open" } }] } as unknown as TaskSnapshot;
+    const model = { task: new Map([["T1", { id: "T1", title: "One" }]]), runners: null } as unknown as Model;
+    expect(problemsOf(model, snap, t)[0]!.permission).toEqual({ kind: "command", value: "open" });
   });
 });

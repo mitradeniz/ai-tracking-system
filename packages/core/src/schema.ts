@@ -110,6 +110,9 @@ export const EVENT_TYPES = [
  */
 export const ISSUE_KINDS = ["error", "missing", "needs-you", "warning"] as const;
 
+/** What a chat may ask permission for: a command, network access, or a folder outside its working folder. */
+export const PERMISSION_KINDS = ["command", "network", "folder"] as const;
+
 export const TaskIssueSchema = z.object({
   title: z.string().min(1).max(300).describe("One line in plain language."),
   detail: z.string().max(4000).optional().describe("What happened and what is needed."),
@@ -126,6 +129,13 @@ export const TaskIssueSchema = z.object({
     .max(5)
     .optional()
     .describe("For a decision only the person can make: the options to pick from, the recommended one first."),
+  permission: z
+    .object({
+      kind: z.enum(PERMISSION_KINDS).describe("command: a command the chat may not run; network: network access; folder: a folder outside its working folder."),
+      value: z.string().max(500).optional().describe("The command's first words (e.g. \"npm ci\", \"open\") or the folder's absolute path."),
+    })
+    .optional()
+    .describe("The permission the chat needs to go on. The person can allow it for this chat from now on."),
   state: z
     .enum(["resolved", "ignored"])
     .optional()
@@ -242,6 +252,13 @@ function cleanReport(value: unknown): unknown {
           if (choices.length) issue.choices = choices;
           else delete issue.choices;
         } else if (issue.choices !== undefined) delete issue.choices;
+        // "permission": {"kind": …, "value": …}, or just the kind; anything else is dropped.
+        const perm = typeof issue.permission === "string" ? { kind: issue.permission } : issue.permission;
+        if (perm && typeof perm === "object" && !Array.isArray(perm) && (PERMISSION_KINDS as readonly unknown[]).includes((perm as Record<string, unknown>).kind)) {
+          const p = perm as Record<string, unknown>;
+          const value = typeof p.value === "string" ? p.value.replace(/\s+/g, " ").trim().slice(0, 500) : "";
+          issue.permission = { kind: p.kind, ...(value && { value }) };
+        } else delete issue.permission;
         return issue;
       });
   }
