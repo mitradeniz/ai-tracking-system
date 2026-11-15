@@ -356,7 +356,8 @@ export class Supervisor extends EventEmitter {
           continue;
         }
         const view = this.manager.context(key).board.byId.get(task)!;
-        if (view.status === "review" && type !== "approve") throw new Error("A finished task in review is only approved, or left for the person.");
+        // A finished task in review can have notes closed (work that other tasks cover) and be approved; nothing else.
+        if (view.status === "review" && type !== "approve" && type !== "close") throw new Error("A finished task in review is only approved, or left for the person.");
         switch (type) {
           case "approve": {
             if (!settings.approveDone) throw new Error("Approving finished tasks is turned off.");
@@ -453,7 +454,8 @@ export class Supervisor extends EventEmitter {
             done(type || "?", task, false, "Unknown action.");
             continue;
         }
-        acted.add(task);
+        // Closing problems goes with the one action a task gets (approving it after, say).
+        if (type !== "close") acted.add(task);
       } catch (e) {
         const message = (e as Error).message;
         if (task && listed.has(task) && message.includes("left for the person")) this.leftFor.set(`${key}\u0000${task}`, taskPrint(listed.get(task)!.view));

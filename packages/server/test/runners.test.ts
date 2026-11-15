@@ -352,8 +352,11 @@ describe("agent runners", () => {
       actions: [
         { type: "approve", task: "T1", note: "Summary covers the task and the tests pass." },
         { type: "approve", task: "T3", note: "Looks done." },
+        { type: "close", task: "T2", issues: [0] },
+        { type: "close", task: "T2", issues: [0], state: "ignored" },
+        { type: "approve", task: "T2", note: "The CI note is covered by T1." },
       ],
-      summary: "Approved T1.",
+      summary: "Approved T1 and T2.",
     });
     const managerCalls = async () => (await invocations()).filter((i) => i.stdin.includes("You are the manager")).length;
     const status = async (id: string) =>
@@ -361,6 +364,8 @@ describe("agent runners", () => {
     try {
       expect((await call("POST", `/api/projects/${key}/info`, { requireApproval: true })).status).toBe(200);
       await call("POST", "/api/report", { project: "demo", task: "T1", agent: "a", status: "done", summary: "Built and tested.", verify: "npm test" });
+      // T2 is finished too, with a note that other work covers.
+      await call("POST", "/api/report", { project: "demo", task: "T2", agent: "a", status: "done", summary: "Done.", issues: [{ title: "Tests do not run in CI yet", kind: "error" }] });
       await call("POST", "/api/report", {
         project: "demo",
         task: "T3",
@@ -385,7 +390,11 @@ describe("agent runners", () => {
       expect(log[0].actions.map((a: { type: string; task: string; ok: boolean }) => `${a.type}:${a.task}:${a.ok}`)).toEqual([
         "approve:T1:true",
         "approve:T3:false",
+        "close:T2:true",
+        "close:T2:false",
+        "approve:T2:true",
       ]);
+      expect(await status("T2")).toBe("done");
       expect(log[0].forYou[0]).toContain("T3: waits for your approval");
       expect(await status("T1")).toBe("done");
       expect(await status("T3")).toBe("review");
