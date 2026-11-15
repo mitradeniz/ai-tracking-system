@@ -366,6 +366,8 @@ export function buildInvocation(input: BuildInput): Invocation {
       if (runner.access === "edit") args.push("--allow-tool", "write");
       if (runner.access === "full") args.push("--allow-all-tools");
       for (const tool of splitTools(runner.allowedTools)) args.push("--allow-tool", tool);
+      // Other folders it may use besides its working folder.
+      for (const dir of addDirs) if (dir.startsWith("/")) args.push("--add-dir", dir);
       if (model) args.push("--model", model);
       if (effort) args.push("--reasoning-effort", effort);
       args.push(...extra);
@@ -379,6 +381,9 @@ export function buildInvocation(input: BuildInput): Invocation {
         "--approval-mode",
         runner.access === "readonly" ? "plan" : runner.access === "edit" ? "auto_edit" : "yolo",
       );
+      // Other folders in its workspace besides its working folder.
+      const dirs = addDirs.filter((d) => d.startsWith("/"));
+      if (dirs.length) args.push("--include-directories", dirs.join(","));
       if (model) args.push("-m", model);
       args.push(...extra);
       return { command: runner.binary || "gemini", args, sessionId: resume ?? newSessionId, format: "gemini" };

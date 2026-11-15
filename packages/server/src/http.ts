@@ -630,6 +630,7 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
         autoDispatch: typeof body.autoDispatch === "boolean" ? body.autoDispatch : undefined,
         maxConcurrent: typeof body.maxConcurrent === "number" ? body.maxConcurrent : undefined,
         saving: typeof body.saving === "boolean" ? body.saving : undefined,
+        extraDirs: typeof body.extraDirs === "string" ? body.extraDirs.slice(0, 4000) : undefined,
       }),
     );
   });

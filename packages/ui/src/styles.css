@@ -5689,3 +5689,18 @@ details.advanced[open] {
 .check.strong-check {
   border-color: var(--warn-line, var(--edge-strong));
 }
+
+/* Other folders a chat may use: one per row, added with the folder dialog or typed. */
+.folder-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.folder-list .row {
+  gap: 6px;
+  align-items: center;
+}
+.folder-list .input {
+  flex: 1;
+  min-width: 0;
+}

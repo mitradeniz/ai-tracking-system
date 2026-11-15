@@ -81,7 +81,7 @@ const COMMAND_RULE: Partial<Record<string, (command: string) => string>> = {
   copilot: (c) => `shell(${c}:*)`,
 };
 /** CLIs that take other folders from the run settings. */
-const FOLDERS = new Set(["claude", "deepseek", "codex"]);
+const FOLDERS = new Set(["claude", "deepseek", "codex", "copilot", "gemini"]);
 
 /**
  * The change to a chat's run settings that gives it a permission for good. A CLI with no finer

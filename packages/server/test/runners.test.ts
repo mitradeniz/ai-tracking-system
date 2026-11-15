@@ -1147,6 +1147,31 @@ describe("provider adapters", () => {
     expect(normalizeRunner({ provider: "claude", extraDirs: "/a/b/\n\n/c/d\n/a/b" }).extraDirs).toBe("/a/b\n/c/d");
     expect(() => normalizeRunner({ provider: "claude", extraDirs: "relative/dir" })).toThrow(/absolute/);
     expect(claudeMemoryDir("/Users/me/my_app.v2", "/cfg")).toBe("/cfg/projects/-Users-me-my-app-v2/memory");
+    // Copilot takes them as --add-dir, Gemini as --include-directories.
+    const copilot = buildInvocation({ runner: { ...DEFAULT_RUNNER, provider: "copilot" }, prompt: "P", cwd: "/w", newSessionId: "u", addDirs: ["/a", "/b"] });
+    expect(copilot.args.join(" ")).toContain("--add-dir /a --add-dir /b");
+    const gemini = buildInvocation({ runner: { ...DEFAULT_RUNNER, provider: "gemini" }, prompt: "P", cwd: "/w", newSessionId: "u", addDirs: ["/a", "/b", "/w"] });
+    expect(gemini.args.slice(gemini.args.indexOf("--include-directories"), gemini.args.indexOf("--include-directories") + 2)).toEqual(["--include-directories", "/a,/b"]);
+  });
+
+  it("gives every chat of a project the project's folders, on top of its own", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    const own = path.join(dir, "own");
+    const shared = path.join(dir, "shared");
+    await mkdir(own);
+    await mkdir(shared);
+    expect((await call("POST", `/api/projects/${key}/runners`, { extraDirs: "relative/dir" })).status).toBe(400);
+    const saved = await call("POST", `/api/projects/${key}/runners`, { extraDirs: `${shared}\n\n${path.join(dir, "gone")}` });
+    expect(saved.json.extraDirs).toBe(`${shared}\n${path.join(dir, "gone")}`);
+    await setRunner("b", { provider: "claude", extraDirs: own });
+    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    await waitFor("T3", "done");
+    const [inv] = await invocations();
+    const at = inv!.args.indexOf("--add-dir");
+    expect(inv!.args.slice(at + 1, at + 4)).toEqual(expect.arrayContaining([own, shared]));
+    // A folder that is gone would stop the CLI: it is left out.
+    expect(inv!.args).not.toContain(path.join(dir, "gone"));
+    expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.extraDirs).toBe(`${shared}\n${path.join(dir, "gone")}`);
   });
 
   it("passes the model and reasoning effort to each CLI", () => {

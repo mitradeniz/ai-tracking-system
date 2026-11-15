@@ -61,6 +61,9 @@ interface Run extends RunSummary {
   fresh?: boolean;
 }
 
+/** CLIs that take other folders besides their working folder (--add-dir, --include-directories). */
+export const FOLDER_CLIS = new Set<ProviderId>(["claude", "codex", "deepseek", "copilot", "gemini"]);
+
 /**
  * Counters a CLI reports for its whole conversation instead of for one run: Codex's tokens, Claude
  * Code's cost. A run that continues a conversation shows what it added.
@@ -153,7 +156,7 @@ const CONTINUE_AFTER_LIMIT =
   "The usage limit has reset. Continue the task where you stopped; do not redo the steps you finished. Report with the aitrack-report block when you are done or need something.";
 
 /** The run settings the app shows; what the tracker keeps for itself (sessions, counters) stays out. */
-export type PublicRunners = Pick<ProjectRunners, "autoDispatch" | "maxConcurrent" | "chats" | "manager"> & { saving: boolean };
+export type PublicRunners = Pick<ProjectRunners, "autoDispatch" | "maxConcurrent" | "chats" | "manager" | "extraDirs"> & { saving: boolean };
 
 export interface RunnerState {
   settings: PublicRunners;
@@ -391,7 +394,7 @@ export class RunManager extends EventEmitter {
     const base = defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
     const p = this.store.project(key);
     return {
-      settings: { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true },
+      settings: { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true, ...(p.extraDirs && { extraDirs: p.extraDirs }) },
       facts: this.store.facts(key),
       held: [...this.held].filter((h) => h.startsWith(`${key}:`)).map((h) => h.slice(key.length + 1)),
       limits: Object.entries(this.store.project(key).chats).flatMap(([agent, runner]) => {
@@ -464,10 +467,15 @@ export class RunManager extends EventEmitter {
     return runner;
   }
 
-  async saveProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean }): Promise<PublicRunners> {
+  async saveProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean; extraDirs?: string }): Promise<PublicRunners> {
     this.manager.context(key);
-    const p = await this.store.setProject(key, patch);
-    const settings: PublicRunners = { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true };
+    let p: ProjectRunners;
+    try {
+      p = await this.store.setProject(key, patch);
+    } catch (e) {
+      throw new HttpError(400, (e as Error).message);
+    }
+    const settings: PublicRunners = { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true, ...(p.extraDirs && { extraDirs: p.extraDirs }) };
     // Switching automatic dispatch on again releases the chats the person stopped.
     if (patch.autoDispatch === true) for (const h of [...this.held]) if (h.startsWith(`${key}:`)) this.held.delete(h);
     this.emit("runners", { key });
@@ -653,11 +661,15 @@ export class RunManager extends EventEmitter {
     if (provider === "claude") {
       const memory = claudeMemoryDir(workdir);
       if (isDir(memory)) addDirs.push(memory);
-      // Folders the person allowed for this chat; one that is gone would stop the CLI, so it is left out.
-      for (const dir of splitDirs(runner.extraDirs)) if (isDir(dir) && !addDirs.includes(dir) && dir !== workdir) addDirs.push(dir);
+    }
+    // Folders the person allowed for this chat and for every chat of the project; one that is gone
+    // would stop the CLI, so it is left out.
+    if (FOLDER_CLIS.has(provider)) {
+      for (const dir of [...splitDirs(runner.extraDirs), ...splitDirs(this.store.project(key).extraDirs)]) {
+        if (isDir(dir) && !addDirs.includes(dir) && dir !== workdir) addDirs.push(dir);
+      }
     }
     if (provider === "deepseek" || provider === "codex") {
-      for (const dir of splitDirs(runner.extraDirs)) if (isDir(dir) && !addDirs.includes(dir) && dir !== workdir) addDirs.push(dir);
       // In a git worktree, commits write to the repository's shared .git folder, outside the working
       // folder: the sandboxes of DeepSeek and Codex let the chat write there only when it is named.
       const common = gitCommonDir(workdir);

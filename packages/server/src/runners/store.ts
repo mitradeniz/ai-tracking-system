@@ -80,6 +80,8 @@ export interface ProjectRunners {
   sessionUsage?: Record<string, SessionUsage>;
   /** What chats checked about the environment and the project; newest last. */
   facts?: Fact[];
+  /** Folders every chat of the project may use besides its working folder, one absolute path per line. */
+  extraDirs?: string;
 }
 
 /** Counters a CLI reports for a whole conversation, not for one run. */
@@ -262,6 +264,7 @@ function normalizeProject(input: unknown): ProjectRunners {
     ...(Object.keys(taskSessions).length && { taskSessions }),
     ...(Object.keys(sessionUsage).length && { sessionUsage }),
     ...(facts.length && { facts }),
+    ...(typeof o.extraDirs === "string" && splitDirs(o.extraDirs).every((d) => path.isAbsolute(d)) && splitDirs(o.extraDirs).length && { extraDirs: splitDirs(o.extraDirs).join("\n") }),
   };
 }
 
@@ -307,10 +310,20 @@ export class RunnerStore {
     return { ...p.manager };
   }
 
-  async setProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean }): Promise<ProjectRunners> {
+  async setProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean; extraDirs?: string }): Promise<ProjectRunners> {
+    if (typeof patch.extraDirs === "string") {
+      for (const dir of splitDirs(patch.extraDirs)) {
+        if (!path.isAbsolute(dir)) throw new Error(`"${dir}" is not an absolute path. Give each folder as a full path, one per line.`);
+      }
+    }
     const p = this.entry(key);
     if (typeof patch.autoDispatch === "boolean") p.autoDispatch = patch.autoDispatch;
     if (typeof patch.saving === "boolean") p.saving = patch.saving;
+    if (typeof patch.extraDirs === "string") {
+      const dirs = splitDirs(patch.extraDirs);
+      if (dirs.length) p.extraDirs = dirs.join("\n");
+      else delete p.extraDirs;
+    }
     if (typeof patch.maxConcurrent === "number" && Number.isInteger(patch.maxConcurrent)) {
       p.maxConcurrent = Math.min(10, Math.max(1, patch.maxConcurrent));
     }

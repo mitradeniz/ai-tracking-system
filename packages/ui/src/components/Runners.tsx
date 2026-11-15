@@ -61,6 +61,9 @@ export function RunnerDialog({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const set = (patch: Partial<ChatRunner>) => setForm((f) => ({ ...f, ...patch }));
+  // Folders every chat of the project may use: saved with the project, not with this chat.
+  const sharedBefore = model.runners?.settings.extraDirs ?? "";
+  const [shared, setShared] = useState(sharedBefore);
 
   const detect = (refresh = false) =>
     api.providers(refresh).then(setProviders, () => setProviders([]));
@@ -92,6 +95,7 @@ export function RunnerDialog({
         binary: form.binary ?? "",
         command: form.command ?? "",
       });
+      if (dirLines(shared).join("\n") !== dirLines(sharedBefore).join("\n")) await api.saveRunnerProject(key, { extraDirs: dirLines(shared).join("\n") });
       onSaved(t("run_saved", { agent: agentName(model, agentId) }));
       onClose();
     } catch (e) {
@@ -212,6 +216,24 @@ export function RunnerDialog({
               <span className="small muted">{t("run_workdirHint", { path: defaultWorkdir })}</span>
             )}
           </div>
+          {FOLDER_CLIS.has(p) ? (
+            <>
+              <div className="field">
+                <label>
+                  {t("run_extraDirs")} <InfoTip text={t("run_extraDirsHint")} />
+                </label>
+                <FolderList value={form.extraDirs ?? ""} start={workdir} onChange={(v) => set({ extraDirs: v })} />
+              </div>
+              <div className="field">
+                <label>
+                  {t("run_projectDirs")} <InfoTip text={t("run_projectDirsHint")} />
+                </label>
+                <FolderList value={shared} start={workdir} onChange={setShared} />
+              </div>
+            </>
+          ) : (
+            <span className="small muted">{t("run_dirsUnsupported", { cli: providerName(p) ?? p })}</span>
+          )}
           {p !== "custom" && (
             <div className="field">
               <label>
@@ -311,20 +333,6 @@ export function RunnerDialog({
                   onChange={(e) => set({ allowedTools: e.target.value })}
                 />
                 <span className="small muted">{t("run_allowedToolsHint")}</span>
-              </div>
-            )}
-            {(p === "claude" || p === "deepseek" || p === "codex") && (
-              <div className="field">
-                <label htmlFor="run-dirs">{t("run_extraDirs")}</label>
-                <textarea
-                  id="run-dirs"
-                  className="input mono"
-                  style={{ minHeight: 44 }}
-                  value={form.extraDirs ?? ""}
-                  placeholder="/Users/you/other-repo"
-                  onChange={(e) => set({ extraDirs: e.target.value })}
-                />
-                <span className="small muted">{t("run_extraDirsHint")}</span>
               </div>
             )}
             <div className="field">
@@ -626,6 +634,58 @@ export function AutoDispatch({
           }
         />
       )}
+    </div>
+  );
+}
+
+/** CLIs that take other folders besides their working folder (the tracker passes them as --add-dir or --include-directories). */
+const FOLDER_CLIS = new Set<RunnerProvider>(["claude", "codex", "deepseek", "copilot", "gemini"]);
+
+/** Folders given one per line, without empty lines. */
+const dirLines = (text: string) => text.split(/\r?\n/).map((d) => d.trim()).filter(Boolean);
+
+/** A list of folders, one per row: picked with the folder dialog (desktop app) or typed. */
+function FolderList({ value, start, onChange }: { value: string; start?: string; onChange: (value: string) => void }) {
+  const { t } = useI18n();
+  const [rows, setRows] = useState<string[]>(() => dirLines(value));
+  const update = (next: string[]) => {
+    setRows(next);
+    onChange(next.join("\n"));
+  };
+  const add = async () => {
+    if (desktop?.chooseFolder) {
+      const picked = await desktop.chooseFolder(rows[rows.length - 1] || start || undefined);
+      if (picked && !rows.includes(picked)) update([...rows.filter(Boolean), picked]);
+      return;
+    }
+    update([...rows, ""]);
+  };
+  return (
+    <div className="folder-list">
+      {rows.map((dir, i) => (
+        <div className="row" key={i}>
+          <input
+            className="input mono"
+            value={dir}
+            placeholder="/Users/you/other-repo"
+            aria-label={t("run_dirPath")}
+            onChange={(e) => update(rows.map((r, j) => (j === i ? e.target.value : r)))}
+          />
+          <button className="icon-btn" title={t("run_dirRemove")} aria-label={t("run_dirRemove")} onClick={() => update(rows.filter((_, j) => j !== i))}>
+            ×
+          </button>
+        </div>
+      ))}
+      <div className="row">
+        <button className="btn small" onClick={() => void add()}>
+          + {t("run_dirAdd")}
+        </button>
+        {desktop?.chooseFolder && (
+          <button className="btn small ghost" onClick={() => update([...rows, ""])}>
+            {t("run_dirType")}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -170,7 +170,8 @@ export interface ApplyResult {
 export interface RunnerState {
   manager?: ManagerState;
   /** saving: each task gets its own conversation, and what chats checked is passed on (saving mode). */
-  settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner>; saving?: boolean };
+  /** extraDirs: folders every chat of the project may use besides its working folder, one per line. */
+  settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner>; saving?: boolean; extraDirs?: string };
   /** What chats checked about the environment and the project, newest last. */
   facts?: Array<{ text: string; task?: string; agent?: string; at: string }>;
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
@@ -512,7 +513,7 @@ export const api = {
   providers: (refresh = false) =>
     request<{ providers: DetectedProvider[] }>("GET", `/api/providers${refresh ? "?refresh=1" : ""}`).then((r) => r.providers),
   runners: (key: string) => request<RunnerState>("GET", `/api/projects/${enc(key)}/runners`),
-  saveRunnerProject: (key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean }) =>
+  saveRunnerProject: (key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean; extraDirs?: string }) =>
     request<RunnerState["settings"]>("POST", `/api/projects/${enc(key)}/runners`, patch),
   removeFacts: (key: string, texts: string[] | "all") =>
     request<{ facts: NonNullable<RunnerState["facts"]> }>("POST", `/api/projects/${enc(key)}/facts/remove`, texts === "all" ? { all: true } : { texts }),

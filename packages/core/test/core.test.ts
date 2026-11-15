@@ -274,6 +274,8 @@ describe("reports", () => {
     // Network is on and the sandbox still stops it: only full access is left.
     expect(permissionGrant({ provider: "codex", access: "edit", network: true }, { kind: "network" })).toMatchObject({ how: "full", patch: { access: "full" } });
     expect(permissionGrant({ provider: "codex", access: "edit", network: false }, { kind: "network" })).toMatchObject({ how: "network", patch: { network: true } });
+    // Copilot and Gemini take other folders too.
+    expect(permissionGrant({ provider: "gemini", access: "edit" }, { kind: "folder", value: "/Users/me/docs" })).toEqual({ how: "folder", patch: { extraDirs: "/Users/me/docs" }, shown: "/Users/me/docs" });
   });
 
   it("reads the tasks a chat waits for, given as a list or one id", () => {
