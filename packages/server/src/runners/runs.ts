@@ -1082,16 +1082,38 @@ export class RunManager extends EventEmitter {
     return this.limits.has(limitKeyOf(this.store.chat(key, agent)));
   }
 
-  /** Records a CLI's limit and wakes its chats up when it resets. */
+  /** True while a CLI waits for its usage limit: the desktop app keeps the computer awake for it. */
+  hasLimits(): boolean {
+    return this.limits.size > 0;
+  }
+
+  /** Lets every chat whose CLI's limit has reset go on now (also called when the computer wakes up). */
+  async checkLimits(): Promise<void> {
+    for (const l of [...this.limits.values()]) if (Date.now() >= l.until) await this.limitEnded(l.id);
+  }
+
+  /**
+   * Records a CLI's limit and wakes its chats up when it resets. The clock is read again every
+   * minute rather than trusting one long timer: a timer stands still while the computer sleeps,
+   * so after a sleep the chats go on as soon as it wakes, not hours late.
+   */
   private setLimit(limit: CliLimit, save = true): void {
     this.limits.set(limit.id, limit);
     const old = this.limitTimers.get(limit.id);
     if (old) clearTimeout(old);
-    // Timers cannot wait longer than about 24 days; a limit is never that long.
-    const wait = Math.min(Math.max(limit.until - Date.now(), 1000), 2_000_000_000);
-    const timer = setTimeout(() => void this.limitEnded(limit.id).catch((e) => this.emit("warning", e)), wait);
-    timer.unref?.();
-    this.limitTimers.set(limit.id, timer);
+    const tick = () => {
+      this.limitTimers.delete(limit.id);
+      const current = this.limits.get(limit.id);
+      if (!current || this.closed) return;
+      if (Date.now() >= current.until) {
+        void this.limitEnded(limit.id).catch((e) => this.emit("warning", e));
+        return;
+      }
+      const timer = setTimeout(tick, Math.min(Math.max(current.until - Date.now(), 1000), 60_000));
+      timer.unref?.();
+      this.limitTimers.set(limit.id, timer);
+    };
+    tick();
     if (save) void this.persistLimits();
     for (const key of this.manager.keys()) this.emit("runners", { key });
   }

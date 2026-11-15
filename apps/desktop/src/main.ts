@@ -7,6 +7,7 @@ import {
   ipcMain,
   Menu,
   nativeTheme,
+  powerMonitor,
   powerSaveBlocker,
   screen,
   session,
@@ -574,7 +575,8 @@ function createWindow(): void {
 function keepAwakeWhileWorking(): void {
   let blocker: number | null = null;
   const check = () => {
-    const busy = Boolean(running && (running.runs.activeTotal() > 0 || running.supervisor.managing().length > 0));
+    // Also while a chat waits for its CLI's usage limit to reset: it goes on by itself then.
+    const busy = Boolean(running && (running.runs.activeTotal() > 0 || running.runs.hasLimits() || running.supervisor.managing().length > 0));
     if (busy && blocker === null) blocker = powerSaveBlocker.start("prevent-app-suspension");
     if (!busy && blocker !== null) {
       powerSaveBlocker.stop(blocker);
@@ -583,6 +585,8 @@ function keepAwakeWhileWorking(): void {
   };
   check();
   setInterval(check, 30_000).unref?.();
+  // After the computer slept (a closed lid): chats whose limit reset meanwhile go on at once.
+  powerMonitor.on("resume", () => void running?.runs.checkLimits().catch(() => undefined));
 }
 
 const gotLock = app.requestSingleInstanceLock();

@@ -535,6 +535,23 @@ describe("agent runners", () => {
     state = (await call("GET", `/api/projects/${key}/runners`)).json;
     expect(state.limits).toEqual([]);
     expect((await call("POST", `/api/projects/${key}/limits/retry`, { agent: "b" })).status).toBe(409);
+  });
+
+  it("goes on by the clock when the limit resets, also right after the computer wakes up", async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_SCENARIO = "limitonce";
+    await setRunner("b", { provider: "claude" });
+    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    await waitFor("T3", "blocked");
+    expect(running.runs.hasLimits()).toBe(true);
+    await running.runs.checkLimits();
+    expect(running.runs.hasLimits()).toBe(true);
+    // The reset time has passed (the computer slept through it): the next look of the clock lets it go on.
+    const limits = (running.runs as unknown as { limits: Map<string, { until: number }> }).limits;
+    for (const l of limits.values()) l.until = Date.now() - 1000;
+    await running.runs.checkLimits();
+    await waitFor("T3", "done");
+    expect(running.runs.hasLimits()).toBe(false);
     const last = (await invocations()).at(-1)!;
     expect(last.stdin).toMatch(/WAS STARTED BEFORE|usage limit has reset|ALREADY WORKED ON TASK/);
   });
