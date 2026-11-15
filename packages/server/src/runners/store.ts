@@ -42,6 +42,11 @@ export interface ProjectRunners {
   maxConcurrent: number;
   chats: Record<string, ChatRunner>;
   manager: ManagerSettings;
+  /**
+   * The session prompt each chat's conversation has read (by chat: its session id and a hash of
+   * the prompt), so a changed prompt is given again to a conversation that goes on.
+   */
+  sessionPrompts?: Record<string, { session: string; hash: string }>;
 }
 
 interface RunnerFile {
@@ -153,11 +158,18 @@ function normalizeProject(input: unknown): ProjectRunners {
   } catch {
     manager = { ...DEFAULT_MANAGER };
   }
+  const sessionPrompts: Record<string, { session: string; hash: string }> = {};
+  const seen = (o.sessionPrompts && typeof o.sessionPrompts === "object" ? o.sessionPrompts : {}) as Record<string, unknown>;
+  for (const [id, v] of Object.entries(seen)) {
+    const e = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    if (typeof e.session === "string" && typeof e.hash === "string") sessionPrompts[id] = { session: e.session, hash: e.hash };
+  }
   return {
     autoDispatch: o.autoDispatch === true,
     maxConcurrent: Number.isInteger(max) && max >= 1 && max <= 10 ? max : DEFAULT_PROJECT_RUNNERS.maxConcurrent,
     chats,
     manager,
+    ...(Object.keys(sessionPrompts).length && { sessionPrompts }),
   };
 }
 
@@ -211,6 +223,19 @@ export class RunnerStore {
     }
     await this.save();
     return this.project(key);
+  }
+
+  /** The session prompt a chat's conversation has read, if the tracker knows it. */
+  sessionPrompt(key: string, agentId: string): { session: string; hash: string } | undefined {
+    return this.data.projects[key]?.sessionPrompts?.[agentId];
+  }
+
+  async setSessionPrompt(key: string, agentId: string, session: string, hash: string): Promise<void> {
+    const p = (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {}, manager: { ...DEFAULT_MANAGER } });
+    const cur = p.sessionPrompts?.[agentId];
+    if (cur && cur.session === session && cur.hash === hash) return;
+    p.sessionPrompts = { ...p.sessionPrompts, [agentId]: { session, hash } };
+    await this.save();
   }
 
   async setSession(key: string, agentId: string, sessionId: string | undefined): Promise<void> {

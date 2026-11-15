@@ -157,6 +157,25 @@ describe("agent runners", () => {
     expect(sources).toEqual(["dispatched:runner", "started:runner", "done:runner"]);
   });
 
+  it("gives a conversation that goes on its session prompt again when the prompt changed", async () => {
+    await setRunner("a", { provider: "codex" });
+    await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+    await waitFor("T1", "done");
+    // The protocol changes while the chat's conversation goes on.
+    expect((await call("POST", `/api/projects/${key}/prompts`, { prompt: { id: "boot", body: "You are Agent A. Push once, as a draft." }, mode: "update" })).status).toBe(200);
+    await call("POST", `/api/projects/${key}/tasks/T2/run`, {});
+    await waitFor("T2", "done");
+    const second = (await invocations())[1]!;
+    expect(second.args.slice(-3)).toEqual(["resume", "thread-123", "-"]);
+    expect(second.stdin).toContain("SESSION PROMPT HAS CHANGED");
+    expect(second.stdin).toContain("Push once, as a draft.");
+    // Once read, it is not given again.
+    await call("POST", `/api/projects/${key}/events`, { task: "T2", type: "reopened" });
+    await call("POST", `/api/projects/${key}/tasks/T2/run`, {});
+    await waitFor("T2", "done");
+    expect((await invocations())[2]!.stdin).not.toContain("SESSION PROMPT HAS CHANGED");
+  });
+
   it("waits for a reply when Claude asks, then continues the same session", async () => {
     process.env.FAKE_FORMAT = "claude";
     process.env.FAKE_SCENARIO = "ask";

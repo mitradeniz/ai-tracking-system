@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream, existsSync, readFileSync, realpathSync, statSync, type WriteStream } from "node:fs";
 import { mkdir, open as openFile, readdir, readFile, writeFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
@@ -223,6 +223,10 @@ function inside(child: string, parent: string): boolean {
   const rel = path.relative(parent, child);
   return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel));
 }
+
+/** Put before a chat's session prompt when a conversation that goes on gets it again. */
+export const SESSION_PROMPT_CHANGED =
+  "THIS CHAT'S SESSION PROMPT HAS CHANGED since this conversation started (or the tracker has no record of the version you read). This is the current version: where it differs from what you read before, follow this one.";
 
 /** Short note added to every prompt the tracker sends on its own. */
 export function runnerPreamble(taskId: string, runner: ChatRunner, language = "English"): string {
@@ -476,9 +480,22 @@ export class RunManager extends EventEmitter {
 
     const resume = runner.session === "keep" ? runner.sessionId : undefined;
     const parts: string[] = [];
+    // The chat's session prompt (shared context, protocol): given when a conversation starts, and
+    // again to a conversation that goes on when it changed since (or the tracker has no record).
+    const bootstrap = renderBootstrapPrompt(project, agent).trim();
+    const promptHash = bootstrap ? createHash("sha1").update(bootstrap).digest("hex") : undefined;
+    let sessionPrompt: string | undefined;
     if (!resume) {
-      const bootstrap = renderBootstrapPrompt(project, agent).trim();
-      if (bootstrap) parts.push(bootstrap);
+      if (bootstrap) {
+        parts.push(bootstrap);
+        sessionPrompt = promptHash;
+      }
+    } else if (bootstrap) {
+      const seen = this.store.sessionPrompt(key, agent);
+      if (!seen || seen.session !== resume || seen.hash !== promptHash) {
+        parts.push(`${SESSION_PROMPT_CHANGED}\n\n${bootstrap}`);
+        sessionPrompt = promptHash;
+      }
     }
     parts.push(runnerPreamble(taskId, runner, project.settings.language === "tr" ? "Turkish" : "English"));
     parts.push(renderTaskPrompt(project, taskId, { serverUrl: this.manager.serverUrl, agentId: agent }));
@@ -503,7 +520,7 @@ export class RunManager extends EventEmitter {
     }
     const extra = options.extra?.trim();
     if (extra) parts.push(`ADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\n${extra}`);
-    return this.launch({ key, task: taskId, agent, runner, prompt: parts.join("\n\n---\n\n"), resume, kind: "task", auto: options.auto === true });
+    return this.launch({ key, task: taskId, agent, runner, prompt: parts.join("\n\n---\n\n"), resume, kind: "task", auto: options.auto === true, sessionPrompt });
   }
 
   /** Continues a chat's session with the person's message (an answer, an approval, a correction). */
@@ -536,8 +553,13 @@ export class RunManager extends EventEmitter {
     resume: string | undefined;
     kind: "task" | "reply";
     auto: boolean;
+    /** Hash of the session prompt this run gives the conversation, to record once its session is known. */
+    sessionPrompt?: string;
   }): Promise<RunSummary> {
-    const { key, task, agent, runner, prompt, resume, kind, auto } = input;
+    const { key, task, agent, runner, prompt, resume, kind, auto, sessionPrompt } = input;
+    const readPrompt = (session: string | undefined) => {
+      if (sessionPrompt && session) void this.store.setSessionPrompt(key, agent, session, sessionPrompt).catch(() => undefined);
+    };
     const ctx = this.manager.context(key);
     const workdir = runner.workdir || defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
     if (!isDir(workdir)) {
@@ -648,6 +670,7 @@ export class RunManager extends EventEmitter {
     if (runner.session === "keep" && invocation.sessionId && invocation.sessionId !== runner.sessionId) {
       await this.store.setSession(key, agent, invocation.sessionId);
     }
+    readPrompt(run.sessionId);
 
     const ctxProject = ctx.project.project.id;
     const env: NodeJS.ProcessEnv = {
@@ -712,6 +735,7 @@ export class RunManager extends EventEmitter {
             run.sessionId = ev.id;
             markStarted();
             if (runner.session === "keep") void this.store.setSession(key, agent, ev.id).catch(() => undefined);
+            readPrompt(ev.id);
             this.emit("run", { key, run: this.summary(run) });
           } else if (ev.kind === "activity") {
             markStarted();

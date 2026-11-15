@@ -56,7 +56,7 @@ The run settings offer the models each CLI knows: Codex's own catalog (`codex de
 
 ### Sessions
 
-- **Continue the same session** (default): the first task starts a new session with the chat's session prompts, later tasks and replies continue it — like a chat you keep open. Its id is shown in the run settings; paste the id of an existing session to continue *that* conversation, or **Start fresh**.
+- **Continue the same session** (default): the first task starts a new session with the chat's session prompts, later tasks and replies continue it — like a chat you keep open. When a session prompt changes (a new rule in the shared protocol, say), the next task a conversation gets starts with the current version and a note that it changed; the tracker remembers which version each conversation read (and gives it once to conversations it has no record of). Its id is shown in the run settings; paste the id of an existing session to continue *that* conversation, or **Start fresh**.
 - **New session for each task**: each task starts clean; replies continue the task's own session.
 - The run settings show the command that continues the session in a terminal (`codex resume …`, `claude --resume …`), when you want to take over by hand.
 
