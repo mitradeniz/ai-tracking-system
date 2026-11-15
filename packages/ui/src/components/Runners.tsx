@@ -6,13 +6,14 @@ import { activeRun, agentName, INSTALL, PROVIDER_LABEL, runnerOf, untilText, typ
 import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
 
-const PROVIDERS: RunnerProvider[] = ["manual", "codex", "claude", "copilot", "gemini", "cursor", "custom"];
+const PROVIDERS: RunnerProvider[] = ["manual", "codex", "claude", "copilot", "gemini", "cursor", "deepseek", "custom"];
 const RESUME: Record<string, string> = {
   codex: "codex resume {id}",
   claude: "claude --resume {id}",
   copilot: "copilot --resume {id}",
   gemini: "gemini --resume {id}",
   cursor: "cursor-agent --resume={id}",
+  deepseek: 'dsh --profile headless --session-id {id} "…"',
 };
 
 const shellQuote = (s: string) => (/^[\w./:@-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`);
@@ -312,7 +313,7 @@ export function RunnerDialog({
                 <span className="small muted">{t("run_allowedToolsHint")}</span>
               </div>
             )}
-            {p === "claude" && (
+            {(p === "claude" || p === "deepseek") && (
               <div className="field">
                 <label htmlFor="run-dirs">{t("run_extraDirs")}</label>
                 <textarea

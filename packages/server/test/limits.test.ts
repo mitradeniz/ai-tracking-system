@@ -57,6 +57,17 @@ describe("usage limits", () => {
     });
   });
 
+  it("treats DeepSeek's refusals as rate limits: its API has no plan windows", () => {
+    expect(usageLimit("RATE_LIMITED: Rate Limit Reached (429)", NOW, { provider: "deepseek", windowStart: NOW - 3_600_000 })).toMatchObject({
+      known: false,
+      basis: "rate",
+      until: NOW + 2 * 60_000,
+    });
+    expect(usageLimit("Rate limit reached", NOW, { provider: "deepseek", again: true })).toMatchObject({ basis: "rate", until: NOW + 15 * 60_000 });
+    // An empty balance is not something waiting fixes.
+    expect(usageLimit("402 Insufficient Balance", NOW, { provider: "deepseek" })).toBeNull();
+  });
+
   it("handles Cursor's billing cycle: the date when it is given, else a look a day later", () => {
     expect(resetTime("You've hit your usage limit. Your included usage resets on Dec 1.", NOW)).toBe(new Date(2026, 11, 1).getTime());
     expect(resetTime("Usage limit reached until 12/1/2026", NOW)).toBe(new Date(2026, 11, 1).getTime());

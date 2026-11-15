@@ -161,6 +161,22 @@ export function cursorAgent(envPath: string): Promise<string | null> {
   return value;
 }
 
+const dshCache = new Map<string, Promise<string | null>>();
+
+/**
+ * DeepSeek Harness's `dsh` on PATH. Another program has the same short name (the distributed shell),
+ * so it counts only when its help names DeepSeek.
+ */
+export function deepseekHarness(envPath: string): Promise<string | null> {
+  const found = which("dsh", envPath);
+  if (!found) return Promise.resolve(null);
+  const hit = dshCache.get(`${envPath}\u0000${found}`);
+  if (hit) return hit;
+  const value = output(found, ["--help"], envPath, 15_000).then((help) => (help && /deepseek|harness/i.test(help) ? found : null));
+  dshCache.set(`${envPath}\u0000${found}`, value);
+  return value;
+}
+
 /** The program for a CLI: the path given, else its name on PATH (for Cursor, either of its names). */
 export async function resolveBinary(provider: string, command: string, explicit: string | undefined, envPath: string): Promise<string | null> {
   const found = which(command, envPath);
@@ -258,7 +274,7 @@ export function detectProviders(force = false): Promise<DetectedProvider[]> {
     return Promise.all(
       PROVIDERS.filter((id) => PROVIDER_INFO[id].bin).map(async (id) => {
         const info = PROVIDER_INFO[id];
-        const found = id === "cursor" ? await cursorAgent(envPath) : which(info.bin!, envPath);
+        const found = id === "cursor" ? await cursorAgent(envPath) : id === "deepseek" ? await deepseekHarness(envPath) : which(info.bin!, envPath);
         const canRun = Boolean(found) && process.platform !== "win32";
         const [ver, models, autoMode] = await Promise.all([
           canRun ? version(found!, envPath) : Promise.resolve(null),

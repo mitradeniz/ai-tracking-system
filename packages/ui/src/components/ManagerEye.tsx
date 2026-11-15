@@ -1,5 +1,5 @@
 import type { TrackEvent } from "@aitrack/core";
-import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { api, desktop } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import { agentName, formatDuration, formatTime, localMessage, localReason, problemsOf, PROVIDER_LABEL, untilText, type Model } from "../model.ts";
@@ -28,6 +28,15 @@ function ago(iso: string, now: number, lang: string): string {
   if (s < 3600) return tr ? `${Math.floor(s / 60)} dk` : `${Math.floor(s / 60)}m`;
   if (s < 86_400) return tr ? `${Math.floor(s / 3600)} sa` : `${Math.floor(s / 3600)}h`;
   return tr ? `${Math.floor(s / 86_400)} g` : `${Math.floor(s / 86_400)}d`;
+}
+
+type Shift = { x: number; y: number };
+
+/** Keeps the eye on the board: it starts at the top right, so it may move left and down, a little up and right. */
+function keepOnScreen(p: Shift): Shift {
+  const w = typeof window === "undefined" ? 1200 : window.innerWidth;
+  const h = typeof window === "undefined" ? 800 : window.innerHeight;
+  return { x: Math.round(Math.min(20, Math.max(-(w - 110), p.x))), y: Math.round(Math.min(h - 220, Math.max(-120, p.y))) };
 }
 
 /** A line of the projection: a click opens it in place; only its button goes to the app. */
@@ -151,7 +160,10 @@ export function ManagerEye({
   };
   const toggle = (id: string) => setExpanded((cur) => (cur === id ? null : id));
   const dock = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const drag = useRef<{ x: number; y: number; moved: boolean; base: Shift } | null>(null);
+  // On the board, where the person dragged the eye to (from its place at the top right).
+  const [shift, setShift] = usePref<Shift>("managerEyeShift", { x: 0, y: 0 });
+  const [moving, setMoving] = useState<Shift | null>(null);
   const now = useNow(on && !hidden && open, 1000);
   const visible = on && !hidden && Boolean(state);
 
@@ -173,13 +185,26 @@ export function ManagerEye({
     return () => observer.disconnect();
   }, [windowed, open]);
 
-  // Dragging the eye moves its window; a press without moving opens the projection.
+  // Dragging the eye moves it, closed or open: its window in the desktop app, the eye on the board
+  // in a browser. A press without moving opens or closes the projection.
+  const finish = (toggleOpen: boolean) => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d) return;
+    if (windowed) void desktop?.eyeMove?.("end");
+    if (d.moved) {
+      if (!windowed && moving) setShift(keepOnScreen(moving));
+      setMoving(null);
+      return;
+    }
+    if (toggleOpen) setOpen((o) => !o);
+  };
   const pointer = {
     onPointerDown: (e: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!windowed || open || e.button !== 0) return;
+      if (e.button !== 0) return;
       e.currentTarget.setPointerCapture(e.pointerId);
-      drag.current = { x: e.screenX, y: e.screenY, moved: false };
-      void desktop?.eyeMove?.("start");
+      drag.current = { x: e.screenX, y: e.screenY, moved: false, base: shift };
+      if (windowed) void desktop?.eyeMove?.("start");
     },
     onPointerMove: (e: ReactPointerEvent<HTMLButtonElement>) => {
       const d = drag.current;
@@ -188,14 +213,14 @@ export function ManagerEye({
       const dy = e.screenY - d.y;
       if (!d.moved && Math.hypot(dx, dy) < 4) return;
       d.moved = true;
-      void desktop?.eyeMove?.("move", dx, dy);
+      if (windowed) void desktop?.eyeMove?.("move", dx, dy).then((r) => r && setApex(r.offset));
+      else setMoving(keepOnScreen({ x: d.base.x + dx, y: d.base.y + dy }));
     },
-    onPointerUp: () => {
-      const d = drag.current;
-      drag.current = null;
-      if (d) void desktop?.eyeMove?.("end");
-      if (d?.moved) return;
-      setOpen((o) => !o);
+    onPointerUp: () => finish(true),
+    onPointerCancel: () => finish(false),
+    // The keyboard still opens and closes it.
+    onClick: (e: ReactMouseEvent<HTMLButtonElement>) => {
+      if (e.detail === 0) setOpen((o) => !o);
     },
   };
 
@@ -250,13 +275,22 @@ export function ManagerEye({
   return (
     <div
       ref={dock}
-      className={`eye-dock ${open ? "open" : ""} ${windowed ? "windowed" : ""}`}
-      style={windowed && apex !== null ? ({ ["--apex" as string]: `${apex}px` } as CSSProperties) : undefined}
+      className={`eye-dock ${open ? "open" : ""} ${windowed ? "windowed" : ""} ${moving ? "moving" : ""}`}
+      style={
+        windowed
+          ? apex !== null
+            ? ({ ["--apex" as string]: `${apex}px` } as CSSProperties)
+            : undefined
+          : (moving ?? shift).x || (moving ?? shift).y
+            ? // `translate`, not `transform`: the eye's own pop-in animation uses transform.
+              { translate: `${(moving ?? shift).x}px ${(moving ?? shift).y}px` }
+            : undefined
+      }
     >
       <div className="eye-wrap">
         <button
           className={`eye-btn ${mood}`}
-          {...(windowed ? pointer : { onClick: () => setOpen((o) => !o) })}
+          {...pointer}
           aria-expanded={open}
           aria-label={open ? t("eye_close") : t("eye_open")}
           title={`${t("mgr_title")} · ${status}`}

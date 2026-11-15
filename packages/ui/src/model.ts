@@ -56,6 +56,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
   copilot: "Copilot",
   gemini: "Gemini",
   cursor: "Cursor",
+  deepseek: "DeepSeek",
   custom: "CLI",
   manual: "",
 };
@@ -80,6 +81,7 @@ export function localReason(reason: string, t: T): string {
   if (reason.startsWith("Stopped from the tracker.")) return t("run_reason_stopped");
   if (reason.startsWith("The run stopped when the app closed.")) return t("run_reason_closed");
   if (reason.startsWith("Needs you: ")) return t("run_reason_needs", { message: reason.slice(11) });
+  if (DEEPSEEK_NO_KEY.test(reason)) return t("err_deepseekKey");
   return reason;
 }
 
@@ -90,10 +92,16 @@ export const INSTALL: Record<string, { install: string; login: string }> = {
   copilot: { install: "npm install -g @github/copilot", login: "copilot" },
   gemini: { install: "npm install -g @google/gemini-cli", login: "gemini" },
   cursor: { install: "curl https://cursor.com/install -fsS | bash", login: "cursor-agent login" },
+  // DeepSeek Harness needs Node.js 24.9 or newer. It reads the API key from ~/.dsh/.env; the key never goes through the tracker.
+  deepseek: { install: "npm install -g @deepseek-ai/dsh", login: "mkdir -p ~/.dsh && echo 'DEEPSEEK_API_KEY=<your key>' >> ~/.dsh/.env" },
 };
 
 /** Errors the tracker explains in English, shown in the UI language. */
+/** DeepSeek's one-shot mode reads its key from the environment or ~/.dsh/.env only, not from its web app. */
+const DEEPSEEK_NO_KEY = /MISSING_CREDENTIAL[\s\S]*deepseek|no API key for provider route "deepseek/i;
+
 export function localError(message: string, t: T): string {
+  if (DEEPSEEK_NO_KEY.test(message)) return t("err_deepseekKey");
   let m = /^The project's code folder does not exist yet: (.+) \(settings\.repoPath in the project file\)\./.exec(message);
   if (m) return t("err_codeFolderMissing", { path: m[1]! });
   m = /^This chat's working folder was not found: (.+)\. Choose another one/.exec(message);

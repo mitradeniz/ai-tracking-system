@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createWriteStream, existsSync, realpathSync, statSync, type WriteStream } from "node:fs";
+import { createWriteStream, existsSync, readFileSync, realpathSync, statSync, type WriteStream } from "node:fs";
 import { mkdir, open as openFile, readdir, readFile, writeFile } from "node:fs/promises";
 import { EventEmitter } from "node:events";
 import { homedir } from "node:os";
@@ -11,7 +11,7 @@ import { HttpError, type ProjectManager } from "../manager.ts";
 import { agentPath, claudeHasAutoMode, resolveBinary, which } from "./env.ts";
 import { hookSnippets, type HookSignal } from "./hooks.ts";
 import { codexRecordedReset, usageLimit, type UsageLimit } from "./limits.ts";
-import { buildInvocation, OutputParser, PROVIDER_INFO, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
+import { buildInvocation, OutputParser, PROVIDER_INFO, writeInvocationFiles, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
 import { normalizeRunner, splitDirs, type ProjectRunners, type RunnerStore } from "./store.ts";
 
 export type RunState = "running" | "waiting" | "finished" | "failed" | "stopped";
@@ -193,6 +193,29 @@ function real(p: string): string {
     return realpathSync(p);
   } catch {
     return path.resolve(p);
+  }
+}
+
+/**
+ * The repository's shared git folder when `dir` is a worktree (its `.git` is a file that points
+ * elsewhere); null for an ordinary checkout, whose .git is inside it. Read from files, no git needed.
+ */
+export function gitCommonDir(dir: string): string | null {
+  try {
+    const dotGit = path.join(dir, ".git");
+    if (!statSync(dotGit).isFile()) return null;
+    const m = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf8"));
+    if (!m) return null;
+    const gitdir = path.resolve(dir, m[1]!.trim());
+    let common = gitdir;
+    try {
+      common = path.resolve(gitdir, readFileSync(path.join(gitdir, "commondir"), "utf8").trim());
+    } catch {
+      // A linked folder without commondir: its own git folder is the one to write.
+    }
+    return isDir(common) ? realpathSync(common) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -537,6 +560,13 @@ export class RunManager extends EventEmitter {
       // Folders the person allowed for this chat; one that is gone would stop the CLI, so it is left out.
       for (const dir of splitDirs(runner.extraDirs)) if (isDir(dir) && !addDirs.includes(dir) && dir !== workdir) addDirs.push(dir);
     }
+    if (provider === "deepseek") {
+      for (const dir of splitDirs(runner.extraDirs)) if (isDir(dir) && !addDirs.includes(dir) && dir !== workdir) addDirs.push(dir);
+      // In a git worktree, commits write to the repository's shared .git folder, outside the working
+      // folder: DeepSeek's sandbox lets the chat write there only when it is named.
+      const common = gitCommonDir(workdir);
+      if (common && !addDirs.includes(common) && !inside(common, workdir)) addDirs.push(common);
+    }
     try {
       invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId, addDirs });
     } catch (e) {
@@ -639,6 +669,7 @@ export class RunManager extends EventEmitter {
     let startedReported = kind === "reply";
     let child: ChildProcess;
     try {
+      writeInvocationFiles(invocation);
       child = spawn(binary, invocation.args, {
         cwd: workdir,
         env,

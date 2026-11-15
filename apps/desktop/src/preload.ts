@@ -45,7 +45,7 @@ contextBridge.exposeInMainWorld("aitrackDesktop", {
       open: typeof options?.open === "boolean" ? options.open : undefined,
       height: typeof options?.height === "number" ? options.height : undefined,
     }),
-  eyeMove: (phase: "start" | "move" | "end", dx?: number, dy?: number): Promise<void> =>
+  eyeMove: (phase: "start" | "move" | "end", dx?: number, dy?: number): Promise<{ offset: number } | null> =>
     ipcRenderer.invoke("aitrack:eye-move", String(phase), Number(dx ?? 0), Number(dy ?? 0)),
   focusMain: (projectKey?: string, taskId?: string): Promise<void> =>
     ipcRenderer.invoke("aitrack:focus-main", projectKey === undefined ? undefined : String(projectKey), taskId === undefined ? undefined : String(taskId)),

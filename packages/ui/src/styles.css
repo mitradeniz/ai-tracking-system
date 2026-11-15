@@ -5561,3 +5561,17 @@ details.advanced[open] {
   flex-wrap: wrap;
   gap: 6px;
 }
+
+/* The eye can be dragged anywhere, closed or open. */
+.eye-btn {
+  touch-action: none;
+}
+
+.eye-dock .eye-btn:active,
+.eye-dock.moving .eye-btn {
+  cursor: grabbing;
+}
+
+.eye-dock.moving .eye-btn {
+  transform: scale(1.08);
+}

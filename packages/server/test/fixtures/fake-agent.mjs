@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // A stand-in for the agent CLIs in tests. FAKE_FORMAT picks the output format (codex, claude,
-// gemini, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done,
+// gemini, cursor, dsh, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done,
 // followups: done with work left for later, askonce: asks first and finishes after a reply, limit / limitonce: the
 // plan's usage limit is used up, always or until told to go on). A manager or plan-integration prompt is answered with FAKE_MANAGER_ANSWER
 // or FAKE_PLAN_ANSWER.
@@ -113,7 +113,26 @@ if (scenario === "limit") {
   }
   process.exit(1);
 }
-if (format === "cursor") {
+if (format === "dsh") {
+  // DeepSeek Harness's headless --json events; the task comes on stdin after "-".
+  const sid = flag("--session-id") ?? "session-dsh-1";
+  out({ type: "session", sessionId: sid, cwd: process.cwd() });
+  out({ type: "status", phase: "turn_start", turn: 1 });
+  out({ type: "status", phase: "step_start", turn: 1, step: 1 });
+  out({ type: "thinking", text: "Let me run the tests." });
+  out({ type: "tool_call", callId: "c1", tool: "bash", input: { command: "npm test" } });
+  out(
+    process.env.FAKE_DENY
+      ? { type: "tool_result", callId: "c1", status: "error", result: "Approval needed and none can be given", error: { name: "ApprovalError", code: "APPROVAL_REJECTED" } }
+      : { type: "tool_result", callId: "c1", status: "completed", result: "ok" },
+  );
+  out({ type: "tool_call", callId: "c2", tool: "edit", input: { path: "src/a.ts", old: "x", new: "y" } });
+  out({ type: "tool_result", callId: "c2", status: "completed", result: "edited" });
+  out({ type: "text", text: final });
+  out({ type: "status", phase: "step_end", turn: 1, step: 1, usage: { inputTokens: 100, cacheReadTokens: 2000, outputTokens: 50 } });
+  out({ type: "status", phase: "turn_end", turn: 1, reason: { kind: "completed" } });
+  out({ type: "final", sessionId: sid, reason: { kind: "completed" }, text: final });
+} else if (format === "cursor") {
   const sid = args.find((a) => a.startsWith("--resume="))?.slice(9) ?? "cursor-chat-1";
   out({ type: "system", subtype: "init", apiKeySource: "login", cwd: process.cwd(), session_id: sid, model: "Auto", permissionMode: "default" });
   out({ type: "tool_call", subtype: "started", call_id: "1", tool_call: { shellToolCall: { args: { command: "npm test" } } }, session_id: sid });

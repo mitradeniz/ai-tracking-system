@@ -171,6 +171,8 @@ export function usageLimit(text: string, now = Date.now(), ctx: LimitContext = {
   if (at && at > now) return { until: at + 60_000, known: true, basis: "message", message };
   if (ctx.recorded && ctx.recorded > now) return { until: ctx.recorded + 60_000, known: true, basis: "codex", message };
   const provider = ctx.provider ?? "";
+  // DeepSeek's API has no plan windows: what it refuses is a rate limit, over in minutes.
+  if (provider === "deepseek") return { until: now + (ctx.again ? 15 * 60_000 : RATE_MS), known: false, basis: "rate", message };
   if (/monthly|this month|premium request/i.test(text) || (provider === "copilot" && /allowance|quota|premium/i.test(text))) {
     return { until: nextMonth(now) + 60_000, known: false, basis: "month", message };
   }

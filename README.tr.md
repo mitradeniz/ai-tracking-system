@@ -69,7 +69,7 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 | 🆕 **Yeni proje sihirbazı** | Klasörü, sohbetleri (bilgisayarındaki yapay zekâ CLI'larından önerilir) ve nasıl planlanacağını seç: Claude Code ya da Codex planından görevleri yazsın, başka bir yapay zekâ kopyala-yapıştırla yazsın ya da boş başla. JSON yazmak yok. |
 | ✏️ **Plan düzenleyici** | Görevleri ve promptları uygulamada ekle, değiştir, kaldır: görevi hangi sohbetin alacağı, neyi beklediği, talimatı, izinli yolları ve kabul kriteri. |
 | 🟢 **Sırada ne olduğunu bilen pano** | Görevler, bağlı oldukları işler bitince ve sohbetlerinde yer varken açılır. *Şimdi gönderilebilir* yeşil olanları tek bakışta gösterir; diğer her görev neden beklediğini söyler. |
-| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
+| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI, DeepSeek CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
 | ⚡ **Otomatik dağıtım** | Tek anahtar: boştaki sohbetler, en acil hazır görevlerini yeşile döner dönmez alır; aynı anda en fazla *N* tane. |
 | 🌙 **Yönetici** | Uyumaya mı gidiyorsun? Projeyi seçtiğin bir yapay zekâ CLI'ına devret: bekleyen sohbetlere yanıt verir, seçenek seçer, başka görevi bekleyenleri beklemeye alır, başarısız olanları yeniden gönderir, sonraya bırakılan işleri plana ekler. *Tam otomatik* açıksa biten işi kendisi inceler, sana yalnızca göz atmak isteyebileceklerini listeler. Ödeme, hesap, yasal şartlar, yayınlama ve riskli adımlar sende kalır; ne yaptığı ve sana ne bıraktığı listelenir. Çalışırken kayan pencere gibi bütün uygulamaların üstünde küçük bir göz süzülür: istediğin yere sürükle, tıkla, modellerin ne yaptığını, projenin yüzde kaçta olduğunu, neyin bozulduğunu ve son gelişmeleri aşağıya yansıtsın. |
 | 📋 **Önerilen görevler** | Sohbetin sonraya bıraktığı iş — değiştirilecek bir yer tutucu, eklenecek bir kontrol — sana soru olarak değil önerilen görev olarak gelir: plana ekle, yoksay ya da hepsini bir CLI'ın mevcut plana yerleştirmesine bırak; hiçbir şey yazılmadan önce önizlenir. |
@@ -381,7 +381,7 @@ Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — art
 
 | | |
 | --- | --- |
-| **Çalıştıran** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · herhangi bir komut (Cursor CLI, Aider, betikler). Kurulu CLI'lar sürümleriyle birlikte kendiliğinden bulunur. |
+| **Çalıştıran** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · Cursor CLI · DeepSeek CLI · herhangi bir komut (Aider, betikler). Kurulu CLI'lar sürümleriyle birlikte kendiliğinden bulunur. |
 | **Model ve düşünme düzeyi** | Yazılmaz, listeden seçilir: Codex'in model kataloğu ve her modelin düşünme düzeyleri, Copilot'un modelleri, Claude Code (`opus`, `sonnet`, `haiku`, `fable`) ve Gemini (`pro`, `flash`, …) için her zaman en güncel sürümü seçen takma adlar. **Diğer** herhangi bir model kimliğini alır; **Varsayılan** seçimi CLI'a bırakır. |
 | **Nerede** | Projenin kod klasöründe — proje dosyasının bulunduğu repo ya da planın gösterdiği klasör (**Proje ayarları → Kod klasörü**) — ya da sohbete özel bir klasörde (birden fazla sohbet kod değiştiriyorsa git worktree). Plan bu bilgisayarda henüz olmayan bir klasörü gösteriyorsa pano onu oluşturmayı önerir. |
 | **Erişim** | Salt okunur · dosya düzenleme (varsayılan) · tam erişim. *Dosya düzenleme*'de Claude Code, kurulu sürümde varsa **otomatik modda** çalışır — bir güvenlik denetimi olağan adımları onaylar, riskli olanları engeller — ve olağan çalışma komutlarını sormadan çalıştırır: okuma ve arama, bu bilgisayarın bilgileri, `mkdir`/`cp`/`mv`, yerel git, derleme ve test. `git push`, `rm` ve diğerleri yine sorar. Reddedilen adımlar tek bir sorunda **İzin ver ve devam et** ile listelenir. |
@@ -656,7 +656,7 @@ Daha fazlası [SECURITY.md](SECURITY.md) içinde.
 <details>
 <summary><b>Benim yerime Claude'la ya da Codex'le konuşuyor mu?</b></summary>
 
-İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmi CLI'ı üzerinden — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle yürüttüğün sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
+İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmi CLI'ı üzerinden — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI, DeepSeek CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle yürüttüğün sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
 
 </details>
 

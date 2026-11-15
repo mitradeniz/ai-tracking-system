@@ -22,16 +22,17 @@ import { Segmented } from "./Settings.tsx";
  * empty to be filled in the app.
  */
 
-const TOOLS = ["claude", "codex", "copilot", "gemini", "cursor", "other"] as const;
+const TOOLS = ["claude", "codex", "copilot", "gemini", "cursor", "deepseek", "other"] as const;
 const TOOL_LABEL: Record<string, string> = {
   claude: "Claude",
   codex: "Codex",
   copilot: "Copilot",
   gemini: "Gemini",
   cursor: "Cursor",
+  deepseek: "DeepSeek",
   other: "Chat",
 };
-export const GENERATORS = ["claude", "codex", "gemini", "copilot", "cursor"] as const;
+export const GENERATORS = ["claude", "codex", "gemini", "copilot", "cursor", "deepseek"] as const;
 type Generator = (typeof GENERATORS)[number];
 export const CLI_NAME: Record<string, string> = {
   claude: "Claude Code",
@@ -39,6 +40,7 @@ export const CLI_NAME: Record<string, string> = {
   gemini: "Gemini CLI",
   copilot: "Copilot CLI",
   cursor: "Cursor CLI",
+  deepseek: "DeepSeek CLI",
 };
 
 interface ChatDraft extends AuthoringChat {
@@ -151,7 +153,7 @@ export function NewProjectWizard({
   // Suggested chats: one for each AI CLI found on this computer (Claude Code and Codex first).
   useEffect(() => {
     if (!providers || chatsTouched) return;
-    const order = ["claude", "codex", "copilot", "gemini", "cursor"].filter((p) => installed.has(p));
+    const order = ["claude", "codex", "copilot", "gemini", "cursor", "deepseek"].filter((p) => installed.has(p));
     const picked = order.filter((p) => p === "claude" || p === "codex");
     const tools = picked.length ? picked : order.slice(0, 1);
     const list: ChatDraft[] = [];
@@ -342,7 +344,7 @@ export function NewProjectWizard({
           {providers === null ? (
             <span className="small muted">{t("np_lookingForCli")}</span>
           ) : (
-            ["claude", "codex", "copilot", "gemini", "cursor"].map((p) => {
+            ["claude", "codex", "copilot", "gemini", "cursor", "deepseek"].map((p) => {
               const found = (providers ?? []).find((x) => x.id === p && x.path);
               return (
                 <span key={p} className={`badge ${found ? "found" : "missing"}`} title={found?.path ?? t("np_cliMissing")}>

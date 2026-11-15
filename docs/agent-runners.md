@@ -21,19 +21,22 @@ The tracker runs the official command line tools, with **your own sign-in, plan 
 | **GitHub Copilot CLI** | `copilot -p <prompt> -s --no-color --no-ask-user --session-id <uuid> --allow-tool write` | argument | the same `--session-id` |
 | **Gemini CLI** | `gemini -p <prompt> -o stream-json --skip-trust --approval-mode auto_edit (--session-id <uuid> \| --resume <uuid>)` | argument | session id chosen by the tracker |
 | **Cursor CLI** | `cursor-agent -p --output-format stream-json --trust --workspace <folder> --force --sandbox enabled [--resume=<id>] <prompt>` | argument | `session_id` from the first line |
+| **DeepSeek CLI** | `dsh --profile headless [--patch <model overlay>] --json --permission-mode workspace-write --approval-policy never [--session-id <id>] [--add-dir <folder>]… -` | standard input | `sessionId` from the opening `session` event |
 | **Custom command** | anything, e.g. `aider --message {{prompt}}` | `{{prompt}}`, or standard input | `{{sessionId}}` is a stable id per chat |
 
 Cursor's CLI is found as `cursor-agent`, or as `agent` in newer installs when its help says it is Cursor's. Install it with `curl https://cursor.com/install -fsS | bash` and sign in once with `cursor-agent login` (or set `CURSOR_API_KEY`).
+
+DeepSeek's CLI is DeepSeek Harness (`dsh`, npm `@deepseek-ai/dsh`, Node.js 24.9 or newer; a `dsh` whose help does not name DeepSeek is not taken for it). The tracker runs its one-shot *headless* profile: one task per run, read from standard input, events as JSON lines, and the next message continues the same Session with `--session-id` from the same folder. It takes its key from the environment or `~/.dsh/.env` (`DEEPSEEK_API_KEY=…`); keys saved in DeepSeek's web app are not used by this mode, and the key never goes through the tracker. Its model is a setting rather than a flag: when you pick a model or an effort (off, low, high, max) in the run settings, the tracker writes a small overlay with only those two values to the temp folder (`aitrack-deepseek/<model>-<effort>.yml`) and passes it with `--patch`; an effort without a model uses DeepSeek Flash. Nobody can answer its approval prompts in this mode, so `--approval-policy never` refuses what the access level does not allow and the refusal becomes a problem on the task. With *Edit files*, the folders in *Other folders it may use* and the plan's repository are added with `--add-dir`, and so is a worktree's shared `.git` folder, so the chat can commit (that also lets it change the repository's hooks and settings: use worktrees you trust). Its sandbox may keep commands off the network.
 
 The custom command is plain text output: everything it prints is the final message, and an `aitrack-report` block in it is read like any other. It is how other agents (Aider, your own scripts) can be plugged in; the tracker does not test those tools.
 
 ### Access
 
-| Access | Codex | Claude Code | Copilot | Gemini | Cursor |
-| --- | --- | --- | --- | --- | --- |
-| Read only | `-s read-only` | `--permission-mode plan` | no extra permissions | `--approval-mode plan` | `--mode ask` |
-| **Edit files** (default) | `-s workspace-write` (+ optional network) | `--permission-mode auto` (or `acceptEdits`, see below) + the usual work commands | `--allow-tool write` | `--approval-mode auto_edit` | `--force --sandbox enabled` (commands in Cursor's sandbox) |
-| Full access | `--dangerously-bypass-approvals-and-sandbox` | `--permission-mode bypassPermissions` | `--allow-all-tools` | `--approval-mode yolo` | `--force --sandbox disabled` |
+| Access | Codex | Claude Code | Copilot | Gemini | Cursor | DeepSeek |
+| --- | --- | --- | --- | --- | --- | --- |
+| Read only | `-s read-only` | `--permission-mode plan` | no extra permissions | `--approval-mode plan` | `--mode ask` | `--permission-mode read-only` |
+| **Edit files** (default) | `-s workspace-write` (+ optional network) | `--permission-mode auto` (or `acceptEdits`, see below) + the usual work commands | `--allow-tool write` | `--approval-mode auto_edit` | `--force --sandbox enabled` (commands in Cursor's sandbox) | `--permission-mode workspace-write` (its sandbox) |
+| Full access | `--dangerously-bypass-approvals-and-sandbox` | `--permission-mode bypassPermissions` | `--allow-all-tools` | `--approval-mode yolo` | `--force --sandbox disabled` | `--permission-mode danger-full-access` |
 
 A headless run cannot ask for permission, so anything outside its access is refused and the refusal shows up in the output and as a problem on the task.
 
@@ -104,7 +107,7 @@ When a CLI says the plan's usage limit is used up (Claude Code's 5-hour or weekl
 1. from the CLI's message: an epoch, "try again in 2 hours 13 minutes", "resets 3pm (Europe/Istanbul)", "resets Mon 9am", `resets_in_seconds`;
 2. for Codex, from its own session records (`~/.codex/sessions`), which keep the reset time of each window;
 3. from the plan: 5 hours after the first run of the CLI's current window (Claude Code, Codex), midnight Pacific time for Gemini's daily quota, the 1st of the month for Copilot's premium requests, the date in the message for Cursor's billing cycle ("resets on Dec 1"); a weekly limit or a Cursor cycle without a date is looked at again a day later;
-4. a bare rate limit (429) waits 2 minutes; if it comes back at once, it is treated as the plan's limit.
+4. a bare rate limit (429) waits 2 minutes; if it comes back at once, it is treated as the plan's limit. DeepSeek's API has no plan windows: its limits wait 2 minutes, then 15 if they come back at once. An empty DeepSeek balance is an error, not a limit.
 
 At that time each parked task goes on with its chat — the same conversation when there is one — and automatic dispatch resumes. Limits and windows survive a restart of the app (`~/.aitrack/limits.json`). While a chat waits for its limit, the desktop app keeps the computer from going to sleep on its own; the clock is read again every minute, so after a sleep (a closed lid) the chats go on as soon as the computer wakes. The header shows *⏳ Claude Code limit · 15:00* while one lasts, with where the time comes from; clicking it goes on now (when you know the limit is over). A manager whose own CLI hits its limit looks again when it resets. `POST /api/projects/:key/limits/retry` 🔑 with `{agent}` does the same as the click.
 

@@ -30,7 +30,7 @@ export interface AgentPayload {
   bootstrapPrompts?: string[];
 }
 
-export type ProviderId = "codex" | "claude" | "copilot" | "gemini" | "cursor" | "custom";
+export type ProviderId = "codex" | "claude" | "copilot" | "gemini" | "cursor" | "deepseek" | "custom";
 export type RunnerProvider = ProviderId | "manual";
 
 /** How a chat is run on this computer. Kept by the local tracker, never in the project file. */
@@ -87,7 +87,7 @@ export interface RunSummary {
   denials?: string[];
 }
 
-export type ManagerProvider = "claude" | "codex" | "gemini" | "copilot" | "cursor";
+export type ManagerProvider = "claude" | "codex" | "gemini" | "copilot" | "cursor" | "deepseek";
 
 /** A CLI that takes the decisions while the person is away. */
 export interface ManagerSettings {
@@ -288,7 +288,7 @@ export interface AuthoringCheck {
 
 export interface GenerateJob {
   id: string;
-  provider: "claude" | "codex" | "gemini" | "copilot" | "cursor";
+  provider: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "deepseek";
   state: "running" | "done" | "failed" | "stopped";
   startedAt: string;
   endedAt?: string;
@@ -342,7 +342,7 @@ export interface DesktopBridge {
   /** The eye window: show or hide it, open or close the projection (with the panel's height). Returns where the eye sits. */
   eyeSet?(options: { visible?: boolean; open?: boolean; height?: number }): Promise<{ offset: number } | null>;
   /** Moves the eye window while it is dragged: start, then offsets from where the drag started, then end. */
-  eyeMove?(phase: "start" | "move" | "end", dx?: number, dy?: number): Promise<void>;
+  eyeMove?(phase: "start" | "move" | "end", dx?: number, dy?: number): Promise<{ offset: number } | null | void>;
   /** In-app updates (desktop app built from a git clone). */
   updates?: {
     check(): Promise<UpdateInfo | null>;

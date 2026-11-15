@@ -389,12 +389,18 @@ function registerIpc(): void {
     if (typeof open === "boolean") eyeOpen = open;
     return layoutEye(typeof height === "number" && Number.isFinite(height) ? height : undefined);
   });
+  // Dragging the eye, closed or with its projection open: the window follows, and the page is told
+  // where the eye sits in it (the projection keeps to the screen, so the eye may move inside it).
   ipcMain.handle("aitrack:eye-move", (event, phase: unknown, dx: unknown, dy: unknown) => {
-    if (!isOwnFrame(event) || !eye || event.sender !== eye.webContents || eyeOpen) return;
+    if (!isOwnFrame(event) || !eye || event.sender !== eye.webContents) return null;
     if (phase === "start") eyeDrag = { ...anchor() };
     else if (phase === "move" && eyeDrag && Number.isFinite(dx) && Number.isFinite(dy)) {
       eyeAnchor = { cx: eyeDrag.cx + Number(dx), top: eyeDrag.top + Number(dy) };
-      eye.setPosition(Math.round(eyeAnchor.cx - EYE_SMALL / 2), Math.round(eyeAnchor.top));
+      if (!eyeOpen) {
+        eye.setPosition(Math.round(eyeAnchor.cx - EYE_SMALL / 2), Math.round(eyeAnchor.top));
+        return { offset: EYE_SMALL / 2 };
+      }
+      return layoutEye(eye.getBounds().height);
     } else if (phase === "end") {
       eyeDrag = null;
       try {
@@ -403,6 +409,7 @@ function registerIpc(): void {
         // The place is a convenience.
       }
     }
+    return null;
   });
   ipcMain.handle("aitrack:focus-main", (event, projectKey: unknown, taskId: unknown) => {
     if (!isOwnFrame(event)) return;

@@ -1,3 +1,7 @@
+import { mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 /**
  * Adapters for the AI coding CLIs that can run a task without a human typing it in.
  *
@@ -8,7 +12,7 @@
  * The CLIs run with the user's own login. Nothing here stores or forwards credentials.
  */
 
-export const PROVIDERS = ["codex", "claude", "copilot", "gemini", "cursor", "custom"] as const;
+export const PROVIDERS = ["codex", "claude", "copilot", "gemini", "cursor", "deepseek", "custom"] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 export type Access = "readonly" | "edit" | "full";
 export type SessionMode = "keep" | "perTask";
@@ -184,6 +188,23 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     },
     resumeHint: "cursor-agent --resume={{sessionId}}",
   },
+  deepseek: {
+    id: "deepseek",
+    name: "DeepSeek CLI",
+    // DeepSeek Harness (npm @deepseek-ai/dsh); its one-shot "headless" profile runs a task.
+    bin: "dsh",
+    models: [
+      { id: "deepseek-flash", label: "DeepSeek Flash" },
+      { id: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
+    ],
+    efforts: ["off", "low", "high", "max"],
+    access: {
+      readonly: "--permission-mode read-only",
+      edit: "--permission-mode workspace-write",
+      full: "--permission-mode danger-full-access",
+    },
+    resumeHint: "dsh --profile headless --session-id {{sessionId}} \"…\"",
+  },
   custom: {
     id: "custom",
     name: "Custom command",
@@ -241,10 +262,12 @@ export interface Invocation {
   args: string[];
   /** Written to the process and closed; undefined closes stdin right away. */
   stdin?: string;
-  /** Session id fixed before the run (Claude Code, Copilot, Gemini); Codex and Cursor report their own. */
+  /** Session id fixed before the run (Claude Code, Copilot, Gemini); Codex, Cursor and DeepSeek report their own. */
   sessionId?: string;
   /** How the output is read. */
-  format: "codex" | "claude" | "gemini" | "cursor" | "text";
+  format: "codex" | "claude" | "gemini" | "cursor" | "dsh" | "text";
+  /** Files to write before the run (DeepSeek: the model it uses, as a settings overlay). No secrets. */
+  files?: { path: string; content: string }[];
   /** Claude Code: the permission mode asked for. */
   permissionMode?: string;
 }
@@ -261,6 +284,32 @@ export interface BuildInput {
   addDirs?: string[];
   /** Claude Code: the installed CLI has auto mode and it worked here (see ChatRunner.autoPermissions). */
   autoMode?: boolean;
+}
+
+/**
+ * DeepSeek Harness takes its model from its settings, not from a flag: the model and effort a chat
+ * uses go in a small overlay (`--patch`) in the temp folder, one file per choice, with no secrets.
+ */
+export function deepseekModelPatch(model: string, effort?: string): { path: string; content: string } {
+  const safe = (v: string) => v.replace(/[^\w.-]/g, "_");
+  const lines = [
+    "# Written by AI Tracking System: the model a DeepSeek chat uses. Safe to delete.",
+    "- id: agent-default-model",
+    "  config:",
+    "    provider: deepseek-official",
+    `    model: ${JSON.stringify(model)}`,
+    ...(effort ? [`    reasoningEffort: ${JSON.stringify(effort)}`] : []),
+    "",
+  ];
+  return { path: path.join(tmpdir(), "aitrack-deepseek", `${safe(model)}${effort ? `-${safe(effort)}` : ""}.yml`), content: lines.join("\n") };
+}
+
+/** Writes the files an invocation needs (DeepSeek's model overlay) before it starts. */
+export function writeInvocationFiles(invocation: Invocation): void {
+  for (const f of invocation.files ?? []) {
+    mkdirSync(path.dirname(f.path), { recursive: true });
+    writeFileSync(f.path, f.content, { mode: 0o600 });
+  }
 }
 
 function fill(template: string, vars: Record<string, string>): string {
@@ -343,6 +392,25 @@ export function buildInvocation(input: BuildInput): Invocation {
       args.push(...extra);
       args.push(prompt);
       return { command: runner.binary || "cursor-agent", args, format: "cursor" };
+    }
+    case "deepseek": {
+      // DeepSeek Harness, one task per run: launcher flags first (--profile, --patch), then the
+      // headless app's. Events come as JSON lines; the next message continues with --session-id.
+      // Nobody can answer an approval prompt, so steps that would need one are refused and reported.
+      const args = ["--profile", "headless"];
+      const patch = model || effort ? deepseekModelPatch(model || "deepseek-flash", effort) : null;
+      if (patch) args.push("--patch", patch.path);
+      args.push(
+        "--json",
+        "--permission-mode",
+        runner.access === "readonly" ? "read-only" : runner.access === "edit" ? "workspace-write" : "danger-full-access",
+        "--approval-policy",
+        "never",
+      );
+      if (resume) args.push("--session-id", resume);
+      if (runner.access === "edit") for (const dir of addDirs) if (dir.startsWith("/")) args.push("--add-dir", dir);
+      args.push(...extra, "-");
+      return { command: runner.binary || "dsh", args, stdin: prompt, format: "dsh", ...(patch && { files: [patch] }) };
     }
     case "custom": {
       const template = runner.command?.trim();
@@ -581,6 +649,75 @@ function parseCursor(o: Record<string, unknown>): StreamEvent[] {
   return [];
 }
 
+/** What reading DeepSeek Harness's events keeps between lines: tool calls by id, and token totals. */
+interface DshState {
+  calls: Map<string, string>;
+  input: number;
+  cached: number;
+  output: number;
+  steps: number;
+}
+
+/** Codes of a step the chat's permissions did not allow (a sandbox fence, or an approval nobody can give). */
+const DSH_REFUSED = /^(?:APPROVAL_(?:REJECTED|UNAVAILABLE|CANCELLED)|FS_SANDBOX_DENIED|SANDBOX_DENIED|AUTO_REVIEW_DENIED)$/;
+
+/** DeepSeek Harness `--json`: session, status, text, thinking, tool_call, tool_result, final, error. */
+function parseDsh(o: Record<string, unknown>, st: DshState): StreamEvent[] {
+  const type = String(o.type ?? "");
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
+  switch (type) {
+    case "session":
+      return typeof o.sessionId === "string" ? [{ kind: "session", id: o.sessionId }] : [];
+    case "text":
+      return typeof o.text === "string" && o.text.trim() ? [{ kind: "message", text: o.text }] : [];
+    case "tool_call": {
+      const tool = String(o.tool ?? "tool");
+      const input = (o.input && typeof o.input === "object" ? o.input : {}) as Record<string, unknown>;
+      const where = String(input.path ?? input.file_path ?? "");
+      const text =
+        tool === "bash" || tool === "pwsh"
+          ? `$ ${clip(String(input.command ?? ""), 200)}`
+          : /^(write|edit|apply_patch|str_replace_editor)$/.test(tool)
+            ? `✎ ${clip(where || tool, 160)}`
+            : `⚙ ${describeToolInput(tool, input)}`;
+      // Named like Claude Code's tools, so a refused step reads the same everywhere.
+      if (typeof o.callId === "string") st.calls.set(o.callId, tool === "bash" ? `Bash ${clip(String(input.command ?? ""), 200)}` : describeToolInput(tool, input));
+      return [{ kind: "tool" }, { kind: "activity", text }];
+    }
+    case "tool_result": {
+      const error = (o.error && typeof o.error === "object" ? o.error : null) as { code?: string; name?: string } | null;
+      const what = (typeof o.callId === "string" && st.calls.get(o.callId)) || "tool";
+      if (error && DSH_REFUSED.test(String(error.code ?? ""))) {
+        return [{ kind: "denied", tool: what }, { kind: "activity", text: `⛔ permission denied: ${what}` }];
+      }
+      if (o.status === "error") return [{ kind: "activity", text: `  ↳ ${clip(String(error?.code ?? o.result ?? "tool error"), 160)}` }];
+      return [];
+    }
+    case "status": {
+      const u = (o.usage && typeof o.usage === "object" ? o.usage : null) as Record<string, unknown> | null;
+      if (o.phase !== "step_end" || !u) return [];
+      // Uncached input, cache reads and writes are counted apart; the step's prompt is all of them.
+      const prompt = n(u.inputTokens) + n(u.cacheReadTokens) + n(u.cacheWriteTokens);
+      st.input += prompt;
+      st.cached += n(u.cacheReadTokens);
+      st.output += n(u.outputTokens);
+      st.steps += 1;
+      return [{ kind: "usage", usage: { input: st.input, cached: st.cached || undefined, output: st.output, context: prompt + n(u.outputTokens), turns: st.steps } }];
+    }
+    case "final": {
+      const reason = (o.reason && typeof o.reason === "object" ? o.reason : null) as { kind?: string; error?: { message?: string; code?: string } } | null;
+      const ok = reason?.kind === "completed";
+      const text = typeof o.text === "string" ? o.text : undefined;
+      const error = ok ? undefined : reason?.error?.message ? `${reason.error.code ? `${reason.error.code}: ` : ""}${reason.error.message}` : `Run ${reason?.kind ?? "ended without an answer"}`;
+      return [{ kind: "result", ok, ...(text?.trim() && { text }), ...(error && { error }) }];
+    }
+    case "error":
+      return [{ kind: "error", text: String(o.message ?? "error") }];
+    default:
+      return [];
+  }
+}
+
 /** Reads a CLI's stdout line by line and keeps the last assistant message. */
 export class OutputParser {
   private messages: string[] = [];
@@ -594,6 +731,7 @@ export class OutputParser {
   usage: RunUsage = {};
   tools = 0;
   denials: string[] = [];
+  private dsh: DshState = { calls: new Map(), input: 0, cached: 0, output: 0, steps: 0 };
 
   constructor(readonly format: Invocation["format"]) {}
 
@@ -618,7 +756,9 @@ export class OutputParser {
           ? parseClaude(o as Record<string, unknown>)
           : this.format === "cursor"
             ? parseCursor(o as Record<string, unknown>)
-            : parseGemini(o as Record<string, unknown>);
+            : this.format === "dsh"
+              ? parseDsh(o as Record<string, unknown>, this.dsh)
+              : parseGemini(o as Record<string, unknown>);
     for (const e of events) {
       if (e.kind === "session") this.sessionId = e.id;
       if (e.kind === "mode") this.mode = e.mode;

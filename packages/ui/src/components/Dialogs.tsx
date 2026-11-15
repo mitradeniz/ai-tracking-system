@@ -227,7 +227,7 @@ export function ExportDialog({
   );
 }
 
-const TOOLS = ["claude", "codex", "cursor"];
+const TOOLS = ["claude", "codex", "cursor", "deepseek"];
 
 /** A prompt's title without a leading copy of its id ("P00 — Shared context" -> "Shared context"). */
 function promptLabel(id: string, title: string | undefined): string {
@@ -346,6 +346,7 @@ export function AgentDialog({
               <option value="claude">Claude</option>
               <option value="codex">Codex</option>
               <option value="cursor">Cursor</option>
+              <option value="deepseek">DeepSeek</option>
               <option value="other">{t("agentToolOther")}</option>
             </select>
             {toolChoice === "other" && (

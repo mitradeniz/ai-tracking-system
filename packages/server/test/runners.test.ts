@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { request } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProjectFileSchema, serializeProject } from "@aitrack/core";
 import { startServer, type RunningServer } from "../src/index.ts";
 import { clearAutoModeCache, helpHasAutoMode, parseCodexModels, parseCopilotModels, parseCursorModels } from "../src/runners/env.ts";
-import { claudeMemoryDir } from "../src/runners/runs.ts";
+import { claudeMemoryDir, gitCommonDir } from "../src/runners/runs.ts";
 import { normalizeHook } from "../src/runners/hooks.ts";
 import { normalizeRunner, RunnerStore } from "../src/runners/store.ts";
 import { buildInvocation, DEFAULT_RUNNER, OutputParser, splitArgs } from "../src/runners/providers.ts";
@@ -832,6 +832,92 @@ describe("provider adapters", () => {
     await call("POST", `/api/projects/${key}/agents/b/reply`, { text: "One more thing.", task: "T3" });
     for (let i = 0; i < 50 && !(await invocations()).some((x) => x.args.includes("--resume=cursor-chat-1")); i += 1) await new Promise((r) => setTimeout(r, 60));
     expect((await invocations()).some((x) => x.args.includes("--resume=cursor-chat-1") && x.args.at(-1) === "One more thing.")).toBe(true);
+  });
+
+  it("builds DeepSeek CLI's command line: one task per run, its model as an overlay, the same session next time", () => {
+    const base = { ...DEFAULT_RUNNER, provider: "deepseek" as const };
+    const edit = buildInvocation({ runner: { ...base, model: "deepseek-v4-pro", effort: "high" }, prompt: "P", cwd: "/w", newSessionId: "u", addDirs: ["/plan", "/repo/.git"] });
+    const patch = path.join(tmpdir(), "aitrack-deepseek", "deepseek-v4-pro-high.yml");
+    expect(edit).toMatchObject({ command: "dsh", format: "dsh", stdin: "P" });
+    expect(edit.args).toEqual([
+      "--profile", "headless", "--patch", patch, "--json",
+      "--permission-mode", "workspace-write", "--approval-policy", "never",
+      "--add-dir", "/plan", "--add-dir", "/repo/.git", "-",
+    ]);
+    expect(edit.sessionId).toBeUndefined();
+    expect(edit.files).toEqual([{ path: patch, content: expect.stringContaining('model: "deepseek-v4-pro"') }]);
+    expect(edit.files![0]!.content).toContain('reasoningEffort: "high"');
+    expect(edit.files![0]!.content).toContain("- id: agent-default-model");
+    // Read only, a session to continue, no model chosen: no overlay, no folders granted.
+    const ask = buildInvocation({ runner: { ...base, access: "readonly" }, prompt: "P", cwd: "/w", resume: "session-9", newSessionId: "u", addDirs: ["/plan"] });
+    expect(ask.args).toEqual(["--profile", "headless", "--json", "--permission-mode", "read-only", "--approval-policy", "never", "--session-id", "session-9", "-"]);
+    expect(ask.files).toBeUndefined();
+    const full = buildInvocation({ runner: { ...base, access: "full", effort: "max" }, prompt: "P", cwd: "/w", newSessionId: "u" });
+    expect(full.args).toContain("danger-full-access");
+    expect(full.files![0]!.content).toContain('model: "deepseek-flash"');
+  });
+
+  it("reads DeepSeek CLI's events: session, tools, refused steps, tokens and the answer", () => {
+    const d = new OutputParser("dsh");
+    d.feed(JSON.stringify({ type: "session", sessionId: "session-1", cwd: "/w" }));
+    d.feed(JSON.stringify({ type: "thinking", text: "hmm" }));
+    expect(d.feed(JSON.stringify({ type: "tool_call", callId: "a", tool: "bash", input: { command: "npm test" } }))).toEqual([{ kind: "tool" }, { kind: "activity", text: "$ npm test" }]);
+    expect(d.feed(JSON.stringify({ type: "tool_result", callId: "a", status: "error", result: "no", error: { name: "ApprovalError", code: "APPROVAL_REJECTED" } }))).toEqual([
+      { kind: "denied", tool: "Bash npm test" },
+      { kind: "activity", text: "⛔ permission denied: Bash npm test" },
+    ]);
+    expect(d.feed(JSON.stringify({ type: "tool_call", callId: "b", tool: "write", input: { path: "src/a.ts", content: "x" } }))[1]).toEqual({ kind: "activity", text: "✎ src/a.ts" });
+    d.feed(JSON.stringify({ type: "status", phase: "step_end", turn: 1, step: 1, usage: { inputTokens: 100, cacheReadTokens: 900, outputTokens: 20 } }));
+    d.feed(JSON.stringify({ type: "status", phase: "step_end", turn: 1, step: 2, usage: { inputTokens: 50, cacheReadTokens: 1000, cacheWriteTokens: 10, outputTokens: 30 } }));
+    d.feed(JSON.stringify({ type: "text", text: "Done." }));
+    d.feed(JSON.stringify({ type: "final", sessionId: "session-1", reason: { kind: "completed" }, text: "Done." }));
+    expect(d.sessionId).toBe("session-1");
+    expect(d.tools).toBe(2);
+    expect(d.denials).toEqual(["Bash npm test"]);
+    expect(d.usage).toMatchObject({ input: 2060, cached: 1900, output: 50, context: 1090, turns: 2 });
+    expect(d.finalMessage()).toBe("Done.");
+    expect(d.result).toMatchObject({ ok: true });
+    // A run that ends in an error says why.
+    const e = new OutputParser("dsh");
+    e.feed(JSON.stringify({ type: "final", sessionId: "s", reason: { kind: "error", error: { message: "no API key", code: "MISSING_CREDENTIAL" } }, text: "" }));
+    expect(e.result).toEqual({ ok: false, error: "MISSING_CREDENTIAL: no API key" });
+  });
+
+  it("runs a task with DeepSeek CLI, writes its model overlay and continues its session", async () => {
+    process.env.FAKE_SCENARIO = "done";
+    await setRunner("b", { provider: "deepseek", model: "deepseek-v4-pro", effort: "high", extraArgs: "--fake-format dsh" });
+    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    await waitFor("T3", "done");
+    const state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.runs[0]).toMatchObject({ provider: "deepseek", state: "finished", sessionId: "session-dsh-1", tools: 2 });
+    expect(state.runs[0].usage).toMatchObject({ input: 2100, cached: 2000, output: 50 });
+    expect(state.settings.chats.b.sessionId).toBe("session-dsh-1");
+    const first = (await invocations()).at(-1)!;
+    expect(first.args.slice(0, 2)).toEqual(["--profile", "headless"]);
+    expect(first.args.at(-1)).toBe("-");
+    expect(first.stdin).toContain("TASK T3");
+    const overlay = first.args[first.args.indexOf("--patch") + 1]!;
+    expect(await readFile(overlay, "utf8")).toContain('model: "deepseek-v4-pro"');
+    // The next message goes to the same session.
+    await call("POST", `/api/projects/${key}/agents/b/reply`, { text: "One more thing.", task: "T3" });
+    for (let i = 0; i < 50 && !(await invocations()).some((x) => x.args.includes("session-dsh-1")); i += 1) await new Promise((r) => setTimeout(r, 60));
+    const second = (await invocations()).find((x) => x.args.includes("--session-id"))!;
+    expect(second.args[second.args.indexOf("--session-id") + 1]).toBe("session-dsh-1");
+    expect(second.stdin).toBe("One more thing.");
+  });
+
+  it("finds the shared git folder of a worktree, for DeepSeek's sandbox", async () => {
+    const repo = await mkdtemp(path.join(tmpdir(), "aitrack-git-"));
+    const common = path.join(repo, "main", ".git");
+    await mkdir(path.join(common, "worktrees", "w"), { recursive: true });
+    await writeFile(path.join(common, "worktrees", "w", "commondir"), "../..\n");
+    const tree = path.join(repo, "w");
+    await mkdir(tree);
+    await writeFile(path.join(tree, ".git"), `gitdir: ${path.join(common, "worktrees", "w")}\n`);
+    expect(gitCommonDir(tree)).toBe(await realpath(common));
+    // An ordinary checkout keeps its .git inside.
+    expect(gitCommonDir(path.join(repo, "main"))).toBeNull();
+    expect(gitCommonDir(path.join(repo, "nope"))).toBeNull();
   });
 
   it("lets Claude Code run the usual work commands when it may edit files", () => {

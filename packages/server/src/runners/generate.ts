@@ -7,7 +7,7 @@ import { createInterface } from "node:readline";
 import { authoringPrompt, type AuthoringInput } from "@aitrack/core";
 import { HttpError } from "../manager.ts";
 import { agentPath, resolveBinary } from "./env.ts";
-import { buildInvocation, OutputParser, PROVIDER_INFO, type ProviderId, type RunUsage } from "./providers.ts";
+import { buildInvocation, OutputParser, PROVIDER_INFO, writeInvocationFiles, type ProviderId, type RunUsage } from "./providers.ts";
 
 /**
  * Writes a project plan with an AI CLI installed on this computer (the "Create with AI" step of the
@@ -15,7 +15,7 @@ import { buildInvocation, OutputParser, PROVIDER_INFO, type ProviderId, type Run
  * but not change it, and answers with the project file as JSON.
  */
 
-export const GENERATOR_PROVIDERS = ["claude", "codex", "gemini", "copilot", "cursor"] as const;
+export const GENERATOR_PROVIDERS = ["claude", "codex", "gemini", "copilot", "cursor", "deepseek"] as const;
 export type GeneratorProvider = (typeof GENERATOR_PROVIDERS)[number];
 
 export interface GenerateRequest {
@@ -165,6 +165,7 @@ export class ProjectGenerator {
     const stderrTail: string[] = [];
     let child: ChildProcess;
     try {
+      writeInvocationFiles(invocation);
       child = spawn(binary, invocation.args, {
         cwd,
         env,
