@@ -5575,3 +5575,69 @@ details.advanced[open] {
 .eye-dock.moving .eye-btn {
   transform: scale(1.08);
 }
+
+/* The projects a manager runs, as tabs in the eye: one with problems shows a red "!". */
+.holo-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.holo-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--eye-main) 45%, transparent);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.holo-tab:hover {
+  background: color-mix(in srgb, var(--eye-main) 12%, transparent);
+}
+
+.holo-tab.active {
+  border-color: var(--eye-main);
+  background: color-mix(in srgb, var(--eye-main) 18%, transparent);
+  cursor: default;
+}
+
+.holo-tab.alert {
+  border-color: #ff6b6b;
+}
+
+.holo-tab-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.holo-tab-pct {
+  opacity: 0.6;
+}
+
+.holo-tab-bang {
+  color: #ff6b6b;
+  font-weight: 700;
+}
+
+.holo-tab .holo-pulse {
+  flex-shrink: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--eye-main);
+  animation: eye-pulse 1s ease-in-out infinite;
+}
+
+.holo-row.elsewhere .holo-who small {
+  color: var(--eye-main);
+  opacity: 0.8;
+}

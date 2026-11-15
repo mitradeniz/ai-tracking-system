@@ -8,6 +8,7 @@ import { CodeFolderBanner, ProjectList, ProjectSettingsDialog, RemoveProjectDial
 import { AutoDispatch, RunnerDialog } from "./components/Runners.tsx";
 import { ManagerDialog, ManagerSwitch } from "./components/Manager.tsx";
 import { ManagerEye } from "./components/ManagerEye.tsx";
+import { useEyeOverview } from "./eyeOverview.ts";
 import { ProposalsDialog, ProposalsStrip } from "./components/Proposals.tsx";
 import { SettingsDialog } from "./components/Settings.tsx";
 import { TaskDrawer } from "./components/TaskDrawer.tsx";
@@ -111,6 +112,8 @@ export function App() {
   );
 
   const { projects, loaded, detail, live, refresh, runners } = useTracker(selected, onActivity, (m) => toast(localError(m, t), "failed"));
+  // Every project a manager runs, for the tabs of the eye on the board (the desktop app's eye window keeps its own).
+  const eyeProjects = useEyeOverview(projects, t, !eyeWindow);
 
   const updates = useUpdates((kind, p) =>
     toast(kind === "done" ? t("upd_done", { to: p.to ?? "" }) : t("upd_failed", { message: p.message ?? "" }), kind === "done" ? "done" : "failed"),
@@ -588,7 +591,19 @@ export function App() {
           onRunnerSettings={runnerSettings}
         />
       )}
-      {model && !eyeWindow && <ManagerEye model={model} onOpenTask={setOpenTask} onOpenManager={() => setDialog("manager")} />}
+      {model && !eyeWindow && (
+        <ManagerEye
+          model={model}
+          projects={eyeProjects}
+          onSwitch={setSelected}
+          onOpenElsewhere={(key, task) => {
+            setSelected(key);
+            setOpenTask(task);
+          }}
+          onOpenTask={setOpenTask}
+          onOpenManager={() => setDialog("manager")}
+        />
+      )}
       {dialog === "proposals" && model && (
         <ProposalsDialog
           model={model}

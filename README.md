@@ -147,6 +147,7 @@ Turn on the **Manager** and an eye pops up above every app, like the floating wi
 - **Approved**: what the manager approved, new ones first, with why and what you may want to look at (a visual check, a real device) — **Looked at** clears it
 - click a line to open it in place and read it whole; **Show in the app** under it opens the task in the main window
 - **Write to the manager** at the bottom: "approve CLC-02", "tell Claude B to go on" — it looks at once, does it within its rules and answers right there
+- **Several projects**: when managers run more than one project, tabs at the top switch between them; a project with a problem shows a red **!** on its tab and turns the eye red even while you look at another one, and *Models at work* lists the chats of every project
 - hover the eye to hide it; the eye next to the Manager switch brings it back
 
 ### Make it yours

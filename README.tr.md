@@ -147,6 +147,7 @@ Kenar çubuğundan, *Pencere* menüsünden ya da <kbd>⇧</kbd><kbd>⌘</kbd><kb
 - **Onayladıkları**: yöneticinin onayladıkları, yeniler önce; nedeni ve göz atmak isteyebileceğin şeyle (görsel kontrol, gerçek cihaz) — **Gördüm** işareti kaldırır
 - bir satıra tıkla, yerinde açılsın ve tamamını oku; altındaki **Uygulamada göster** görevi ana pencerede açar
 - en altta **Yöneticiye yaz**: "CLC-02'yi onayla", "Claude B'ye devam etmesini söyle" — hemen bakar, kuralları içinde yapar ve orada yanıtlar
+- **Birden çok proje**: birden çok projede yönetici çalışıyorsa üstteki sekmelerle aralarında geçersin; sorunu olan projenin sekmesinde kırmızı **!** çıkar ve sen başka projeye bakarken bile göz kırmızıya döner; *Çalışan modeller* bütün projelerin sohbetlerini gösterir
 - gözün üzerine gelip gizleyebilirsin; Yönetici anahtarının yanındaki göz geri getirir
 
 ### Kendine göre ayarla

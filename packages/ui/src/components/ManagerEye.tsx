@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties, type MouseEvent as Rea
 import { api, desktop } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import { agentName, formatDuration, formatTime, localMessage, localReason, problemsOf, PROVIDER_LABEL, untilText, type Model } from "../model.ts";
+import type { EyeProject } from "../eyeOverview.ts";
 import { usePref } from "../prefs.ts";
 import { useNow } from "./Info.tsx";
 import { CLI_NAME } from "./NewProject.tsx";
@@ -127,11 +128,20 @@ export function ManagerEye({
   onOpenTask,
   onOpenManager,
   windowed = false,
+  projects = [],
+  onSwitch,
+  onOpenElsewhere,
 }: {
   model: Model;
   onOpenTask: (id: string) => void;
   onOpenManager: () => void;
   windowed?: boolean;
+  /** Every project a manager runs (this one included): their tabs, problems and runs. */
+  projects?: EyeProject[];
+  /** Show another of those projects in the eye. */
+  onSwitch?: (key: string) => void;
+  /** Open a task of another project in the app. */
+  onOpenElsewhere?: (key: string, task: string) => void;
 }) {
   const { t, lang } = useI18n();
   const key = model.detail.key;
@@ -267,8 +277,19 @@ export function ManagerEye({
   const talks = state.log.filter((r) => r.message).slice(0, 3).reverse();
   const limits = [...new Map((model.runners?.limits ?? []).map((l) => [l.cli, l])).values()];
   const forYou = lastRun?.forYou.length ?? 0;
-  const mood = errors.length ? "alert" : state.running || running.length ? "busy" : "watching";
-  const status = state.running ? t("eye_looking") : errors.length ? t("eye_alert", { n: errors.length }) : t("eye_watching");
+  // The other projects a manager runs: a problem in any of them turns the eye red too.
+  const others = projects.filter((p) => p.key !== key);
+  const othersProblems = others.reduce((n, p) => n + p.problems, 0);
+  const elsewhere = others.flatMap((p) => p.running.map((r) => ({ ...r, project: p })));
+  const mood = errors.length || othersProblems ? "alert" : state.running || running.length || elsewhere.length ? "busy" : "watching";
+  const status = state.running
+    ? t("eye_looking")
+    : errors.length
+      ? t("eye_alert", { n: errors.length })
+      : othersProblems
+        ? t("eye_alertOther", { n: othersProblems })
+        : t("eye_watching");
+  const tabs = projects.length > 1 ? projects : [];
   let i = 0;
   const line = (): CSSProperties => ({ ["--i" as string]: i++ });
 
@@ -328,6 +349,30 @@ export function ManagerEye({
               <span className="holo-cli">{CLI_NAME[state.settings.provider] ?? state.settings.provider}</span>
             </header>
 
+            {tabs.length > 0 && (
+              <div className="holo-tabs" role="tablist" aria-label={t("eye_projects")} style={line()}>
+                {tabs.map((p) => {
+                  const here = p.key === key;
+                  const n = here ? errors.length : p.problems;
+                  return (
+                    <button
+                      key={p.key}
+                      role="tab"
+                      aria-selected={here}
+                      className={`holo-tab ${here ? "active" : ""} ${n ? "alert" : ""}`}
+                      title={`${p.name} · ${p.pct}%${n ? ` · ${t("eye_tabProblems", { n })}` : ""}`}
+                      onClick={() => !here && onSwitch?.(p.key)}
+                    >
+                      {n > 0 && <span className="holo-tab-bang">!</span>}
+                      <span className="holo-tab-name">{clip(p.name, 22)}</span>
+                      <span className="holo-tab-pct">{here ? pct : p.pct}%</span>
+                      {p.running.length > 0 && <span className="holo-pulse" aria-hidden="true" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className="holo-progress" style={line()}>
               <div className="holo-pct">
                 {pct}
@@ -353,7 +398,7 @@ export function ManagerEye({
             ))}
 
             <h4 style={line()}>{t("eye_models")}</h4>
-            {running.length === 0 ? (
+            {running.length === 0 && elsewhere.length === 0 ? (
               <div className="holo-empty" style={line()}>
                 {t("eye_idle")}
               </div>
@@ -395,6 +440,48 @@ export function ManagerEye({
                 />
               ))
             )}
+            {elsewhere.map(({ run: r, agent, title, project }) => (
+              <Item
+                key={`${project.key}:${r.id}`}
+                id={`run:${project.key}:${r.id}`}
+                open={expanded}
+                onToggle={toggle}
+                style={line()}
+                className="holo-row elsewhere"
+                head={
+                  <>
+                    <span className="holo-pulse" aria-hidden="true" />
+                    <span className="holo-who">
+                      {agent}
+                      <small>{clip(project.name, 18)}</small>
+                    </span>
+                    <span className="holo-what">
+                      <b>{r.task}</b> {clip(r.lastActivity ?? title, 70)}
+                    </span>
+                    <span className="holo-time">{formatDuration(now - Date.parse(r.startedAt))}</span>
+                  </>
+                }
+                more={
+                  <>
+                    <p>
+                      <b>{r.task}</b> {title}
+                      <span className="holo-when"> · {project.name}</span>
+                    </p>
+                    {r.lastActivity && <p className="holo-quote">{r.lastActivity}</p>}
+                  </>
+                }
+                action={
+                  <div className="holo-actions">
+                    {onSwitch && (
+                      <button className="holo-go" onClick={() => onSwitch(project.key)}>
+                        {t("eye_switchTo", { name: clip(project.name, 24) })}
+                      </button>
+                    )}
+                    {onOpenElsewhere && <ShowInApp label={t("eye_showInApp")} onClick={() => onOpenElsewhere(project.key, r.task)} />}
+                  </div>
+                }
+              />
+            ))}
 
             {errors.length > 0 && (
               <>
