@@ -17,7 +17,7 @@ import {
   type Problem,
   PROVIDER_LABEL,
 } from "../model.ts";
-import { allowSteps, choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, setProblemState, type PermissionGrant } from "../problemActions.ts";
+import { allowSteps, choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, setProblemState, settledBy, type PermissionGrant } from "../problemActions.ts";
 import { useNow } from "./Info.tsx";
 import { Markdown, splitReport } from "./Markdown.tsx";
 import { StopButton, stopRun } from "./Runners.tsx";
@@ -119,7 +119,7 @@ export function QuickTask({
     run(async () => {
       if (!owner) return;
       if (grant.how !== "none") await api.saveRunner(key, owner, grant.patch);
-      await setProblemState(key, taskId, p, "resolved");
+      await setProblemState(key, taskId, runner ? settledBy(problems, p, runner, grant) : p, "resolved");
       const done = await deliver(continueAfterPermission(grant, t));
       return done?.how === "sent" ? t("perm_done", { agent: agentName(model, owner), what: grant.how === "full" ? t("perm_fullShort") : grant.shown }) : done?.message;
     });

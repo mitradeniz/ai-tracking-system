@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProjectFileSchema, serializeProject } from "@aitrack/core";
 import { startServer, type RunningServer } from "../src/index.ts";
 import { clearAutoModeCache, helpHasAutoMode, parseCodexModels, parseCopilotModels, parseCursorModels } from "../src/runners/env.ts";
-import { claudeMemoryDir, gitCommonDir } from "../src/runners/runs.ts";
+import { claudeMemoryDir, conversationUsage, gitCommonDir, runUsage } from "../src/runners/runs.ts";
 import { normalizeHook } from "../src/runners/hooks.ts";
 import { normalizeRunner, RunnerStore } from "../src/runners/store.ts";
 import { buildInvocation, DEFAULT_RUNNER, OutputParser, splitArgs } from "../src/runners/providers.ts";
@@ -537,6 +537,164 @@ describe("agent runners", () => {
     }
   });
 
+  it("acts with the person's authority only when given: grants what a sandbox kept out, moves a task, takes a duplicate out", { timeout: 30000 }, async () => {
+    process.env.FAKE_FORMAT = "codex";
+    process.env.FAKE_SCENARIO = "sandbox";
+    const answer = {
+      actions: [
+        { type: "grant", task: "T1" },
+        { type: "drop", task: "T2", note: "T1 covers it" },
+        { type: "assign", task: "T3", to: "a", note: "Agent A has the browser" },
+      ],
+      summary: "Unblocked T1.",
+    };
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify(answer);
+    const managerState = async () => (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+    const looks = async (n: number) => {
+      let state = await managerState();
+      for (let i = 0; i < 250 && !(state.log.length >= n && state.log[0].state === "done"); i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        state = await managerState();
+      }
+      return state;
+    };
+    try {
+      await setRunner("a", { provider: "codex" });
+      await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+      await waitFor("T1", "blocked");
+      // Without full authority all three are refused and left for the person.
+      await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "codex", binary: FAKE });
+      let state = await looks(1);
+      expect(state.log[0].actions.map((a: { type: string; ok: boolean }) => `${a.type}:${a.ok}`)).toEqual(["grant:false", "drop:false", "assign:false"]);
+      expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a.network).toBe(false);
+      const plain = (await invocations()).find((i) => i.stdin.includes("You are the manager"))!.stdin;
+      expect(plain).toContain("[needs permission (read from the problem): network]");
+      expect(plain).not.toContain("FULL AUTHORITY");
+
+      // With full authority it does them; the chat goes on in its conversation.
+      process.env.FAKE_SCENARIO = "done";
+      const on = await call("POST", `/api/projects/${key}/manager`, { fullAuthority: true });
+      expect(on.json.settings).toMatchObject({ fullAuthority: true });
+      state = await looks(2);
+      const run = state.log[0];
+      expect(run.actions.map((a: { type: string; ok: boolean }) => `${a.type}:${a.ok}`)).toEqual(["grant:true", "drop:true", "assign:true"]);
+      expect(run.actions[0].detail).toBe("network");
+      const prompt = [...(await invocations())].reverse().find((i) => i.stdin.includes("You are the manager"))!.stdin;
+      expect(prompt).toContain("FULL AUTHORITY");
+      expect(prompt).toContain('{"type":"grant"');
+      await waitFor("T1", "done");
+      const settings = (await call("GET", `/api/projects/${key}/runners`)).json.settings;
+      expect(settings.chats.a.network).toBe(true);
+      expect(settings.chats.a.access).not.toBe("full");
+      const reply = (await invocations()).find((i) => i.stdin.startsWith("The manager allowed this for you from now on: network"))!;
+      expect(reply.args.slice(-3)).toEqual(["resume", "thread-123", "-"]);
+      const detail = (await call("GET", `/api/projects/${key}`)).json;
+      const t1 = detail.board.tasks.find((t: { id: string }) => t.id === "T1");
+      expect(t1.issues.every((i: { state?: string }) => i.state === "resolved")).toBe(true);
+      expect(detail.project.tasks.map((t: { id: string }) => t.id)).toEqual(["T1", "T3"]);
+      expect(detail.project.tasks.find((t: { id: string }) => t.id === "T3").agent).toBe("a");
+      expect(detail.events.some((e: { message?: string }) => e.message === "Manager: moved to a — Agent A has the browser")).toBe(true);
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
+  it("keeps a task a chat holds when it moves it: the new chat starts it over; and takes out only tasks nobody started", { timeout: 20000 }, async () => {
+    process.env.FAKE_FORMAT = "codex";
+    process.env.FAKE_SCENARIO = "sandbox";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
+      actions: [
+        { type: "drop", task: "T1", note: "duplicate" },
+        { type: "assign", task: "T1", to: "b", note: "b can reach the network" },
+        { type: "drop", task: "T2" },
+      ],
+    });
+    try {
+      await setRunner("a", { provider: "codex" });
+      await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+      await waitFor("T1", "blocked");
+      await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "codex", binary: FAKE, fullAuthority: true });
+      let state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      for (let i = 0; i < 200 && state.log[0]?.state !== "done"; i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      }
+      const acts = state.log[0].actions;
+      // A started task is not taken out; one drop needs a reason.
+      expect(acts.map((a: { type: string; ok: boolean }) => `${a.type}:${a.ok}`)).toEqual(["drop:false", "assign:true", "drop:false"]);
+      expect(acts[2].detail).toContain("Say why");
+      const detail = (await call("GET", `/api/projects/${key}`)).json;
+      const t1 = detail.board.tasks.find((t: { id: string }) => t.id === "T1");
+      expect(detail.project.tasks.find((t: { id: string }) => t.id === "T1").agent).toBe("b");
+      // Released by Agent A; Agent B is run by hand, so it waits there as ready.
+      expect(t1.status).toBe("ready");
+      expect(t1.agent ?? null).toBeNull();
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
+  it("in saving mode gives each task a conversation of its own and passes on what chats checked", { timeout: 20000 }, async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_SCENARIO = "facts";
+    await setRunner("a", { provider: "claude" });
+    expect((await call("POST", `/api/projects/${key}/runners`, { saving: true })).json.saving).toBe(true);
+    await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+    await waitFor("T1", "done");
+    let state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.settings.saving).toBe(true);
+    expect(state.facts.map((f: { text: string }) => f.text)).toEqual(["pgvector 0.8 is enabled on the dev database (psql -c '\\dx')"]);
+    expect(state.facts[0]).toMatchObject({ task: "T1" });
+    // What the tracker keeps for itself is not sent to the app.
+    expect(state.settings.taskSessions).toBeUndefined();
+    expect(state.settings.sessionUsage).toBeUndefined();
+
+    process.env.FAKE_SCENARIO = "done";
+    await call("POST", `/api/projects/${key}/tasks/T2/run`, {});
+    await waitFor("T2", "done");
+    const [first, second] = await invocations();
+    const s1 = first!.args[first!.args.indexOf("--session-id") + 1];
+    // A new task: a new conversation, with the session prompt and what was checked.
+    expect(second!.args).toContain("--session-id");
+    expect(second!.args).not.toContain("--resume");
+    expect(second!.args[second!.args.indexOf("--session-id") + 1]).not.toBe(s1);
+    expect(second!.stdin).toContain("You are Agent A.");
+    expect(second!.stdin).toContain("ALREADY CHECKED IN THIS PROJECT");
+    expect(second!.stdin).toContain("pgvector 0.8 is enabled");
+    expect(second!.stdin).toContain("(T1, ");
+
+    // The same task again goes on in its own conversation.
+    await call("POST", `/api/projects/${key}/events`, { task: "T1", type: "reopened" });
+    await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+    await waitFor("T1", "done");
+    const third = (await invocations())[2]!;
+    expect(third.args[third.args.indexOf("--resume") + 1]).toBe(s1);
+    expect(third.stdin).not.toContain("You are Agent A.");
+
+    // The person removes a fact that is out of date.
+    const removed = await call("POST", `/api/projects/${key}/facts/remove`, { all: true });
+    expect(removed.json.facts).toEqual([]);
+    expect((await call("POST", `/api/projects/${key}/facts/remove`, {})).status).toBe(400);
+  });
+
+  it("shows what a run used, also when the CLI counts its whole conversation", async () => {
+    process.env.FAKE_FORMAT = "codex";
+    await setRunner("a", { provider: "codex" });
+    process.env.FAKE_CODEX_USAGE = "1000,800,50";
+    try {
+      await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+      await waitFor("T1", "done");
+      process.env.FAKE_CODEX_USAGE = "1600,1300,80";
+      await call("POST", `/api/projects/${key}/tasks/T2/run`, {});
+      await waitFor("T2", "done");
+      const runs = (await call("GET", `/api/projects/${key}/runners`)).json.runs;
+      expect(runs[1].usage).toMatchObject({ input: 1000, cached: 800, output: 50 });
+      expect(runs[0].usage).toMatchObject({ input: 600, cached: 500, output: 30 });
+    } finally {
+      delete process.env.FAKE_CODEX_USAGE;
+    }
+  });
+
   it("lets the person write to the manager: it looks at once, acts on the message and answers", { timeout: 20000 }, async () => {
     process.env.FAKE_FORMAT = "claude";
     process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
@@ -788,6 +946,17 @@ describe("agent runners", () => {
 });
 
 describe("provider adapters", () => {
+  it("counts what a run added to a conversation the CLI counts as a whole", () => {
+    expect(runUsage("codex", { input: 1600, cached: 1300, output: 80 }, { input: 1000, cached: 800, output: 50 })).toEqual({ input: 600, cached: 500, output: 30 });
+    // Smaller than before: the CLI counted the run alone (or a new conversation).
+    expect(runUsage("codex", { input: 300 }, { input: 1000 })).toEqual({ input: 300 });
+    expect(runUsage("claude", { input: 900, costUsd: 12.5 }, { costUsd: 10 })).toEqual({ input: 900, costUsd: 2.5 });
+    expect(runUsage("gemini", { input: 5 }, { input: 1 })).toEqual({ input: 5 });
+    expect(conversationUsage("codex", { input: 1, cached: 0, output: 2, context: 9 })).toEqual({ input: 1, cached: 0, output: 2 });
+    expect(conversationUsage("claude", { input: 1 })).toBeUndefined();
+    expect(conversationUsage("gemini", { input: 1 })).toBeUndefined();
+  });
+
   it("splits command lines with quotes", () => {
     expect(splitArgs(`a "b c" 'd e' f\\ g ""`)).toEqual(["a", "b c", "d e", "f g", ""]);
     expect(() => splitArgs(`a "b`)).toThrow();

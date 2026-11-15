@@ -22,7 +22,7 @@ import {
   type Model,
   type Problem,
 } from "../model.ts";
-import { allowSteps, choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, setProblemState, type PermissionGrant } from "../problemActions.ts";
+import { allowSteps, choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, setProblemState, settledBy, type PermissionGrant } from "../problemActions.ts";
 import { usePlanEditing } from "../editing.ts";
 import { InfoTip, PromptPicker, useNow } from "./Info.tsx";
 import { Markdown, splitReport } from "./Markdown.tsx";
@@ -244,7 +244,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
       continueAfterPermission(grant, t),
       async () => {
         if (grant.how !== "none") await api.saveRunner(model.detail.key, msgAgent, grant.patch);
-        await setProblemState(model.detail.key, task.id, problem, "resolved");
+        await setProblemState(model.detail.key, task.id, msgRunner ? settledBy(problems, problem, msgRunner, grant) : problem, "resolved");
       },
       true,
     );
@@ -877,7 +877,10 @@ function ProblemCard({
   const [confirmFull, setConfirmFull] = useState(false);
   // One main action per card: allowing steps or picking an option comes before sending the fix prompt.
   const fixIsMain = !(onAllow && safe > 0) && !permit;
-  const asked = problem.permission ? (problem.permission.value ?? t(`perm_kind_${problem.permission.kind}` as Key)) : null;
+  const asked = problem.permission
+    ? (problem.permission.value ?? t(problem.permission.inferred && problem.permission.kind === "command" ? "perm_kind_sandbox" : (`perm_kind_${problem.permission.kind}` as Key)))
+    : null;
+  const askedLabel = problem.permission?.inferred ? t("perm_inferred") : t("perm_asked", { what: "" });
   // A decision is answered with its options (or a reply below), not with a generic fix prompt.
   const showFix = Boolean(problem.fix) && !problem.choices;
   return (
@@ -895,7 +898,7 @@ function ProblemCard({
       {problem.steps && <StepList steps={problem.steps} />}
       {asked && (
         <div className="small perm-asked">
-          {t("perm_asked", { what: "" })}
+          {askedLabel}
           <code className="mono">{asked}</code>
         </div>
       )}

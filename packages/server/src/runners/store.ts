@@ -28,12 +28,32 @@ export interface ManagerSettings {
   fullAuto: boolean;
   /** Let it have a reviewed task's own chat merge that task's PRs into main when their checks are green. */
   mergeGreen: boolean;
+  /**
+   * Full authority: it decides what the person would, beyond answering chats. It grants the
+   * permissions chats need (full access too), moves tasks to other chats, takes duplicate tasks
+   * nobody started out of the plan, has chats merge the green PRs a task needs, and handles what it
+   * would otherwise leave for the person. Implies full automation and merging. Payments,
+   * credentials and accounts, legal terms, deleting data and publishing stay with the person.
+   */
+  fullAuthority: boolean;
 }
 
-export const DEFAULT_MANAGER: ManagerSettings = { enabled: false, provider: "claude", resumeStopped: true, approveDone: false, fullAuto: false, mergeGreen: false };
+export const DEFAULT_MANAGER: ManagerSettings = {
+  enabled: false,
+  provider: "claude",
+  resumeStopped: true,
+  approveDone: false,
+  fullAuto: false,
+  mergeGreen: false,
+  fullAuthority: false,
+};
 
 /** Whether the manager may approve finished tasks with these settings. */
-export const approves = (s: ManagerSettings): boolean => s.approveDone || s.fullAuto;
+export const approves = (s: ManagerSettings): boolean => s.approveDone || s.fullAuto || s.fullAuthority;
+/** Whether it reviews finished work itself (and may send it back). */
+export const reviewsWork = (s: ManagerSettings): boolean => s.fullAuto || s.fullAuthority;
+/** Whether it may have chats merge green PRs into main. */
+export const mergesGreen = (s: ManagerSettings): boolean => (s.mergeGreen || s.fullAuthority) && approves(s);
 
 export interface ProjectRunners {
   /** Give the next ready task to a chat as soon as it is free. */
@@ -47,6 +67,49 @@ export interface ProjectRunners {
    * the prompt), so a changed prompt is given again to a conversation that goes on.
    */
   sessionPrompts?: Record<string, { session: string; hash: string }>;
+  /** The session prompt each conversation has read (by session id: a hash of the prompt). */
+  promptSeen?: Record<string, string>;
+  /**
+   * Saving mode: each task gets a conversation of its own (answers and resumes go on in it), so a
+   * chat does not carry every earlier task's context into each call; what chats checked is passed on.
+   */
+  saving?: boolean;
+  /** Each chat's conversation for each task (by chat, then task): replies and resumes go on there. */
+  taskSessions?: Record<string, Record<string, string>>;
+  /** What CLIs report for a whole conversation (Codex tokens, Claude Code cost) at its last run, by session id. */
+  sessionUsage?: Record<string, SessionUsage>;
+  /** What chats checked about the environment and the project; newest last. */
+  facts?: Fact[];
+}
+
+/** Counters a CLI reports for a whole conversation, not for one run. */
+export interface SessionUsage {
+  input?: number;
+  cached?: number;
+  output?: number;
+  costUsd?: number;
+}
+
+/** Something a chat checked, so others need not check it again. */
+export interface Fact {
+  text: string;
+  task?: string;
+  agent?: string;
+  at: string;
+}
+
+/** Kept at most: the newest win. */
+const MAX_FACTS = 40;
+const MAX_TASK_SESSIONS = 200;
+const MAX_SESSION_RECORDS = 300;
+
+/** The same fact in other words: letters and digits only, lower case. */
+const factKey = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/** Keeps the newest entries of a record built by insertion. */
+function keepLast<T>(record: Record<string, T>, max: number): Record<string, T> {
+  const entries = Object.entries(record);
+  return entries.length > max ? Object.fromEntries(entries.slice(entries.length - max)) : record;
 }
 
 interface RunnerFile {
@@ -78,6 +141,7 @@ export function normalizeManager(input: unknown, base: ManagerSettings = DEFAULT
     approveDone: typeof o.approveDone === "boolean" ? o.approveDone : base.approveDone,
     fullAuto: typeof o.fullAuto === "boolean" ? o.fullAuto : (base.fullAuto ?? false),
     mergeGreen: typeof o.mergeGreen === "boolean" ? o.mergeGreen : (base.mergeGreen ?? false),
+    fullAuthority: typeof o.fullAuthority === "boolean" ? o.fullAuthority : (base.fullAuthority ?? false),
   };
 }
 
@@ -164,12 +228,40 @@ function normalizeProject(input: unknown): ProjectRunners {
     const e = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
     if (typeof e.session === "string" && typeof e.hash === "string") sessionPrompts[id] = { session: e.session, hash: e.hash };
   }
+  const strings = (v: unknown): Record<string, string> =>
+    Object.fromEntries(Object.entries(v && typeof v === "object" ? (v as Record<string, unknown>) : {}).filter((e): e is [string, string] => typeof e[1] === "string"));
+  const promptSeen = strings(o.promptSeen);
+  const taskSessions: Record<string, Record<string, string>> = {};
+  for (const [agent, v] of Object.entries(o.taskSessions && typeof o.taskSessions === "object" ? (o.taskSessions as Record<string, unknown>) : {})) {
+    const map = strings(v);
+    if (Object.keys(map).length) taskSessions[agent] = map;
+  }
+  const sessionUsage: Record<string, SessionUsage> = {};
+  for (const [id, v] of Object.entries(o.sessionUsage && typeof o.sessionUsage === "object" ? (o.sessionUsage as Record<string, unknown>) : {})) {
+    const u = (v && typeof v === "object" ? v : {}) as Record<string, unknown>;
+    const pick = (k: keyof SessionUsage) => (typeof u[k] === "number" && Number.isFinite(u[k]) ? { [k]: u[k] as number } : {});
+    sessionUsage[id] = { ...pick("input"), ...pick("cached"), ...pick("output"), ...pick("costUsd") };
+  }
+  const facts = (Array.isArray(o.facts) ? o.facts : [])
+    .filter((f): f is Record<string, unknown> => Boolean(f) && typeof f === "object" && typeof (f as Record<string, unknown>).text === "string")
+    .map((f) => ({
+      text: String(f.text).slice(0, 300),
+      ...(typeof f.task === "string" && { task: f.task }),
+      ...(typeof f.agent === "string" && { agent: f.agent }),
+      at: typeof f.at === "string" ? f.at : new Date(0).toISOString(),
+    }))
+    .slice(-MAX_FACTS);
   return {
     autoDispatch: o.autoDispatch === true,
     maxConcurrent: Number.isInteger(max) && max >= 1 && max <= 10 ? max : DEFAULT_PROJECT_RUNNERS.maxConcurrent,
     chats,
     manager,
     ...(Object.keys(sessionPrompts).length && { sessionPrompts }),
+    ...(Object.keys(promptSeen).length && { promptSeen }),
+    ...(o.saving === true && { saving: true }),
+    ...(Object.keys(taskSessions).length && { taskSessions }),
+    ...(Object.keys(sessionUsage).length && { sessionUsage }),
+    ...(facts.length && { facts }),
   };
 }
 
@@ -215,9 +307,10 @@ export class RunnerStore {
     return { ...p.manager };
   }
 
-  async setProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number }): Promise<ProjectRunners> {
-    const p = (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {}, manager: { ...DEFAULT_MANAGER } });
+  async setProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean }): Promise<ProjectRunners> {
+    const p = this.entry(key);
     if (typeof patch.autoDispatch === "boolean") p.autoDispatch = patch.autoDispatch;
+    if (typeof patch.saving === "boolean") p.saving = patch.saving;
     if (typeof patch.maxConcurrent === "number" && Number.isInteger(patch.maxConcurrent)) {
       p.maxConcurrent = Math.min(10, Math.max(1, patch.maxConcurrent));
     }
@@ -225,17 +318,103 @@ export class RunnerStore {
     return this.project(key);
   }
 
+  private entry(key: string): ProjectRunners {
+    return (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {}, manager: { ...DEFAULT_MANAGER } });
+  }
+
   /** The session prompt a chat's conversation has read, if the tracker knows it. */
-  sessionPrompt(key: string, agentId: string): { session: string; hash: string } | undefined {
-    return this.data.projects[key]?.sessionPrompts?.[agentId];
+  sessionPrompt(key: string, agentId: string, session?: string): { session: string; hash: string } | undefined {
+    const p = this.data.projects[key];
+    const hash = session ? p?.promptSeen?.[session] : undefined;
+    if (session && hash) return { session, hash };
+    return p?.sessionPrompts?.[agentId];
   }
 
   async setSessionPrompt(key: string, agentId: string, session: string, hash: string): Promise<void> {
-    const p = (this.data.projects[key] ??= { ...DEFAULT_PROJECT_RUNNERS, chats: {}, manager: { ...DEFAULT_MANAGER } });
+    const p = this.entry(key);
     const cur = p.sessionPrompts?.[agentId];
-    if (cur && cur.session === session && cur.hash === hash) return;
+    if (cur && cur.session === session && cur.hash === hash && p.promptSeen?.[session] === hash) return;
     p.sessionPrompts = { ...p.sessionPrompts, [agentId]: { session, hash } };
+    const seen = { ...p.promptSeen };
+    delete seen[session];
+    seen[session] = hash;
+    p.promptSeen = keepLast(seen, MAX_SESSION_RECORDS);
     await this.save();
+  }
+
+  /** The conversation a chat had for a task, if the tracker knows it. */
+  taskSession(key: string, agentId: string, task: string): string | undefined {
+    return this.data.projects[key]?.taskSessions?.[agentId]?.[task];
+  }
+
+  async setTaskSession(key: string, agentId: string, task: string, session: string): Promise<void> {
+    const p = this.entry(key);
+    const mine = { ...p.taskSessions?.[agentId] };
+    if (mine[task] === session) return;
+    delete mine[task];
+    mine[task] = session;
+    p.taskSessions = { ...p.taskSessions, [agentId]: keepLast(mine, MAX_TASK_SESSIONS) };
+    await this.save();
+  }
+
+  async forgetTaskSession(key: string, agentId: string, task: string): Promise<void> {
+    const p = this.entry(key);
+    const mine = p.taskSessions?.[agentId];
+    if (!mine || !(task in mine)) return;
+    const rest = { ...mine };
+    delete rest[task];
+    p.taskSessions = { ...p.taskSessions, [agentId]: rest };
+    await this.save();
+  }
+
+  /** What the CLI last reported for a whole conversation. */
+  sessionUsage(key: string, session: string): SessionUsage | undefined {
+    return this.data.projects[key]?.sessionUsage?.[session];
+  }
+
+  async setSessionUsage(key: string, session: string, usage: SessionUsage): Promise<void> {
+    if (!Object.keys(usage).length) return;
+    const p = this.entry(key);
+    const all = { ...p.sessionUsage };
+    delete all[session];
+    all[session] = usage;
+    p.sessionUsage = keepLast(all, MAX_SESSION_RECORDS);
+    await this.save();
+  }
+
+  facts(key: string): Fact[] {
+    return [...(this.data.projects[key]?.facts ?? [])];
+  }
+
+  /** Adds what a chat checked; the same fact again moves to the end with the new date. Returns how many were new. */
+  async addFacts(key: string, texts: string[], from: { task?: string; agent?: string }): Promise<number> {
+    const clean = texts.map((t) => t.replace(/\s+/g, " ").trim().slice(0, 300)).filter(Boolean);
+    if (!clean.length) return 0;
+    const p = this.entry(key);
+    const list = [...(p.facts ?? [])];
+    let added = 0;
+    for (const text of clean) {
+      const k = factKey(text);
+      const i = list.findIndex((f) => factKey(f.text) === k);
+      if (i >= 0) list.splice(i, 1);
+      else added += 1;
+      list.push({ text, ...(from.task && { task: from.task }), ...(from.agent && { agent: from.agent }), at: new Date().toISOString() });
+    }
+    p.facts = list.slice(-MAX_FACTS);
+    await this.save();
+    return added;
+  }
+
+  /** Removes facts (by their text), or all of them. */
+  async removeFacts(key: string, texts: string[] | "all"): Promise<Fact[]> {
+    const p = this.entry(key);
+    if (texts === "all") p.facts = [];
+    else {
+      const gone = new Set(texts.map(factKey));
+      p.facts = (p.facts ?? []).filter((f) => !gone.has(factKey(f.text)));
+    }
+    await this.save();
+    return this.facts(key);
   }
 
   async setSession(key: string, agentId: string, sessionId: string | undefined): Promise<void> {

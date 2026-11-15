@@ -67,6 +67,7 @@ export const PLAN_RULES = `- Merge proposals and notes that describe the same wo
 - When a task of the plan already covers the work, do not create a task: link the proposal to that task under "links".
 - Give each new task to the chat that fits, with "dependsOn" on the tasks it needs (the task it came from when it builds on that work, and what it waits for), "instructions" that say what was done for now and what done looks like, and "acceptance".
 - Leave "id" out; the app picks ids. Do not change or remove existing tasks.
+- Keep the plan small: a new task only for real work that no open task covers. Opening, finishing or merging a task's PR and checking its own result belong to that task: link them to it, never make a task of their own for them. A follow-up of a follow-up (an id with two or more "-F" parts) gets no new follow-up: link to the open task instead.
 - Put proposals that are not worth a task (already done, not needed) under "ignore".
 - Under "covers" list the proposals and notes ("task" and "index") each new task takes care of; they are closed when the task is added.`;
 

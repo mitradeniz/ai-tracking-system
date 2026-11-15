@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildGraph,
   computeBoard,
+  neededPermission,
+  permissionGrant,
   parsePlan,
   parseProjectFile,
   parseReports,
@@ -239,6 +241,35 @@ describe("reports", () => {
     const inline = 'Summary first. {"task":"T1","status":"review","summary":"ok"} and {"other":1}';
     expect(parseReports(inline).reports).toEqual([{ task: "T1", status: "review", summary: "ok" }]);
     expect(parseReports("Not a report at all.").reports).toEqual([]);
+  });
+
+  it("reads what a chat checked, one sentence each", () => {
+    const r = parseReports('{"task":"T1","status":"done","facts":["  pgvector 0.8   is enabled ","",3,"pgvector 0.8 is enabled"]}').reports[0]!;
+    expect(r.facts).toEqual(["pgvector 0.8 is enabled"]);
+    expect(parseReports('{"task":"T1","status":"done","facts":"node 24 is installed"}').reports[0]!.facts).toEqual(["node 24 is installed"]);
+    expect(parseReports('{"task":"T1","status":"done","facts":[]}').reports[0]!.facts).toBeUndefined();
+  });
+
+  it("reads the permission a sandbox kept out from a problem the chat did not mark", () => {
+    const net = { title: "Registry erişimi başarısız", detail: "Npm metadata isteği ENOTFOUND verdi." };
+    expect(neededPermission(net, "codex")).toEqual({ kind: "network", inferred: true });
+    expect(neededPermission({ title: "Localhost bağlantısı engelli", detail: "127.0.0.1 üzerinde dinleme EPERM ile reddedildi." }, "codex")).toEqual({ kind: "network", inferred: true });
+    expect(neededPermission({ title: "Chromium could not start", detail: "browserType.launch: Operation not permitted" }, "deepseek")).toEqual({ kind: "command", inferred: true });
+    expect(neededPermission({ title: "Cannot write", detail: "/Users/me/shared/out is outside the sandbox: Operation not permitted" }, "codex")).toEqual({
+      kind: "folder",
+      value: "/Users/me/shared/out",
+      inferred: true,
+    });
+    // The work itself, or a CLI without a sandbox of its own: nothing to grant.
+    expect(neededPermission({ title: "Tests fail", detail: "2 of 40 failed" }, "codex")).toBeUndefined();
+    expect(neededPermission({ title: "DB", detail: "permission denied for table users" }, "codex")).toBeUndefined();
+    expect(neededPermission(net, "claude")).toBeUndefined();
+    expect(neededPermission(net, undefined)).toBeUndefined();
+    // What the chat named comes first.
+    expect(neededPermission({ ...net, permission: { kind: "command", value: "npm ci" } }, "claude")).toEqual({ kind: "command", value: "npm ci" });
+    // Network is on and the sandbox still stops it: only full access is left.
+    expect(permissionGrant({ provider: "codex", access: "edit", network: true }, { kind: "network" })).toMatchObject({ how: "full", patch: { access: "full" } });
+    expect(permissionGrant({ provider: "codex", access: "edit", network: false }, { kind: "network" })).toMatchObject({ how: "network", patch: { network: true } });
   });
 
   it("reads the tasks a chat waits for, given as a list or one id", () => {

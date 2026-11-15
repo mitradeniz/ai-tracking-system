@@ -1,3 +1,4 @@
+import { neededPermission, type NeededPermission } from "@aitrack/core";
 import type { Agent, BoardStatus, Reason, Task, TaskIssue, TaskSnapshot, TrackEvent } from "@aitrack/core";
 import { explainStep, parseLimitReason, REFUSED, type RefusedStep } from "@aitrack/core";
 import type { ChatRunner, ProjectDetail, RunnerState, RunSummary } from "./api.ts";
@@ -122,7 +123,9 @@ export function localMessage(message: string, t: T): string {
   if (m) return t("run_msg_working", { provider: m[1]! });
   m = /^Reply sent: ([\s\S]*)$/.exec(message);
   if (m) return t("run_msg_reply", { text: m[1]! });
-  m = /^Manager: (replied|left for you|allowed|sent it again|approved|sent back|asked to merge)(?: — )?([\s\S]*)$/.exec(message);
+  m = /^Manager: moved to (\S+)(?: — ([\s\S]*))?$/.exec(message);
+  if (m) return t("msg_manager_moved", { to: m[1]!, text: m[2] ?? "" });
+  m = /^Manager: (replied|left for you|allowed|sent it again|approved|sent back|asked to merge|granted)(?: — )?([\s\S]*)$/.exec(message);
   if (m) {
     const text = m[2]!.replace(/ · To look at: /, ` · ${t("appr_check")}: `);
     return t(`msg_manager_${m[1]!.replace(/ /g, "_")}` as Parameters<T>[0], { text });
@@ -283,12 +286,13 @@ export interface Problem {
   steps?: RefusedStep[];
   /** A decision: the options the chat offered, as buttons. */
   choices?: IssueChoice[];
-  /** A permission the chat asked for, which the person can allow for it from now on. */
-  permission?: IssuePermission;
+  /** A permission the chat asked for (or that its problem shows), which the person can allow for it from now on. */
+  permission?: NeededPermission;
 }
 
 export type IssueChoice = NonNullable<TaskIssue["choices"]>[number];
 export type IssuePermission = NonNullable<TaskIssue["permission"]>;
+export type { NeededPermission } from "@aitrack/core";
 
 // What a refused step does and how risky it is: shared with the tracker, which lets a manager allow safe steps.
 export { explainStep, permissionRules, REFUSED, type RefusedStep, type StepRisk, type StepWhat } from "@aitrack/core";
@@ -317,6 +321,8 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
   const title = task?.title ?? s.id;
   const out: Problem[] = [];
   const lastRun = lastRunOf(model, s.id);
+  // The CLI of the chat: in a sandbox (Codex, DeepSeek) a problem may show a permission the chat did not name.
+  const provider = lastRun?.provider ?? model.runners?.settings?.chats?.[s.agent ?? task?.agent ?? ""]?.provider;
   const refused: Array<{ index: number; title: string }> = [];
   (s.issues ?? []).forEach((i, index) => {
     // Notes need no answer: they are shown with the task, not as problems.
@@ -332,8 +338,9 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
       fix: issueFix(s.id, title, i),
       issues: [{ index, title: i.title }],
       ...(i.choices?.length && { choices: i.choices }),
-      ...(i.permission && { permission: i.permission }),
     });
+    const permission = neededPermission(i, provider);
+    if (permission) out[out.length - 1]!.permission = permission;
   });
   // Every step the CLI refused, on one card.
   if (refused.length) {
@@ -384,11 +391,14 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
     !s.reason.startsWith("Stopped from") &&
     !s.reason.startsWith("The run stopped")
   ) {
+    // The reason sums up the problems: it asks for a permission only when none of them does.
+    const permission = out.some((p) => p.permission) ? undefined : neededPermission({ title: s.reason }, provider);
     out.unshift({
       kind: "needs-you",
       title: t("issue_blocked"),
       detail: localReason(s.reason, t),
       fix: `About task ${s.id} (${title}), which is blocked: ${s.reason}\n<your answer or decision>\nContinue with this, verify, and report again.`,
+      ...(permission && { permission }),
     });
   }
   return out;

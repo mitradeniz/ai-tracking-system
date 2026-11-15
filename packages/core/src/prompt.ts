@@ -43,6 +43,7 @@ WORK FOR LATER: when something another task or chat will provide is missing, or 
 "followUps":[{"title":"<the work, as a task title>","detail":"<what you did instead and what done looks like>","agent":"<chat id, if you know>","after":["<task id it needs>"]}]
 Notes that need no action (the size of a PR, the branch it is based on) go in "summary".
 If you cannot go on at all until another task of the plan is done, report status "blocked" with "waitingFor":["<task id>"] and a short "reason": the task comes back to you when that task is done.
+ALREADY CHECKED: when you checked something about the environment or the project that other chats would otherwise check again (a tool, extension or service is there and works, a command passes, a version), add it to "facts", one short sentence each with how you checked, at most 5: "facts":["pgvector 0.8 is enabled on the dev database (psql -c '\\dx')"]. Only what you ran yourself.
 Write "title", "detail", "reason" and the labels in {{language}}, for the project owner, without jargon. Never hide a problem inside "summary".`;
 
 export const DEFAULT_DISPATCH_TEMPLATE = `TASK {{task.id}} — {{task.title}}

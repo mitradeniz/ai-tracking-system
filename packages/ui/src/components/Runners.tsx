@@ -591,6 +591,7 @@ export function AutoDispatch({
           </select>
         </label>
       )}
+      <SavingMode model={model} onError={onError} />
       {limits.map((l) => (
         <button
           key={l.cli}
@@ -626,6 +627,71 @@ export function AutoDispatch({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Saving mode: each task gets a conversation of its own instead of one that grows with every task
+ * the chat did, and what chats checked is passed on. The facts can be looked at and removed.
+ */
+function SavingMode({ model, onError }: { model: Model; onError: (m: string) => void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const on = Boolean(model.runners?.settings.saving);
+  const facts = model.runners?.facts ?? [];
+  const key = model.detail.key;
+  return (
+    <>
+      <button
+        className={`switch small-switch ${on ? "on" : ""}`}
+        role="switch"
+        aria-checked={on}
+        title={t("save_modeHint")}
+        onClick={() => void api.saveRunnerProject(key, { saving: !on }).catch((e: Error) => onError(e.message))}
+      >
+        <span className="knob" aria-hidden="true" />
+        <span>{t("save_mode")}</span>
+      </button>
+      <InfoTip text={t("save_modeHint")} align="end" />
+      {(on || facts.length > 0) && (
+        <button className="btn tiny ghost" title={t("facts_hint")} onClick={() => setOpen(true)}>
+          {t("facts_button", { n: facts.length })}
+        </button>
+      )}
+      {open && (
+        <Dialog title={t("facts_title")} onClose={() => setOpen(false)} wide>
+          <p className="small">{t("facts_intro")}</p>
+          {!on && <p className="small muted">{t("facts_off")}</p>}
+          {facts.length === 0 ? (
+            <p className="small muted">{t("facts_none")}</p>
+          ) : (
+            <ul className="facts">
+              {[...facts].reverse().map((f) => (
+                <li key={f.text}>
+                  <span className="grow">{f.text}</span>
+                  <span className="small muted mono">{[f.task, f.at.slice(0, 10)].filter(Boolean).join(" · ")}</span>
+                  <button
+                    className="icon-btn"
+                    aria-label={t("facts_remove")}
+                    title={t("facts_remove")}
+                    onClick={() => void api.removeFacts(key, [f.text]).catch((e: Error) => onError(e.message))}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {facts.length > 0 && (
+            <div className="row">
+              <button className="btn small ghost danger" onClick={() => void api.removeFacts(key, "all").catch((e: Error) => onError(e.message))}>
+                {t("facts_clear")}
+              </button>
+            </div>
+          )}
+        </Dialog>
+      )}
+    </>
   );
 }
 

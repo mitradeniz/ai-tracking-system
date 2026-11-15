@@ -597,6 +597,8 @@ export class ProjectManager extends EventEmitter {
     target.events.push(event);
     this.changed(target.key);
     this.emit("activity", { key: target.key, event, projectName: target.project?.project.name });
+    // What the chat checked is kept for the other chats (the runners listen).
+    if (report.facts?.length) this.emit("facts", { key: target.key, task: report.task, agent: report.agent, facts: report.facts });
     if (event.type === "blocked" && event.waitingFor?.length) {
       await this.addWaitDependencies(target.key, report.task, event.waitingFor).catch((e) => this.emit("warning", e));
     }

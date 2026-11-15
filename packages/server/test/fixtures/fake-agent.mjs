@@ -71,6 +71,10 @@ const final =
     ? "Here is the project file.\n```json\n" + JSON.stringify(plan, null, 2) + "\n```\nT-01 can start right away."
     : scenario === "issues"
     ? "Done, with two open points.\n```aitrack-report\n" + JSON.stringify({ task, status: "done", summary: english ? "Payment form and API added" : "Ödeme formu ve API eklendi", issues }) + "\n```"
+    : scenario === "sandbox"
+    ? "npm could not reach the registry.\n```aitrack-report\n" + JSON.stringify({ task, status: "blocked", reason: "npm ci failed", issues: [{ title: "Registry erişimi başarısız", detail: "Npm metadata isteği ENOTFOUND verdi.", kind: "error" }, { title: "Localhost bağlantısı engelli", detail: "127.0.0.1 üzerinde dinleme EPERM ile reddedildi.", kind: "error" }] }) + "\n```"
+    : scenario === "facts"
+    ? "All done.\n```aitrack-report\n" + JSON.stringify({ task, status: "done", summary: "fake work", facts: ["pgvector 0.8 is enabled on the dev database (psql -c '\\dx')", "  "] }) + "\n```"
     : scenario === "wait"
     ? "I need T1 merged first.\n```aitrack-report\n" + JSON.stringify({ task, status: "blocked", reason: "Needs T1 merged", waitingFor: [process.env.FAKE_WAIT ?? "T1"] }) + "\n```"
     : scenario === "done" || scenario === "steps"
@@ -145,7 +149,9 @@ if (format === "dsh") {
   out({ type: "item.started", item: { id: "1", type: "command_execution", command: "npm test" } });
   out({ type: "item.completed", item: { id: "1", type: "command_execution", command: "npm test", exit_code: 0 } });
   out({ type: "item.completed", item: { id: "2", type: "agent_message", text: final } });
-  out({ type: "turn.completed", usage: {} });
+  // FAKE_CODEX_USAGE "input,cached,output": what Codex counts for the whole conversation so far.
+  const total = (process.env.FAKE_CODEX_USAGE ?? "").split(",").map(Number);
+  out({ type: "turn.completed", usage: total.length === 3 && total.every(Number.isFinite) ? { input_tokens: total[0], cached_input_tokens: total[1], output_tokens: total[2] } : {} });
 } else if (format === "claude") {
   const sid = flag("--resume") ?? flag("--session-id");
   // FAKE_MODE: the mode the CLI really runs in (auto mode may be unavailable for the account).

@@ -12,7 +12,7 @@ import { agentPath, claudeHasAutoMode, resolveBinary, which } from "./env.ts";
 import { hookSnippets, type HookSignal } from "./hooks.ts";
 import { codexRecordedReset, usageLimit, type UsageLimit } from "./limits.ts";
 import { buildInvocation, OutputParser, PROVIDER_INFO, writeInvocationFiles, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
-import { normalizeRunner, splitDirs, type ProjectRunners, type RunnerStore } from "./store.ts";
+import { normalizeRunner, splitDirs, type Fact, type ProjectRunners, type RunnerStore, type SessionUsage } from "./store.ts";
 
 export type RunState = "running" | "waiting" | "finished" | "failed" | "stopped";
 
@@ -55,6 +55,45 @@ interface Run extends RunSummary {
   lastUsageEmit: number;
   /** The CLI account this run uses: chats on the same one share its usage limit. */
   limitKey: string;
+  /** What the CLI had counted for the conversation before this run (counters it reports for a whole conversation). */
+  usageBase?: SessionUsage;
+  /** It started a new conversation instead of continuing one. */
+  fresh?: boolean;
+}
+
+/**
+ * Counters a CLI reports for its whole conversation instead of for one run: Codex's tokens, Claude
+ * Code's cost. A run that continues a conversation shows what it added.
+ */
+const CUMULATIVE: Partial<Record<ProviderId, Array<keyof SessionUsage>>> = { codex: ["input", "cached", "output"], claude: ["costUsd"] };
+
+/** What a run used: the CLI's counters, minus what the conversation had before it where they count the whole conversation. */
+export function runUsage(provider: ProviderId, reported: RunUsage, base: SessionUsage | undefined): RunUsage {
+  const out: RunUsage = { ...reported };
+  const fields = CUMULATIVE[provider];
+  if (!fields || !base) return out;
+  for (const f of fields) {
+    const now = reported[f];
+    const before = base[f];
+    // Smaller than before: the CLI counted this run alone (or started over); keep it as it is.
+    if (typeof now === "number" && typeof before === "number" && now >= before) out[f] = now - before;
+  }
+  return out;
+}
+
+/** The counters a CLI reports for the whole conversation, to keep for its next run. */
+export function conversationUsage(provider: ProviderId, reported: RunUsage): SessionUsage | undefined {
+  const fields = CUMULATIVE[provider];
+  if (!fields) return undefined;
+  const out: SessionUsage = {};
+  for (const f of fields) if (typeof reported[f] === "number") out[f] = reported[f];
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** What other chats already checked: given to a run in saving mode so it does not check it again. */
+export function factsBlock(facts: Fact[]): string {
+  const lines = facts.slice(-25).map((f) => `- ${f.text}${f.task ? ` (${f.task}, ${f.at.slice(0, 10)})` : ""}`);
+  return `ALREADY CHECKED IN THIS PROJECT (by other chats; trust these and do not check them again, unless your work changes them or one turns out to be wrong — then say so in "facts")\n${lines.join("\n")}`;
 }
 
 /** A CLI whose usage limit is used up, until it resets. */
@@ -113,8 +152,13 @@ export function limitKeyOf(runner: { provider: string; binary?: string }): strin
 const CONTINUE_AFTER_LIMIT =
   "The usage limit has reset. Continue the task where you stopped; do not redo the steps you finished. Report with the aitrack-report block when you are done or need something.";
 
+/** The run settings the app shows; what the tracker keeps for itself (sessions, counters) stays out. */
+export type PublicRunners = Pick<ProjectRunners, "autoDispatch" | "maxConcurrent" | "chats" | "manager"> & { saving: boolean };
+
 export interface RunnerState {
-  settings: ProjectRunners;
+  settings: PublicRunners;
+  /** What chats checked about the environment and the project (saving mode passes them on). */
+  facts: Fact[];
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
   held: string[];
   /** Chats whose CLI waits for its usage limit to reset; their tasks go on by themselves then. */
@@ -328,6 +372,13 @@ export class RunManager extends EventEmitter {
       // No limits.
     }
     this.manager.on("changed", ({ key }: { key: string }) => this.scheduleAuto(key));
+    // What a chat checked is kept for the others.
+    this.manager.on("facts", ({ key, task, agent, facts }: { key: string; task?: string; agent?: string; facts: string[] }) => {
+      void this.store
+        .addFacts(key, facts, { task, agent })
+        .then(() => this.emit("runners", { key }))
+        .catch(() => undefined);
+    });
     for (const key of this.manager.keys()) this.scheduleAuto(key);
   }
 
@@ -338,8 +389,10 @@ export class RunManager extends EventEmitter {
     const errors: Record<string, string> = {};
     for (const [k, v] of this.errors) if (k.startsWith(`${key}:`)) errors[k.slice(key.length + 1)] = v;
     const base = defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
+    const p = this.store.project(key);
     return {
-      settings: this.store.project(key),
+      settings: { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true },
+      facts: this.store.facts(key),
       held: [...this.held].filter((h) => h.startsWith(`${key}:`)).map((h) => h.slice(key.length + 1)),
       limits: Object.entries(this.store.project(key).chats).flatMap(([agent, runner]) => {
         const l = this.limits.get(limitKeyOf(runner));
@@ -381,7 +434,7 @@ export class RunManager extends EventEmitter {
   }
 
   private summary(r: Run): RunSummary {
-    const { child: _c, log: _l, logBase: _b, file: _f, stopRequested: _s, stopNote: _n, lastProgressAt: _p, lastUsageEmit: _u, ...rest } = r;
+    const { child: _c, log: _l, logBase: _b, file: _f, stopRequested: _s, stopNote: _n, lastProgressAt: _p, lastUsageEmit: _u, usageBase: _ub, fresh: _fr, ...rest } = r;
     return { ...rest, lines: r.logBase + r.log.length };
   }
 
@@ -411,14 +464,23 @@ export class RunManager extends EventEmitter {
     return runner;
   }
 
-  async saveProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number }): Promise<ProjectRunners> {
+  async saveProject(key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean }): Promise<PublicRunners> {
     this.manager.context(key);
-    const settings = await this.store.setProject(key, patch);
+    const p = await this.store.setProject(key, patch);
+    const settings: PublicRunners = { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true };
     // Switching automatic dispatch on again releases the chats the person stopped.
     if (patch.autoDispatch === true) for (const h of [...this.held]) if (h.startsWith(`${key}:`)) this.held.delete(h);
     this.emit("runners", { key });
     this.scheduleAuto(key);
     return settings;
+  }
+
+  /** The person removes facts that are wrong or out of date (by their text), or all of them. */
+  async removeFacts(key: string, texts: string[] | "all"): Promise<Fact[]> {
+    this.manager.context(key);
+    const facts = await this.store.removeFacts(key, texts);
+    this.emit("runners", { key });
+    return facts;
   }
 
   // ---- runs -------------------------------------------------------------------------------------
@@ -478,7 +540,10 @@ export class RunManager extends EventEmitter {
       throw new HttpError(409, `${limit.cli} waits for its usage limit until ${new Date(limit.until).toISOString()}.`);
     }
 
-    const resume = runner.session === "keep" ? runner.sessionId : undefined;
+    // Saving mode (or a chat set to a session per task): the task's own conversation, or a new one.
+    // Otherwise the chat's one conversation, where it remembers every earlier task.
+    const ownSession = settings.saving === true || runner.session === "perTask";
+    const resume = ownSession ? this.store.taskSession(key, agent, taskId) : runner.session === "keep" ? runner.sessionId : undefined;
     const parts: string[] = [];
     // The chat's session prompt (shared context, protocol): given when a conversation starts, and
     // again to a conversation that goes on when it changed since (or the tracker has no record).
@@ -491,13 +556,16 @@ export class RunManager extends EventEmitter {
         sessionPrompt = promptHash;
       }
     } else if (bootstrap) {
-      const seen = this.store.sessionPrompt(key, agent);
+      const seen = this.store.sessionPrompt(key, agent, resume);
       if (!seen || seen.session !== resume || seen.hash !== promptHash) {
         parts.push(`${SESSION_PROMPT_CHANGED}\n\n${bootstrap}`);
         sessionPrompt = promptHash;
       }
     }
     parts.push(runnerPreamble(taskId, runner, project.settings.language === "tr" ? "Turkish" : "English"));
+    // Saving mode: what other chats already checked, so this one does not check it again.
+    const facts = settings.saving === true ? this.store.facts(key) : [];
+    if (facts.length) parts.push(factsBlock(facts));
     parts.push(renderTaskPrompt(project, taskId, { serverUrl: this.manager.serverUrl, agentId: agent }));
     // The chat stopped this task until other tasks were done; they are, so it picks up where it stopped.
     if (view.resumes?.length) {
@@ -536,7 +604,10 @@ export class RunManager extends EventEmitter {
     const holding = board.agents.find((a) => a.agent.id === agentId)?.holding ?? [];
     const task = taskId ?? (holding.length === 1 ? holding[0] : last?.task) ?? holding[0];
     if (!task) throw new HttpError(409, "This chat holds no task to reply about.");
-    const resume = last?.task === task && last.sessionId ? last.sessionId : runner.sessionId;
+    const sameTask = last?.task === task && last.sessionId ? last.sessionId : undefined;
+    // Saving mode: the task's own conversation; otherwise the chat's one conversation.
+    const ownSession = this.store.project(key).saving === true || runner.session === "perTask";
+    const resume = (ownSession ? (this.store.taskSession(key, agentId, task) ?? sameTask) : sameTask) ?? runner.sessionId;
     if (!resume) throw new HttpError(409, "There is no session to continue yet. Send the task first.");
     // Steps allowed for this one run (Claude Code rules), on top of the chat's own.
     const extra = runner.provider === "claude" ? (options.extraTools ?? []) : [];
@@ -557,8 +628,11 @@ export class RunManager extends EventEmitter {
     sessionPrompt?: string;
   }): Promise<RunSummary> {
     const { key, task, agent, runner, prompt, resume, kind, auto, sessionPrompt } = input;
+    // Once the session is known: the prompt it read, and the conversation this task has.
     const readPrompt = (session: string | undefined) => {
-      if (sessionPrompt && session) void this.store.setSessionPrompt(key, agent, session, sessionPrompt).catch(() => undefined);
+      if (!session) return;
+      if (sessionPrompt) void this.store.setSessionPrompt(key, agent, session, sessionPrompt).catch(() => undefined);
+      void this.store.setTaskSession(key, agent, task, session).catch(() => undefined);
     };
     const ctx = this.manager.context(key);
     const workdir = runner.workdir || defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
@@ -634,6 +708,8 @@ export class RunManager extends EventEmitter {
       lastUsageEmit: 0,
       freshSession: !resume && runner.session === "keep" ? invocation.sessionId : undefined,
       priorSession: runner.sessionId,
+      usageBase: resume ? this.store.sessionUsage(key, resume) : undefined,
+      fresh: !resume,
       limitKey: limitKeyOf(runner),
     };
     // The first run on a CLI after its window reset starts a new 5-hour window.
@@ -752,7 +828,7 @@ export class RunManager extends EventEmitter {
             this.append(run, `! ${ev.text}`);
           } else if (ev.kind === "usage" || ev.kind === "tool") {
             run.tools = parser.tools;
-            run.usage = { ...parser.usage };
+            run.usage = runUsage(run.provider, parser.usage, run.usageBase);
             if (Date.now() - run.lastUsageEmit > 3000) {
               run.lastUsageEmit = Date.now();
               this.emit("run", { key, run: this.summary(run) });
@@ -783,7 +859,10 @@ export class RunManager extends EventEmitter {
         stderrTail.slice(-3).join(" ").trim() ??
         "";
       run.tools = parser.tools;
-      run.usage = { ...parser.usage };
+      run.usage = runUsage(run.provider, parser.usage, run.usageBase);
+      // What the CLI counts for the whole conversation: the next run in it shows only what it adds.
+      const whole = conversationUsage(run.provider, parser.usage);
+      if (run.sessionId && whole) void this.store.setSessionUsage(key, run.sessionId, whole).catch(() => undefined);
       if (parser.denials.length) run.denials = [...parser.denials];
       if (!ok && invocation.permissionMode === "auto" && !parser.mode && AUTO_MODE_ERROR.test(reason)) this.autoOff.set(binary, "error");
       void this.finish(run, {
@@ -896,6 +975,11 @@ export class RunManager extends EventEmitter {
    * exist. The same when the CLI says the session it was asked to resume is gone.
    */
   private async forgetDeadSession(run: Run, error: string): Promise<void> {
+    const gone = /no conversation found|session[^\n]{0,40}not found|unknown session|could not (?:find|resume) (?:the )?session/i.test(error);
+    // The task's own conversation (saving mode): the next run of the task starts a new one.
+    if (run.sessionId && this.store.taskSession(run.key, run.agent, run.task) === run.sessionId && (gone || (run.fresh && !run.tools && !run.usage?.output))) {
+      await this.store.forgetTaskSession(run.key, run.agent, run.task);
+    }
     const stored = this.store.chat(run.key, run.agent).sessionId;
     if (!stored || stored !== run.sessionId) return;
     const silent = !run.tools && !run.usage?.output;

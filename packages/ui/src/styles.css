@@ -2323,6 +2323,24 @@ pre.prompt {
   user-select: none;
 }
 
+/* An open drawer or dialog lies over the drag strip. Electron takes clicks in a drag region as a
+ * window move even when another element is drawn on top, so the × of a drawer would never close
+ * it. Overlays are no-drag, and while one is open the strips under it stop dragging. */
+:root[data-desktop] .drawer,
+:root[data-desktop] .drawer-backdrop,
+:root[data-desktop] .dialog,
+:root[data-desktop] .dialog-backdrop,
+:root[data-desktop] .tour,
+:root[data-desktop] [aria-modal="true"] {
+  -webkit-app-region: no-drag;
+}
+:root[data-desktop]:has(.drawer, .dialog-backdrop, [aria-modal="true"]) .brand,
+:root[data-desktop]:has(.drawer, .dialog-backdrop, [aria-modal="true"]) .header,
+:root[data-desktop]:has(.drawer, .dialog-backdrop, [aria-modal="true"]) .sidebar > h2,
+:root[data-desktop]:has(.drawer, .dialog-backdrop, [aria-modal="true"]) .mini-head {
+  -webkit-app-region: no-drag;
+}
+
 :root[data-desktop] .header button,
 :root[data-desktop] .header input,
 :root[data-desktop] .header select,
@@ -5640,4 +5658,34 @@ details.advanced[open] {
 .holo-row.elsewhere .holo-who small {
   color: var(--eye-main);
   opacity: 0.8;
+}
+
+/* Saving mode's facts: what chats already checked, newest first. */
+.facts {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 50vh;
+  overflow: auto;
+}
+.facts li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.facts li .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Full authority: the manager option that hands over the person's decisions stands out a little. */
+.check.strong-check {
+  border-color: var(--warn-line, var(--edge-strong));
 }

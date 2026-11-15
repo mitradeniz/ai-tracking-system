@@ -2,14 +2,27 @@ import { createHash, randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { explainStep, jsonObjectsIn, parseLimitReason, parsePlan, REFUSED, type Board, type IntegrationPlan, type ProjectFile, type TaskView } from "@aitrack/core";
+import {
+  explainStep,
+  jsonObjectsIn,
+  neededPermission,
+  parseLimitReason,
+  parsePlan,
+  permissionGrant,
+  REFUSED,
+  type Board,
+  type IntegrationPlan,
+  type ProjectFile,
+  type RefusedStep,
+  type TaskView,
+} from "@aitrack/core";
 import { HttpError, type ProjectManager } from "../manager.ts";
 import { applyPlan, chatsTable, notesTable, openNotes, PLAN_RULES, PLAN_SHAPE, planTable, proposalsTable } from "../proposals.ts";
 import { writeFileAtomic } from "../store.ts";
 import type { ProjectGenerator } from "./generate.ts";
 import { usageLimit } from "./limits.ts";
 import { defaultWorkdir, planFolder, type RunManager } from "./runs.ts";
-import { approves, type ManagerSettings } from "./store.ts";
+import { approves, mergesGreen, reviewsWork, type ManagerSettings } from "./store.ts";
 
 /**
  * The manager: an AI CLI that stands in for the person while they are away. When something waits
@@ -19,6 +32,9 @@ import { approves, type ManagerSettings } from "./store.ts";
  * automation it may run read-only git and gh commands to review finished work). Payments,
  * credentials, legal terms, publishing, deleting, pushing and risky steps stay with the person;
  * merging into main only when the person turned on "merge green PRs", and then by the task's own chat.
+ * With full authority it also grants permissions, moves tasks between chats, takes duplicate tasks
+ * out of the plan and has chats merge the PRs a task needs; payments, credentials and accounts,
+ * legal terms, deleting data and publishing still stay with the person.
  */
 
 export interface ManagerAction {
@@ -109,6 +125,10 @@ export const MERGE_TOOLS = [
   "Bash(gh run list:*)",
   "Bash(gh run watch:*)",
 ];
+/** Risky steps a manager with full authority may allow, as the person would: reaching the network, pushing a branch. */
+const AUTHORITY_STEPS = new Set<RefusedStep["what"]>(["network", "gitPush"]);
+/** At most this many tasks taken out of the plan in one look: a guard against a manager that clears the plan. */
+const MAX_DROPS = 10;
 /** Not a setting: only a guard against a loop, when every run of the manager causes another. */
 const SAFETY_RUNS_PER_HOUR = 30;
 const clip = (s: string, n: number) => {
@@ -308,7 +328,8 @@ export class Supervisor extends EventEmitter {
       return null;
     }
     // What the person wrote may ask for an approval, even when approving is otherwise off.
-    const effective: ManagerSettings = asked ? { ...settings, approveDone: true } : settings;
+    // With full authority it also continues tasks the person stopped.
+    const effective: ManagerSettings = { ...settings, ...(asked && { approveDone: true }), ...(settings.fullAuthority && { resumeStopped: true }) };
     const { project, board, filePath } = this.manager.context(key);
     const ctxPlan = planFolder(filePath);
     // A look the person asked for also shows what was left for them.
@@ -356,7 +377,7 @@ export class Supervisor extends EventEmitter {
     try {
       const prompt = managerPrompt(project, board, attention, effective, messages);
       // Reviewing finished work itself: it may read the chats' folders and run read-only git and gh commands.
-      const reviews = effective.fullAuto ? attention.filter((a) => a.view.status === "review") : [];
+      const reviews = reviewsWork(effective) ? attention.filter((a) => a.view.status === "review") : [];
       const job = await this.generator.startPrompt({
         provider: settings.provider,
         model: settings.model,
@@ -457,6 +478,7 @@ export class Supervisor extends EventEmitter {
   private async carryOut(key: string, answer: ManagerAnswer, attention: Attention[], run: ManagerRun, settings: ManagerSettings): Promise<void> {
     const listed = new Map(attention.map((a) => [a.view.task.id, a]));
     const acted = new Set<string>();
+    let dropped = 0;
     const done = (type: string, task: string | undefined, ok: boolean, detail: string) => {
       run.actions.push({ type, ...(task && { task }), ok, detail: clip(detail, 500) });
       this.record(key, run);
@@ -477,6 +499,16 @@ export class Supervisor extends EventEmitter {
           done(type, task, true, message);
           continue;
         }
+        // With full authority it changes who does a task, or takes one nobody started out of the plan.
+        if (type === "assign" || type === "drop") {
+          if (!settings.fullAuthority) throw new Error("Moving and removing tasks needs full authority; left for the person.");
+          if (!task) throw new Error("No task given.");
+          if (acted.has(task)) throw new Error("Only one action per task.");
+          const detail = type === "drop" ? await this.drop(key, task, a, (dropped += 1)) : await this.assign(key, task, a);
+          acted.add(task);
+          done(type, task, true, detail);
+          continue;
+        }
         if (!task || !listed.has(task)) {
           if (type !== "plan") done(type, task, false, "Not a task waiting for a decision.");
           continue;
@@ -489,7 +521,7 @@ export class Supervisor extends EventEmitter {
         const view = this.manager.context(key).board.byId.get(task)!;
         // A finished task in review can have notes closed (work that other tasks cover) and be approved;
         // with full automation also sent back, and its PRs merged when that is allowed. Nothing else.
-        const forReview = ["approve", "close", ...(settings.fullAuto ? ["revise"] : []), ...(settings.mergeGreen && approves(settings) ? ["merge"] : [])];
+        const forReview = ["approve", "close", ...(reviewsWork(settings) ? ["revise"] : []), ...(mergesGreen(settings) ? ["merge"] : [])];
         if (view.status === "review" && !forReview.includes(type)) throw new Error("A finished task in review is only approved, or left for the person.");
         switch (type) {
           case "approve": {
@@ -521,7 +553,7 @@ export class Supervisor extends EventEmitter {
             break;
           }
           case "revise": {
-            if (!settings.fullAuto || view.status !== "review") throw new Error("Only finished work is sent back, with full automation on.");
+            if (!reviewsWork(settings) || view.status !== "review") throw new Error("Only finished work is sent back, with full automation on.");
             const text = String(a.text ?? "").trim();
             if (!text) throw new Error("Nothing to fix was given.");
             const before = view.runtime.history.filter((e) => e.type === "note" && e.message?.startsWith("Manager: sent back")).length;
@@ -536,7 +568,8 @@ export class Supervisor extends EventEmitter {
             break;
           }
           case "merge": {
-            if (!settings.mergeGreen || !approves(settings) || view.status !== "review") throw new Error("Merging is not turned on.");
+            // A task in review merges its own PRs; with full authority a waiting task may also have the PRs it needs merged.
+            if (!mergesGreen(settings) || (view.status !== "review" && !settings.fullAuthority)) throw new Error("Merging is not turned on.");
             if (view.runtime.history.some((e) => e.type === "note" && e.message?.startsWith("Manager: asked to merge"))) {
               throw new Error("Its chat was asked to merge once already; approve it, or it is left for the person.");
             }
@@ -544,7 +577,8 @@ export class Supervisor extends EventEmitter {
             if (open.length) throw new Error("It has open problems; close them or leave it for the person.");
             if (!item.canReply) throw new Error("Its chat has no session to continue; left for the person.");
             const which = typeof a.note === "string" ? a.note.trim() : "";
-            await this.runs.reply(key, item.agent, mergeText(task, which || view.runtime.pr || ""), task, { extraTools: MERGE_TOOLS });
+            if (view.status !== "review" && !which) throw new Error("Name the PRs to merge.");
+            await this.runs.reply(key, item.agent, mergeText(task, which || view.runtime.pr || "", settings.fullAuthority), task, { extraTools: MERGE_TOOLS });
             await note(task, `asked to merge${which ? ` — ${which}` : ""}`);
             done(type, task, true, which || "asked its chat to merge its PRs");
             break;
@@ -576,7 +610,7 @@ export class Supervisor extends EventEmitter {
               .filter(({ i }) => !i.state && i.title.startsWith(REFUSED));
             const lastRun = this.runs.state(key).runs.find((r) => r.task === task);
             const steps = refused.map(({ i, index }) => ({ index, title: i.title, step: explainStep(i.title.slice(REFUSED.length), lastRun?.workdir) }));
-            const safe = steps.filter((s) => s.step.risk !== "risky");
+            const safe = steps.filter((s) => s.step.risk !== "risky" || (settings.fullAuthority && AUTHORITY_STEPS.has(s.step.what)));
             if (!safe.length) throw new Error("No refused step that is safe to allow.");
             if (item.provider !== "claude") throw new Error("Steps can be allowed only for Claude Code chats.");
             const runner = this.runs.store.chat(key, item.agent);
@@ -590,6 +624,15 @@ export class Supervisor extends EventEmitter {
             await this.say(key, item, this.manager.context(key).board.byId.get(task)!, text);
             await note(task, `allowed ${safe.map((s) => s.step.shown).join("; ")}`);
             done(type, task, true, safe.map((s) => s.step.shown).join("; "));
+            break;
+          }
+          case "grant": {
+            if (!settings.fullAuthority) throw new Error("Permissions are granted by the person; left for the person.");
+            if (item.provider === "manual") throw new Error("This chat is run by hand; left for the person.");
+            const detail = await this.grant(key, item, view, a.issue);
+            await this.say(key, item, this.manager.context(key).board.byId.get(task)!, grantText(detail));
+            await note(task, `granted — ${detail}`);
+            done(type, task, true, detail);
             break;
           }
           case "wait": {
@@ -654,6 +697,60 @@ export class Supervisor extends EventEmitter {
         done("plan", undefined, false, (e as Error).message);
       }
     }
+  }
+
+  /**
+   * Gives a task's chat the permission one of its problems needs, for good, and closes every problem
+   * the same permission settles. Returns what was allowed.
+   */
+  private async grant(key: string, item: Attention, view: TaskView, issue: unknown): Promise<string> {
+    const runner = this.runs.store.chat(key, item.agent);
+    const open = view.runtime.issues.map((i, index) => ({ i, index })).filter(({ i }) => !i.state && i.kind !== "warning" && !i.title.startsWith(REFUSED));
+    const picked = issue === undefined || issue === null ? open : open.filter((x) => x.index === Number(issue));
+    const need = picked.map((x) => neededPermission(x.i, item.provider)).find(Boolean) ?? neededPermission({ title: view.runtime.reason ?? "" }, item.provider);
+    if (!need) throw new Error("No problem of this task asks for a permission.");
+    const grant = permissionGrant(runner, need);
+    if (grant.how !== "none") await this.runs.saveChat(key, item.agent, grant.patch);
+    const settled = open.filter(({ i }) => {
+      const p = neededPermission(i, item.provider);
+      if (!p) return false;
+      const g = permissionGrant(runner, p);
+      return grant.how === "full" || (g.how === grant.how && g.shown === grant.shown);
+    });
+    if (settled.length) await this.manager.setIssueStates(key, view.task.id, settled.map(({ i, index }) => ({ index, title: i.title })), "resolved");
+    return grant.how === "full" ? "full access" : grant.how === "none" ? `${grant.shown} (it had it already)` : grant.shown;
+  }
+
+  /** Gives a task to another chat; a task its chat holds is released first. Returns what was done. */
+  private async assign(key: string, task: string, a: Record<string, unknown>): Promise<string> {
+    const { project, board } = this.manager.context(key);
+    const view = board.byId.get(task);
+    if (!view) throw new Error("Unknown task.");
+    const to = String(a.to ?? "").trim();
+    if (!project.agents.some((x) => x.id === to)) throw new Error(`Unknown chat "${to}".`);
+    if (["dispatched", "in_progress", "review", "done"].includes(view.status)) throw new Error(`It is ${view.status}; only a task that waits, is ready, blocked or failed moves.`);
+    const holder = view.runtime.agent;
+    if (to === view.task.agent && (!holder || holder === to)) throw new Error(`It is ${to}'s task already.`);
+    const why = typeof a.note === "string" ? clip(a.note, 500) : "";
+    // The chat that holds it lets it go; the new chat starts it over.
+    if (holder) await this.manager.addEvent(key, { type: "reopened", task }, "manager");
+    await this.manager.saveTask(key, { id: task, title: view.task.title, agent: to }, "update");
+    await this.manager
+      .addEvent(key, { type: "note", task, message: `Manager: moved to ${to}${why ? ` — ${why}` : ""}` }, "manager")
+      .catch(() => undefined);
+    return `to ${to}${why ? ` — ${why}` : ""}`;
+  }
+
+  /** Takes a task nobody started out of the plan (a duplicate, or work another task covers). */
+  private async drop(key: string, task: string, a: Record<string, unknown>, count: number): Promise<string> {
+    if (count > MAX_DROPS) throw new Error(`At most ${MAX_DROPS} tasks are taken out in one look.`);
+    const view = this.manager.context(key).board.byId.get(task);
+    if (!view) throw new Error("Unknown task.");
+    if (view.status !== "waiting" && view.status !== "ready") throw new Error("Only a task no chat has started is taken out of the plan.");
+    const why = typeof a.note === "string" ? clip(a.note, 500) : "";
+    if (!why) throw new Error("Say why it is not needed: the task it duplicates or that covers it.");
+    await this.manager.removeTask(key, task);
+    return `${view.task.title} — ${why}`;
   }
 
   /** Gives text to the chat of a task: continues its session, or sends the task again with it. */
@@ -760,8 +857,26 @@ export function parseAnswer(text: string): ManagerAnswer {
 const REVISE_INTRO = "The manager reviewed this task and it is not done as asked yet. Fix this, then report the task again:";
 const REVISE_END = "Keep to the task and its acceptance; do not push to main or merge.";
 
-/** What a reviewed task's chat is told when the manager lets it merge its own PRs. */
-export function mergeText(task: string, which: string): string {
+/** What a chat is told after the manager gave it a permission for good. */
+export function grantText(what: string): string {
+  return `The manager allowed this for you from now on: ${what}. Do the step that needed it now and go on with the task where you stopped. Report again when you are done or need something.`;
+}
+
+/**
+ * What a reviewed task's chat is told when the manager lets it merge its own PRs. With full
+ * authority the PRs named may also be other tasks' PRs that this task needs in main.
+ */
+export function mergeText(task: string, which: string, others = false): string {
+  if (others) {
+    return [
+      `The manager decided that these pull requests go into main now: ${which || "this task's own PRs"}. Merge them yourself; task ${task} needs them.`,
+      "- Only when CI and the required checks are green on the latest commit. If they are still running, wait for them; if they stay red, do not merge and report why.",
+      "- Use a merge commit (gh pr merge <number> --merge). Do not delete branches, do not force-push, never push to main directly.",
+      "- Stacked PRs: start with the lowest one, and point the next one at main (gh pr edit <number> --base main) before you merge it.",
+      "- They may belong to other tasks or chats: the manager decided it, as the person would. Merge only the PRs named here.",
+      `When you are done, go on with task ${task}, or report it done again with the PRs you merged and their merge commits.`,
+    ].join("\n");
+  }
   return [
     `The manager reviewed task ${task} and it may go into main now. Merge its own pull requests yourself${which ? `: ${which}` : "."}`,
     "- Only when CI and the required checks are green on the latest commit. If they are still running, wait for them; if they stay red, do not merge and report why.",
@@ -783,7 +898,7 @@ function lastEvent(v: TaskView): string | undefined {
   return undefined;
 }
 
-function attentionText(a: Attention): string {
+function attentionText(a: Attention, settings: ManagerSettings): string {
   const v = a.view;
   if (v.status === "review") {
     const back = v.runtime.history.filter((e) => e.type === "note" && e.message?.startsWith("Manager: sent back")).length;
@@ -818,7 +933,8 @@ function attentionText(a: Attention): string {
       const choices = i.choices?.length
         ? ` | options: ${i.choices.map((c, n) => `[${n}] ${c.label}${c.recommended ? " (recommended)" : ""}`).join(", ")}`
         : "";
-      const asks = i.permission ? ` [asks permission: ${i.permission.kind}${i.permission.value ? ` ${clip(i.permission.value, 120)}` : ""}]` : "";
+      const need = neededPermission(i, a.provider);
+      const asks = need ? ` [${need.inferred ? "needs permission (read from the problem)" : "asks permission"}: ${need.kind}${need.value ? ` ${clip(need.value, 120)}` : ""}]` : "";
       lines.push(`  [${index}] ${i.kind ?? "error"}: ${clip(i.title, 200)}${i.detail ? ` — ${clip(i.detail, 400)}` : ""}${choices}${asks}`);
     }
   }
@@ -828,22 +944,27 @@ function attentionText(a: Attention): string {
       `Refused steps: ${refused
         .map(({ i }) => {
           const s = explainStep(i.title.slice(REFUSED.length));
-          return `[${s.risk === "risky" ? "risky" : "safe"}] ${clip(s.shown, 160)}`;
+          const may = s.risk !== "risky" || (settings.fullAuthority && AUTHORITY_STEPS.has(s.what));
+          return `[${may ? "safe" : "risky"}] ${clip(s.shown, 160)}`;
         })
         .join("; ")}`,
     );
   }
   if (v.task.dependsOn.length) lines.push(`Depends on: ${v.task.dependsOn.join(", ")}`);
+  if (settings.fullAuthority && !open.some(({ i }) => neededPermission(i, a.provider))) {
+    const need = neededPermission({ title: v.runtime.reason ?? "" }, a.provider);
+    if (need) lines.push(`[needs permission (read from the reason): ${need.kind}]`);
+  }
   return lines.join("\n");
 }
 
-const mergeAllowed = (s: ManagerSettings) => s.mergeGreen && approves(s);
+const mergeAllowed = mergesGreen;
 
 /** The actions on finished tasks, as the settings allow them. */
 function reviewActions(s: ManagerSettings): string {
   if (!approves(s)) return "";
   const lines: string[] = [];
-  if (s.fullAuto) {
+  if (reviewsWork(s)) {
     lines.push(
       "- approve: you review finished work for the person. Accept a task IN REVIEW when the work does what the task and its acceptance ask. Look at the change yourself when you can, read-only: the chat's folder, git status/log/diff/show there, gh pr view/diff/checks for its PR (with --repo or the PR's URL); if you cannot, judge from the report and say so in \"note\". Gaps that do not stop other work do not hold it back: a test that is skipped or not in CI yet, a check only a person can do (comparing with a design, a real device), a small deviation the chat explains. Close those problems first (\"close\"), add real remaining work to the plan, put what the person may want to look at in \"check\" (what and how, in one or two sentences), and approve. Give the reason in \"note\".",
       `- revise: send a task IN REVIEW back to its chat with what to fix ("text"), when the work does not do what was asked or its checks fail. At most ${MAX_SEND_BACKS} times per task; after that leave it for the person.`,
@@ -853,7 +974,11 @@ function reviewActions(s: ManagerSettings): string {
       "- approve: accept a task IN REVIEW when its report shows the work is done as asked: the summary covers the task and its acceptance, it says how it was verified, and nothing is left open. Give the reason in \"note\". When in doubt, leave it for the person with what to check.",
     );
   }
-  if (mergeAllowed(s)) {
+  if (mergeAllowed(s) && s.fullAuthority) {
+    lines.push(
+      "- merge: have a task's chat merge green PRs into main (\"note\": which PRs, in what order). For a task IN REVIEW that is good to approve: its own PRs. For a task that waits because PRs of other tasks are not in main yet: those PRs (name them). The chat merges only with green checks and reports again. Once per task.",
+    );
+  } else if (mergeAllowed(s)) {
     lines.push(
       "- merge: when a task IN REVIEW is good to approve but its own PRs are not merged into main yet, have its chat merge them (\"note\": which PRs, in what order). The chat merges only with green checks, then reports again and you approve it then. Once per task; do not use it for work that is not done, or whose PRs belong to other tasks or are already merged.",
     );
@@ -864,9 +989,18 @@ function reviewActions(s: ManagerSettings): string {
 function reviewShapes(s: ManagerSettings): string {
   if (!approves(s)) return "";
   return [
-    s.fullAuto ? ',{"type":"approve","task":"<id>","note":"…","check":"…"},{"type":"revise","task":"<id>","text":"…"}' : ',{"type":"approve","task":"<id>","note":"…"}',
+    reviewsWork(s) ? ',{"type":"approve","task":"<id>","note":"…","check":"…"},{"type":"revise","task":"<id>","text":"…"}' : ',{"type":"approve","task":"<id>","note":"…"}',
     mergeAllowed(s) ? ',{"type":"merge","task":"<id>","note":"…"}' : "",
   ].join("");
+}
+
+/** What a manager with full authority may do besides answering chats. */
+function authorityActions(s: ManagerSettings): string {
+  if (!s.fullAuthority) return "";
+  return `
+- grant: give a task's chat, for good, the permission one of its problems needs (marked [asks permission] or [needs permission]; "issue" is its number, or leave it out). The app changes the chat's run settings: an allowed command, network in its sandbox, another folder, or full access when its CLI has nothing finer. Then the chat goes on.
+- assign: give a task to another chat ("to": the chat id, "note": why). Any task of the plan that waits, is ready, blocked or failed; one its chat holds starts over with the new chat. Use it to spread work (PR and computer-use work to the chat that can do it, say) and for a chat that cannot do the task.
+- drop: take a task no chat has started out of the plan when it is not needed: it duplicates another task, or another task covers it ("note": which one). Tasks that depended on it take over its dependencies.`;
 }
 
 /** What the manager is told: its job, the limits, the actions, and the project as it is now. */
@@ -881,7 +1015,7 @@ Do what it asks with the actions you have, on the tasks listed below (a finished
     : "";
   const proposals = board.proposals.filter((p) => p.state === "open");
   const notes = openNotes(board);
-  return `You are the manager of the project "${project.project.name}" in AI Tracking System, standing in for the person while they are away. AI chats work on the tasks of the plan, and automatic dispatch sends ready tasks to free chats. Your job is to keep the work moving: decide what the person would decide when it is safe and easy to undo, answer the chats, and keep the plan up to date. You only read (you may look at the files in this folder${settings.fullAuto ? ", and run the read-only git and gh commands named below to review finished work" : ""}); the app carries out the actions you return.
+  return `You are the manager of the project "${project.project.name}" in AI Tracking System, standing in for the person while they are away. AI chats work on the tasks of the plan, and automatic dispatch sends ready tasks to free chats. Your job is to keep the work moving: decide what the person would decide when it is safe and easy to undo, answer the chats, and keep the plan up to date. You only read (you may look at the files in this folder${reviewsWork(settings) ? ", and run the read-only git and gh commands named below to review finished work" : ""}); the app carries out the actions you return.
 
 ACTIONS
 - reply: answer a chat waiting on a task (its question, the approval of its plan, "go on"). Be concrete and decisive. Prefer the chat's own recommendation when it is sensible.
@@ -890,19 +1024,29 @@ ACTIONS
 - wait: when a task cannot go on until other tasks of the plan are done, park it; it goes back to its chat when they are done.
 - resend: send a failed task again, with a short note on what to do differently.
 - close: mark problems of a task resolved or ignored when nothing has to be done about them.
-- leave: leave something for the person, in one clear sentence, when only they can do it.${reviewActions(settings)}
+- leave: leave something for the person, in one clear sentence, when only they can do it.${reviewActions(settings)}${authorityActions(settings)}
 - plan: fold the proposals and notes into the plan (rules below).
 At most one action per task, plus "close" (put "close" before the action it makes possible).
-
-NEVER: approve payments, enter or ask for credentials, accept legal terms, publish, delete data, push to a main branch${
+${
+  settings.fullAuthority
+    ? `
+FULL AUTHORITY: the person gave you their authority over this project. Decide and act as they would; do not leave them what you can do with your actions: grant the permissions chats need, move tasks between chats, take duplicates out of the plan, have green PRs merged, continue stopped work, choose between options. What you left for the person before comes back to you below: handle it now. "leave" is only for what a person has to do themselves: pay, sign in or create an account, accept terms, a check on a real device or by eye that the task asks the person for. Act on the tasks under ATTENTION; "assign" and "drop" may also name any task of the plan.
+`
+    : ""
+}
+NEVER: approve payments, enter or ask for credentials or create accounts, accept legal terms, publish or deploy to production, delete data or branches, push to a main branch${
     mergeAllowed(settings) ? ", merge into it other than with the \"merge\" action" : " or merge into it"
-  }, allow [risky] steps, or grant a problem marked [asks permission] (the person allows those for the chat for good). Leave those for the person.${
-    settings.fullAuto
+  }${
+    settings.fullAuthority
+      ? ". Leave those for the person."
+      : ', allow [risky] steps, or grant a problem marked [asks permission] or [needs permission] (the person allows those for the chat for good). Leave those for the person.'
+  }${
+    reviewsWork(settings)
       ? " Never approve work whose checks fail or that does not do what the task asks: send it back instead."
       : approves(settings)
         ? " Never approve a task whose report mentions failing checks, skipped parts or work left undone."
         : ""
-  } Act only on the tasks listed under ATTENTION.${settings.resumeStopped ? " A task STOPPED BY THE PERSON may be continued with a reply when its messages give no reason to keep it stopped." : ""}
+  } ${settings.fullAuthority ? "" : "Act only on the tasks listed under ATTENTION."}${settings.resumeStopped ? " A task STOPPED BY THE PERSON may be continued with a reply when its messages give no reason to keep it stopped." : ""}
 Write replies, notes, checks and the summary in ${language}.
 
 PLAN RULES
@@ -910,11 +1054,13 @@ ${PLAN_RULES}
 - Write titles, instructions and acceptance in ${language}.
 
 Answer with one JSON object in a \`\`\`json fence, and nothing after it:
-{"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${reviewShapes(settings)}],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"${messages.length ? ',"reply":"<your answer to the person>"' : ""}}
+{"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${reviewShapes(settings)}${
+    settings.fullAuthority ? ',{"type":"grant","task":"<id>","issue":0},{"type":"assign","task":"<id>","to":"<chat id>","note":"…"},{"type":"drop","task":"<id>","note":"…"}' : ""
+  }],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"${messages.length ? ',"reply":"<your answer to the person>"' : ""}}
 Leave out what you do not use.
 
 ${fromPerson}ATTENTION (tasks waiting for a decision, failed${approves(settings) ? ", or finished and waiting for approval" : ""})
-${attention.length ? attention.map(attentionText).join("\n\n") : "(none)"}
+${attention.length ? attention.map((a) => attentionText(a, settings)).join("\n\n") : "(none)"}
 
 PROPOSALS (work chats left for later)
 ${proposals.length ? proposalsTable(proposals) : "(none)"}

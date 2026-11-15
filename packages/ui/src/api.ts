@@ -104,6 +104,11 @@ export interface ManagerSettings {
   fullAuto?: boolean;
   /** Have a reviewed task's own chat merge its PRs into main when their checks are green. */
   mergeGreen?: boolean;
+  /**
+   * Full authority: grant permissions, move tasks between chats, take duplicates out of the plan,
+   * have green PRs merged, handle what it would leave for the person (includes the options above).
+   */
+  fullAuthority?: boolean;
 }
 
 /** A finished task the manager approved, for the person to look over. */
@@ -164,7 +169,10 @@ export interface ApplyResult {
 
 export interface RunnerState {
   manager?: ManagerState;
-  settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner> };
+  /** saving: each task gets its own conversation, and what chats checked is passed on (saving mode). */
+  settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner>; saving?: boolean };
+  /** What chats checked about the environment and the project, newest last. */
+  facts?: Array<{ text: string; task?: string; agent?: string; at: string }>;
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
   held?: string[];
   /** Chats whose CLI waits for its usage limit to reset; their tasks go on by themselves then. */
@@ -504,8 +512,10 @@ export const api = {
   providers: (refresh = false) =>
     request<{ providers: DetectedProvider[] }>("GET", `/api/providers${refresh ? "?refresh=1" : ""}`).then((r) => r.providers),
   runners: (key: string) => request<RunnerState>("GET", `/api/projects/${enc(key)}/runners`),
-  saveRunnerProject: (key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number }) =>
+  saveRunnerProject: (key: string, patch: { autoDispatch?: boolean; maxConcurrent?: number; saving?: boolean }) =>
     request<RunnerState["settings"]>("POST", `/api/projects/${enc(key)}/runners`, patch),
+  removeFacts: (key: string, texts: string[] | "all") =>
+    request<{ facts: NonNullable<RunnerState["facts"]> }>("POST", `/api/projects/${enc(key)}/facts/remove`, texts === "all" ? { all: true } : { texts }),
   saveRunner: (key: string, agent: string, runner: Partial<ChatRunner>) =>
     request<ChatRunner>("POST", `/api/projects/${enc(key)}/runners/${enc(agent)}`, { runner }),
   runTask: (key: string, task: string, agent?: string, extra?: string) =>

@@ -4,7 +4,7 @@ import type { TaskSnapshot } from "@aitrack/core";
 import type { RunSummary } from "../src/api.ts";
 import { translator } from "../src/i18n.ts";
 import { cardNote, explainStep, localMessage, notesOf, permissionRules, problemsOf, shownStatus, type Model } from "../src/model.ts";
-import { choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant } from "../src/problemActions.ts";
+import { choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, settledBy } from "../src/problemActions.ts";
 import type { ChatRunner } from "../src/api.ts";
 
 describe("permission rules", () => {
@@ -154,6 +154,30 @@ describe("refused steps and decisions", () => {
     expect(permissionGrant({ ...codex, access: "full" }, { kind: "command", value: "open" }).how).toBe("none");
     const grant = permissionGrant(codex, { kind: "network" });
     expect(continueAfterPermission(grant, translator("tr")).split("\n")[0]).toBe("Bundan sonra sana kalıcı olarak izin verildi: network.");
+  });
+
+  it("offers the permission a Codex chat's sandbox kept out, and settles every card it covers at once", () => {
+    const snap = {
+      id: "T1",
+      agent: "codex-c",
+      status: "blocked",
+      reasons: [],
+      issues: [
+        { title: "Registry erişimi başarısız", detail: "Npm metadata isteği ENOTFOUND verdi.", kind: "error" },
+        { title: "Localhost bağlantısı engelli", detail: "127.0.0.1 üzerinde dinleme EPERM ile reddedildi.", kind: "error" },
+        { title: "Testler kırmızı", detail: "2 test başarısız", kind: "error" },
+      ],
+    } as unknown as TaskSnapshot;
+    const codex: ChatRunner = { provider: "codex", access: "edit", session: "keep", unattended: true, network: false };
+    const model = { task: new Map([["T1", { id: "T1", title: "One", agent: "codex-c" }]]), runners: { runs: [], settings: { chats: { "codex-c": codex } } } } as unknown as Model;
+    const problems = problemsOf(model, snap, t);
+    expect(problems.map((p) => p.permission)).toEqual([{ kind: "network", inferred: true }, { kind: "network", inferred: true }, undefined]);
+    const grant = permissionGrant(codex, problems[0]!.permission!);
+    expect(grant).toMatchObject({ how: "network", patch: { network: true } });
+    expect(settledBy(problems, problems[0]!, codex, grant).issues!.map((i) => i.index)).toEqual([0, 1]);
+    // The same problems with a Claude Code chat: nothing to grant.
+    const claude = { ...model, runners: { runs: [], settings: { chats: { "codex-c": { ...codex, provider: "claude" } } } } } as unknown as Model;
+    expect(problemsOf(claude, snap, t).some((p) => p.permission)).toBe(false);
   });
 
   it("shows the permission a chat asked for on its problem", () => {

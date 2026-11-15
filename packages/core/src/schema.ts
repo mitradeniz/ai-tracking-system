@@ -237,6 +237,13 @@ function cleanReport(value: unknown): unknown {
     if (list.length) out.followUps = list;
     else delete out.followUps;
   } else if (out.followUps !== undefined) delete out.followUps;
+  // "facts": one sentence each; a single string is one fact.
+  if (typeof out.facts === "string") out.facts = [out.facts];
+  if (Array.isArray(out.facts)) {
+    const facts = [...new Set(out.facts.filter((x): x is string => typeof x === "string").map((x) => x.replace(/\s+/g, " ").trim().slice(0, 300)).filter(Boolean))];
+    if (facts.length) out.facts = facts.slice(0, 10);
+    else delete out.facts;
+  } else if (out.facts !== undefined) delete out.facts;
   if (Array.isArray(out.issues)) {
     out.issues = out.issues
       .filter((i): i is Record<string, unknown> => Boolean(i) && typeof i === "object" && !Array.isArray(i))
@@ -282,6 +289,11 @@ export const ReportSchema = z.preprocess(cleanReport, z.object({
     .optional()
     .describe("With status blocked: tasks of the plan the chat waits for. The task goes back to the same chat when they are done."),
   followUps: z.array(FollowUpSchema).max(10).optional(),
+  facts: z
+    .array(z.string().min(1).max(300))
+    .max(10)
+    .optional()
+    .describe("What the chat checked about the environment or the project, so other chats need not check it again (a tool is installed, a service answers)."),
 }));
 
 export type FollowUp = z.infer<typeof FollowUpSchema>;

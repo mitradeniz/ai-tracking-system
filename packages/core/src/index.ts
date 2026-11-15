@@ -9,3 +9,4 @@ export * from "./authoring.ts";
 export * from "./steps.ts";
 export * from "./plan.ts";
 export * from "./limit.ts";
+export * from "./permissions.ts";

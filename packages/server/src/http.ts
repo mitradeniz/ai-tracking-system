@@ -629,8 +629,17 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
       await runs().saveProject(key!, {
         autoDispatch: typeof body.autoDispatch === "boolean" ? body.autoDispatch : undefined,
         maxConcurrent: typeof body.maxConcurrent === "number" ? body.maxConcurrent : undefined,
+        saving: typeof body.saving === "boolean" ? body.saving : undefined,
       }),
     );
+  });
+  // Facts chats reported that are wrong or out of date: by their text, or all of them.
+  route("POST", "/api/projects/:key/facts/remove", async (ctx, [key]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    const texts = body.all === true ? "all" : Array.isArray(body.texts) ? body.texts.filter((x: unknown): x is string => typeof x === "string") : null;
+    if (!texts) throw new HttpError(400, '"texts" or "all" is required.');
+    send(ctx.res, 200, { facts: await runs().removeFacts(key!, texts) });
   });
   route("POST", "/api/projects/:key/runners/:agent", async (ctx, [key, agent]) => {
     control(ctx);

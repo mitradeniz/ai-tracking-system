@@ -7,7 +7,7 @@ import { InfoTip } from "./Info.tsx";
 import { useEyeHidden } from "./ManagerEye.tsx";
 import { CLI_NAME, GENERATORS, useProviders } from "./NewProject.tsx";
 
-const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve", "revise", "merge"]);
+const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve", "revise", "merge", "grant", "assign", "drop"]);
 
 /** What the manager left for the person in its recent runs, newest first, once each. */
 function leftForYou(log: ManagerRun[]): string[] {
@@ -199,7 +199,9 @@ export function ManagerDialog({
   const models = providers?.find((p) => p.id === draft.provider)?.models ?? [];
   const forYou = leftForYou(state.log);
   const manualChats = (model.detail.project?.agents ?? []).filter((a) => (model.runners?.settings.chats[a.id]?.provider ?? "manual") === "manual");
-  const approving = draft.approveDone || Boolean(draft.fullAuto);
+  const authority = Boolean(draft.fullAuthority);
+  const reviewing = Boolean(draft.fullAuto) || authority;
+  const approving = draft.approveDone || reviewing;
 
   const save = async (patch: Partial<ManagerSettings>, message?: string) => {
     setBusy(true);
@@ -220,6 +222,7 @@ export function ManagerDialog({
     approveDone: draft.approveDone,
     fullAuto: Boolean(draft.fullAuto),
     mergeGreen: Boolean(draft.mergeGreen),
+    fullAuthority: authority,
   });
   const runNow = async () => {
     setBusy(true);
@@ -265,35 +268,45 @@ export function ManagerDialog({
           </select>
         </div>
       </div>
-      <label className="check">
-        <input type="checkbox" checked={draft.resumeStopped} disabled={busy} onChange={(e) => setDraft({ ...draft, resumeStopped: e.target.checked })} />
-        {t("mgr_resume")} <InfoTip text={t("mgr_resumeHint")} />
-      </label>
-      <label className="check" title={draft.fullAuto ? t("mgr_fullAutoIncludes") : undefined}>
+      <label className="check" title={authority ? t("mgr_authorityIncludes") : undefined}>
         <input
           type="checkbox"
-          checked={draft.approveDone || Boolean(draft.fullAuto)}
-          disabled={busy || Boolean(draft.fullAuto)}
+          checked={draft.resumeStopped || authority}
+          disabled={busy || authority}
+          onChange={(e) => setDraft({ ...draft, resumeStopped: e.target.checked })}
+        />
+        {t("mgr_resume")} <InfoTip text={t("mgr_resumeHint")} />
+      </label>
+      <label className="check" title={reviewing ? t(authority ? "mgr_authorityIncludes" : "mgr_fullAutoIncludes") : undefined}>
+        <input
+          type="checkbox"
+          checked={approving}
+          disabled={busy || reviewing}
           onChange={(e) => setDraft({ ...draft, approveDone: e.target.checked })}
         />
         {t("mgr_approve")} <InfoTip text={t("mgr_approveHint")} />
       </label>
-      <label className="check">
-        <input type="checkbox" checked={Boolean(draft.fullAuto)} disabled={busy} onChange={(e) => setDraft({ ...draft, fullAuto: e.target.checked })} />
+      <label className="check" title={authority ? t("mgr_authorityIncludes") : undefined}>
+        <input type="checkbox" checked={reviewing} disabled={busy || authority} onChange={(e) => setDraft({ ...draft, fullAuto: e.target.checked })} />
         {t("mgr_fullAuto")} <InfoTip text={t("mgr_fullAutoHint")} />
       </label>
-      <label className="check" title={approving ? undefined : t("mgr_mergeNeedsApprove")}>
+      <label className="check" title={authority ? t("mgr_authorityIncludes") : approving ? undefined : t("mgr_mergeNeedsApprove")}>
         <input
           type="checkbox"
-          checked={Boolean(draft.mergeGreen) && approving}
-          disabled={busy || !approving}
+          checked={(Boolean(draft.mergeGreen) && approving) || authority}
+          disabled={busy || !approving || authority}
           onChange={(e) => setDraft({ ...draft, mergeGreen: e.target.checked })}
         />
         {t("mgr_mergeGreen")} <InfoTip text={t("mgr_mergeGreenHint")} />
       </label>
+      <label className="check strong-check">
+        <input type="checkbox" checked={authority} disabled={busy} onChange={(e) => setDraft({ ...draft, fullAuthority: e.target.checked })} />
+        {t("mgr_authority")} <InfoTip text={t("mgr_authorityHint")} />
+      </label>
       <div className="mgr-notes">
         {approving && !model.detail.project?.settings.requireApproval && <p className="small muted">{t("mgr_approveUnused")}</p>}
-        {draft.mergeGreen && approving && <p className="small muted">{t("mgr_mergeNote")}</p>}
+        {((draft.mergeGreen && approving) || authority) && <p className="small muted">{t("mgr_mergeNote")}</p>}
+        {authority && <p className="small warn-text">{t("mgr_authorityNote")}</p>}
         {providers && !installed.length && <p className="error small">{t("prop_noCli")}</p>}
         {manualChats.length > 0 && <p className="small muted">{t("mgr_manualChats", { chats: manualChats.map((a) => a.name).join(", ") })}</p>}
         <p className="small muted">{t("mgr_awake")}</p>
