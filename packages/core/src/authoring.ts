@@ -68,6 +68,14 @@ MILESTONES
 - Map the plan's phases or sprints to milestones with dates when the plan has them, and set
   task.milestone.
 
+A PROJECT ALREADY UNDER WAY
+- Plan only the work that is left. Do not create tasks for work that is done; say in the shared
+  context prompt what already exists and where.
+- Work that is half done becomes a task for the missing part only: say what exists and what is left.
+- Do not add dependencies on finished work.
+- When you cannot tell whether something is done, add a short first task that checks it and reports,
+  instead of guessing.
+
 Before answering, check: every id referenced exists; no cycles; tasks that can run in parallel have
 disjoint allowedPaths; every task has prompts or instructions, acceptance and estimateDays.`;
 

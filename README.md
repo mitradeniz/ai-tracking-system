@@ -549,7 +549,7 @@ Details and the report schema: [docs/agent-reporting.md](docs/agent-reporting.md
 
 Full reference: [docs/file-format.md](docs/file-format.md) · JSON Schema: [`schema/aitrack.schema.json`](schema/aitrack.schema.json) · validate with `npm run validate -- path/to/project.aitrack`.
 
-**New project?** Give your plan to an AI together with [these instructions](docs/authoring-with-ai.md), save the answer as `<project>.aitrack` in that repository, validate it and **Add project**.
+**New project?** Give your plan to an AI together with [these instructions](docs/authoring-with-ai.md), save the answer as `<project>.aitrack` in that repository, validate it and **Add project**. For a project already under way, give a chat that works in it the path of that file: it finds out what is done, asks you what it cannot see, and writes the plan for the rest.
 
 ## 🎨 Make it yours
 

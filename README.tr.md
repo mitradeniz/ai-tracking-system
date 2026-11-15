@@ -549,7 +549,7 @@ Ayrıntılar ve rapor şeması: [docs/agent-reporting.md](docs/agent-reporting.m
 
 Tam başvuru: [docs/file-format.md](docs/file-format.md) · JSON Şeması: [`schema/aitrack.schema.json`](schema/aitrack.schema.json) · doğrulamak için `npm run validate -- yol/proje.aitrack`.
 
-**Yeni proje mi?** Planını [bu talimatlarla](docs/authoring-with-ai.md) birlikte bir yapay zekâya ver, cevabı o repoda `<proje>.aitrack` olarak kaydet, doğrula ve **Proje ekle**.
+**Yeni proje mi?** Planını [bu talimatlarla](docs/authoring-with-ai.md) birlikte bir yapay zekâya ver, cevabı o repoda `<proje>.aitrack` olarak kaydet, doğrula ve **Proje ekle**. Yarıya gelmiş bir projede, o projede çalışan bir sohbete bu dosyanın yolunu ver: neyin bittiğini kendisi çıkarır, göremediğini sana sorar ve kalan iş için planı yazar.
 
 ## 🎨 Kendine göre ayarla
 
