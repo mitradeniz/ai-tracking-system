@@ -14,6 +14,7 @@ import {
   lastContextRun,
   problemsOf,
   shownStatus,
+  waitingFor,
   type Model,
 } from "../model.ts";
 import { Bang, InfoTip, useNow } from "./Info.tsx";
@@ -113,6 +114,10 @@ export function LanesView({
         const readyBusy = own.filter((s) => s.status === "ready" && !s.dispatchable).sort(urgency);
         const waiting = own.filter((s) => s.status === "waiting").sort(step);
         const review = own.filter((s) => s.status === "review");
+        // Parked until other tasks are done: the chat is free for other work meanwhile.
+        const parked = board.tasks.filter(
+          (s) => s.status === "blocked" && waitingFor(s) && (s.agent ?? model.task.get(s.id)?.agent) === agent.id && !av?.holding.includes(s.id),
+        );
         const failed = own.filter((s) => s.status === "failed");
         const doneAll = own.filter((s) => s.status === "done");
         const doneWithProblems = doneAll.filter((s) => problemsOf(model, s, t).length > 0);
@@ -120,7 +125,7 @@ export function LanesView({
         const isIdle = av?.hasRoom ?? true;
         const helped = helpedChats(model.tasks, agent.id);
         const empty =
-          holding.length + sendable.length + failed.length + review.length + readyBusy.length + waiting.length + doneAll.length === 0;
+          holding.length + parked.length + sendable.length + failed.length + review.length + readyBusy.length + waiting.length + doneAll.length === 0;
 
         const section = (title: string, items: TaskSnapshot[], extra?: React.ReactNode) =>
           items.length > 0 && (
@@ -249,6 +254,7 @@ export function LanesView({
             </div>
             {section(t("now"), holding)}
             {section(t("sendable"), sendable)}
+            {section(t("parkedN"), parked)}
             {section(t("failed"), failed)}
             {section(t("problems"), doneWithProblems)}
             {section(t("inReview"), review)}

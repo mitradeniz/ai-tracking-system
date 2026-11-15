@@ -5463,3 +5463,101 @@ details.advanced[open] {
 .mgr-said {
   white-space: pre-wrap;
 }
+
+/* What the manager approved: the ones not looked at yet stand out, "To look at" in amber. */
+.mgr-approvals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mgr-approval {
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.mgr-approval.unseen {
+  border-color: var(--ready-line);
+}
+
+.mgr-approval.seen {
+  opacity: 0.7;
+}
+
+.mgr-approval .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.appr-check {
+  color: var(--critical);
+}
+
+.appr-new {
+  margin-left: 8px;
+}
+
+.eye-holo h4.holo-approved-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.holo-new {
+  color: #00ff41;
+}
+
+.holo-mini {
+  padding: 1px 6px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.holo-mini:hover {
+  background: var(--eye-main);
+  color: #000;
+}
+
+.holo-ok {
+  color: #00ff41;
+  font-weight: 700;
+}
+
+.holo-row.approved.seen {
+  opacity: 0.6;
+}
+
+.holo-row.approved.unseen .holo-what {
+  color: #eaffef;
+}
+
+.holo-look {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid #ffd166;
+  border-radius: 3px;
+  color: #ffd166;
+  font-size: 10px;
+}
+
+.holo-checkline strong {
+  color: #ffd166;
+}
+
+.holo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}

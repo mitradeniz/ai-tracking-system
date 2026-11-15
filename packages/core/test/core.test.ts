@@ -149,7 +149,9 @@ describe("board", () => {
     const t3 = b.byId.get("T3")!;
     expect(t3.status).toBe("blocked");
     expect(t3.reasons).toEqual([{ kind: "waiting_for", tasks: ["T1"] }]);
-    expect(b.agents.find((x) => x.agent.id === "b")!.holding).toEqual(["T3"]);
+    // The chat is free for other work meanwhile.
+    expect(b.agents.find((x) => x.agent.id === "b")!.holding).toEqual([]);
+    expect(b.agents.find((x) => x.agent.id === "b")!.hasRoom).toBe(true);
 
     // T1 done: T3 is ready again, only for chat b, and comes before b's other work.
     const resumed = [...parked, ev("T1", "done", { message: "Merged" })];
@@ -166,6 +168,25 @@ describe("board", () => {
     // A later report without a wait ends it.
     const answered = [...parked, ev("T3", "started")];
     expect(computeBoard(p, answered).byId.get("T3")!.status).toBe("in_progress");
+  });
+
+  it("lets a chat do the task its parked task waits for, then gives the parked one back", () => {
+    const p = project();
+    // T3 (chat b) waits for T2, which is chat b's own work: without freeing the chat neither would move.
+    const events = [ev("T1", "done"), ev("T3", "dispatched", { agent: "b" }), ev("T3", "blocked", { reason: "Needs T2", waitingFor: ["T2"] })];
+    let b = computeBoard(p, events);
+    expect(b.byId.get("T2")).toMatchObject({ status: "ready", dispatchable: true, candidates: ["b"] });
+    expect(b.agents.find((x) => x.agent.id === "b")!.dispatchable).toEqual(["T2"]);
+    expect(b.counts.waiting).toBeGreaterThanOrEqual(1);
+
+    // While b works on T2, T3 stays parked and b holds only T2.
+    b = computeBoard(p, [...events, ev("T2", "dispatched", { agent: "b" })]);
+    expect(b.agents.find((x) => x.agent.id === "b")!.holding).toEqual(["T2"]);
+
+    // T2 done: T3 goes back to b, first.
+    b = computeBoard(p, [...events, ev("T2", "dispatched", { agent: "b" }), ev("T2", "done")]);
+    expect(b.byId.get("T3")).toMatchObject({ status: "ready", resumes: ["T2"], candidates: ["b"] });
+    expect(b.agents.find((x) => x.agent.id === "b")!.dispatchable[0]).toBe("T3");
   });
 });
 

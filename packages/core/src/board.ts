@@ -240,11 +240,12 @@ export function computeBoard(project: ProjectFile, events: TrackEvent[]): Board 
     return tasks.every((id) => (runtime.get(id)?.finishedAt ?? "") >= since) ? { state: "resume", tasks } : null;
   };
 
-  // How many tasks each chat holds. A task waiting for others keeps its chat; one ready to go back does not.
+  // How many tasks each chat holds. A task parked until other tasks are done lets its chat take other
+  // work meanwhile (the task it waits for may even be the same chat's); it comes back to that chat first.
   const holding = new Map<string, string[]>(project.agents.map((a) => [a.id, []]));
   for (const t of project.tasks) {
     const r = runtime.get(t.id);
-    if (r && HOLDING.includes(r.status) && parked(r)?.state !== "resume") {
+    if (r && HOLDING.includes(r.status) && !parked(r)) {
       const who = r.agent && holding.has(r.agent) ? r.agent : t.agent;
       holding.get(who)?.push(t.id);
     }

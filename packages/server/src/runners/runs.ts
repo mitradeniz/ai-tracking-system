@@ -210,7 +210,7 @@ export function runnerPreamble(taskId: string, runner: ChatRunner, language = "E
     `- Do not stop for something another chat will provide (images, a reference pack, an API that is not merged) or a check that cannot run here: use a placeholder or a mock, finish the task, and list the rest under "followUps" with the task it needs in "after". They become proposed tasks.`,
     `- If your permissions refuse a step, do not stop for it: find another way or finish the rest without it, and list the refused step under "issues".`,
     `- Report status "blocked" only for what you cannot decide or do yourself: a choice between real alternatives, or something only a person can do. Put one clear question in ${language} in "reason", and give each decision as one "needs-you" issue with "choices", your recommendation first.`,
-    `- If you cannot go on until another task of the plan is done (its code merged, its contract written), do not ask the person to send this task again. Report status "blocked" with "waitingFor": ["<task id>"] and a one-line "reason"; do not add an issue for the wait. The tracker sends this task back to you, in this conversation, when those tasks are done.`,
+    `- If you cannot go on until another task of the plan is done (its code merged, its contract written), do not ask the person to send this task again. Report status "blocked" with "waitingFor": ["<task id>"] and a one-line "reason"; do not add an issue for the wait. The tracker sends this task back to you, in this conversation, when those tasks are done; meanwhile it may give you other tasks here, so leave your work committed or written down before you report.`,
     `- List anything that failed, was skipped or is missing under "issues" in the report, with a plain ${language} title, what is needed, and a prompt that would fix it.`,
   ];
   if (runner.unattended) {
@@ -466,7 +466,9 @@ export class RunManager extends EventEmitter {
         const summary = v?.runtime.summary ? `: ${clip(v.runtime.summary, 400)}` : "";
         return `- ${id} (${v?.task.title ?? id})${summary}${v?.runtime.pr ? ` · PR: ${v.runtime.pr}` : ""}`;
       });
-      parts.push(`THE TASKS YOU WAITED FOR ARE DONE\n${done.join("\n")}\nContinue task ${taskId} where you stopped.`);
+      parts.push(
+        `THE TASKS YOU WAITED FOR ARE DONE\n${done.join("\n")}\nContinue task ${taskId} where you stopped. You may have worked on other tasks in the meantime: first go back to this task's branch and folder and check its state (git status, git log), then go on.`,
+      );
     }
     // Sent again after it was stopped, failed or hit a limit: go on from where it got to.
     else if ((view.status === "blocked" || view.status === "failed") && view.runtime.agent === agent) {
@@ -482,7 +484,7 @@ export class RunManager extends EventEmitter {
   }
 
   /** Continues a chat's session with the person's message (an answer, an approval, a correction). */
-  async reply(key: string, agentId: string, message: string, taskId?: string): Promise<RunSummary> {
+  async reply(key: string, agentId: string, message: string, taskId?: string, options: { extraTools?: string[] } = {}): Promise<RunSummary> {
     const text = message.trim();
     if (!text) throw new HttpError(400, "The reply is empty.");
     const { board } = this.manager.context(key);
@@ -496,7 +498,10 @@ export class RunManager extends EventEmitter {
     if (!task) throw new HttpError(409, "This chat holds no task to reply about.");
     const resume = last?.task === task && last.sessionId ? last.sessionId : runner.sessionId;
     if (!resume) throw new HttpError(409, "There is no session to continue yet. Send the task first.");
-    return this.launch({ key, task, agent: agentId, runner, prompt: text, resume, kind: "reply", auto: false });
+    // Steps allowed for this one run (Claude Code rules), on top of the chat's own.
+    const extra = runner.provider === "claude" ? (options.extraTools ?? []) : [];
+    const forRun = extra.length ? { ...runner, allowedTools: [runner.allowedTools ?? "", ...extra].filter(Boolean).join("\n") } : runner;
+    return this.launch({ key, task, agent: agentId, runner: forRun, prompt: text, resume, kind: "reply", auto: false });
   }
 
   private async launch(input: {

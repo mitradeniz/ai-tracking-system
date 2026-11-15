@@ -234,6 +234,10 @@ export function ManagerEye({
     .sort((a, b) => (a.ts < b.ts ? 1 : -1))
     .slice(0, 7);
   const lastRun = state.log[0];
+  // What it approved, newest first: the ones the person has not looked at come first.
+  const approvals = [...(state.approvals ?? [])].sort((a, b) => Number(Boolean(a.seen)) - Number(Boolean(b.seen))).slice(0, 5);
+  const unseen = state.unseen ?? 0;
+  const markSeen = (tasks?: string[]) => void api.approvalsSeen(key, tasks).catch(() => undefined);
   // The last few things the person wrote to the manager, oldest first, with its answers.
   const talks = state.log.filter((r) => r.message).slice(0, 3).reverse();
   const limits = [...new Map((model.runners?.limits ?? []).map((l) => [l.cli, l])).values()];
@@ -395,6 +399,71 @@ export function ManagerEye({
                       </>
                     }
                     action={<ShowInApp label={t("eye_showInApp")} onClick={() => onOpenTask(snap.id)} />}
+                  />
+                ))}
+              </>
+            )}
+
+            {approvals.length > 0 && (
+              <>
+                <h4 className="holo-approved-head" style={line()}>
+                  <span>
+                    {t("eye_approved")}
+                    {unseen > 0 && <span className="holo-new"> · {t("appr_new", { n: unseen })}</span>}
+                  </span>
+                  {unseen > 0 && (
+                    <button className="holo-mini" onClick={() => markSeen()}>
+                      {t("appr_allSeen")}
+                    </button>
+                  )}
+                </h4>
+                {approvals.map((a) => (
+                  <Item
+                    key={`${a.task}-${a.at}`}
+                    id={`appr:${a.task}:${a.at}`}
+                    open={expanded}
+                    onToggle={toggle}
+                    style={line()}
+                    className={`holo-row approved ${a.seen ? "seen" : "unseen"}`}
+                    head={
+                      <>
+                        <span className="holo-ok">✓</span>
+                        <span className="holo-what">
+                          <b>{a.task}</b> {clip(a.title, 60)}
+                        </span>
+                        {a.check && <span className="holo-look">{t("appr_check")}</span>}
+                        <span className="holo-time">{ago(a.at, now, lang)}</span>
+                      </>
+                    }
+                    more={
+                      <>
+                        <p>
+                          <b>{a.task}</b> {a.title}
+                          <span className="holo-when"> · {formatTime(a.at, lang)}</span>
+                        </p>
+                        {a.check && (
+                          <p className="holo-quote holo-checkline">
+                            <strong>{t("appr_check")}:</strong> {a.check}
+                          </p>
+                        )}
+                        {a.note && (
+                          <p className="holo-quote">
+                            {t("appr_why")}: {a.note}
+                          </p>
+                        )}
+                        {a.pr && <p className="holo-quote">PR: {a.pr}</p>}
+                      </>
+                    }
+                    action={
+                      <div className="holo-actions">
+                        <ShowInApp label={t("eye_showInApp")} onClick={() => onOpenTask(a.task)} />
+                        {!a.seen && (
+                          <button className="holo-go" onClick={() => markSeen([a.task])}>
+                            ✓ {t("appr_seen")}
+                          </button>
+                        )}
+                      </div>
+                    }
                   />
                 ))}
               </>

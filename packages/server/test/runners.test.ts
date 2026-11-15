@@ -243,6 +243,7 @@ describe("agent runners", () => {
       const second = (await invocations())[1]!;
       expect(second.stdin).toContain("THE TASKS YOU WAITED FOR ARE DONE");
       expect(second.stdin).toContain("- T1 (One): Contract merged");
+      expect(second.stdin).toContain("go back to this task's branch");
       detail = (await call("GET", `/api/projects/${key}`)).json;
       expect(detail.board.tasks.find((t: { id: string }) => t.id === "T3").resumes).toBeNull();
     } finally {
@@ -403,6 +404,115 @@ describe("agent runners", () => {
       expect(await managerCalls()).toBe(1);
       const events = (await call("GET", `/api/projects/${key}`)).json.events;
       expect(events.some((e: { type: string; source: string; message?: string }) => e.type === "approved" && e.source === "manager" && e.message?.includes("tests pass"))).toBe(true);
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
+  it("reviews finished work itself with full automation: approves with what to look at, sends back the rest, at most twice", { timeout: 30000 }, async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
+      actions: [
+        { type: "close", task: "T3", issues: [0], state: "resolved" },
+        { type: "approve", task: "T3", note: "Does what the task asks.", check: "Compare the screen with the design." },
+        { type: "revise", task: "T1", text: "Add the missing test." },
+        { type: "merge", task: "T1" },
+      ],
+      summary: "Approved T3, sent T1 back.",
+    });
+    const managerRuns = async () => (await invocations()).filter((i) => i.stdin.includes("You are the manager"));
+    const status = async (id: string) =>
+      (await call("GET", `/api/projects/${key}`)).json.board.tasks.find((t: { id: string }) => t.id === id).status as string;
+    try {
+      expect((await call("POST", `/api/projects/${key}/info`, { requireApproval: true })).status).toBe(200);
+      // T1 was done by chat a (it has a session to continue); T3 is reported finished with a check only a person can do.
+      await setRunner("a", { provider: "claude" });
+      await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+      await waitFor("T1", "review");
+      await call("POST", "/api/report", {
+        project: "demo",
+        task: "T3",
+        agent: "b",
+        status: "done",
+        summary: "Screen built.",
+        issues: [{ title: "The design comparison needs you", kind: "needs-you" }],
+      });
+      const on = await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "claude", binary: FAKE, fullAuto: true });
+      expect(on.json.settings).toMatchObject({ fullAuto: true, approveDone: false, mergeGreen: false });
+      let state = on.json;
+      for (let i = 0; i < 150 && state.log.at(-1)?.state !== "done"; i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      }
+      const first = state.log.at(-1);
+      expect(first.actions.map((a: { type: string; task: string; ok: boolean }) => `${a.type}:${a.task}:${a.ok}`)).toEqual([
+        "close:T3:true",
+        "approve:T3:true",
+        "revise:T1:true",
+        "merge:T1:false",
+      ]);
+      expect(await status("T3")).toBe("done");
+      // The approval is listed for the person, with what to look at.
+      expect(state.approvals[0]).toMatchObject({ task: "T3", title: "Three", note: "Does what the task asks.", check: "Compare the screen with the design." });
+      expect(state.unseen).toBe(1);
+      // It reviewed with read-only git and gh commands, and was told how.
+      const look = (await managerRuns())[0]!;
+      expect(look.stdin).toContain("you review finished work for the person");
+      expect(look.stdin).toContain('"check"');
+      expect(look.stdin).not.toContain('"type":"merge"');
+      expect(look.args).toContain("Bash(gh pr diff:*)");
+      expect(look.args).not.toContain("Bash(gh pr merge:*)");
+
+      // T1 goes back to its chat with what to fix; each time it reports again, the manager looks again.
+      // After two send-backs it is left for the person.
+      for (let i = 0; i < 300; i += 1) {
+        state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+        if (state.log.some((r: { actions: { type: string; ok: boolean }[] }) => r.actions.some((a) => a.type === "revise" && !a.ok))) break;
+        await new Promise((r) => setTimeout(r, 60));
+      }
+      const sentBack = (await invocations()).filter((i) => i.stdin.includes("it is not done as asked yet"));
+      expect(sentBack).toHaveLength(2);
+      expect(sentBack[0]!.stdin).toContain("Add the missing test.");
+      const last = state.log.find((r: { actions: { type: string; ok: boolean }[] }) => r.actions.some((a) => a.type === "revise" && !a.ok));
+      expect(last.forYou.some((f: string) => f.startsWith("T1: sent back 2 times"))).toBe(true);
+      expect(await status("T1")).toBe("review");
+
+      // The person looked over the approvals.
+      const seen = await call("POST", `/api/projects/${key}/manager/approvals/seen`, {});
+      expect(seen.json.unseen).toBe(0);
+      expect(seen.json.approvals[0].seen).toBe(true);
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
+  it("has a reviewed task's own chat merge its PRs only when merging is turned on, once", { timeout: 20000 }, async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({ actions: [{ type: "merge", task: "T1", note: "PR #5" }], summary: "T1's chat merges #5." });
+    try {
+      expect((await call("POST", `/api/projects/${key}/info`, { requireApproval: true })).status).toBe(200);
+      await setRunner("a", { provider: "claude" });
+      await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+      await waitFor("T1", "review");
+      await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "claude", binary: FAKE, approveDone: true, mergeGreen: true });
+      let state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      for (let i = 0; i < 200 && !(state.log.length >= 2 && state.log[0].state === "done"); i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      }
+      const runs = [...state.log].reverse();
+      expect(runs[0].actions[0]).toMatchObject({ type: "merge", task: "T1", ok: true, detail: "PR #5" });
+      // Asked once: the second look (after the chat reported again) does not ask again.
+      expect(runs[1].actions[0]).toMatchObject({ type: "merge", task: "T1", ok: false });
+      const merge = (await invocations()).find((i) => i.stdin.includes("may go into main now"))!;
+      expect(merge.stdin).toContain("Merge its own pull requests yourself: PR #5");
+      expect(merge.stdin).toContain("--merge");
+      // The merge commands are allowed for that one reply only.
+      expect(merge.args).toContain("Bash(gh pr merge:*)");
+      expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a.allowedTools ?? "").not.toContain("gh pr merge");
+      const prompt = (await invocations()).find((i) => i.stdin.includes("You are the manager"))!.stdin;
+      expect(prompt).toContain('{"type":"merge"');
+      expect(prompt).toContain('merge into it other than with the "merge" action');
     } finally {
       delete process.env.FAKE_MANAGER_ANSWER;
     }

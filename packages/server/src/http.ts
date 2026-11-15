@@ -542,6 +542,12 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     const body = await readJson(ctx.req);
     send(ctx.res, 202, await supervisor().message(key!, typeof body.text === "string" ? body.text : ""));
   });
+  // The person looked over what the manager approved (some tasks, or all of them).
+  route("POST", "/api/projects/:key/manager/approvals/seen", async (ctx, [key]) => {
+    const body = await readJson(ctx.req);
+    const tasks = Array.isArray(body.tasks) ? body.tasks.filter((t: unknown): t is string => typeof t === "string").slice(0, 200) : undefined;
+    send(ctx.res, 200, supervisor().markSeen(key!, tasks));
+  });
   route("POST", "/api/projects/:key/manager/run", async (ctx, [key]) => {
     control(ctx);
     const run = supervisor().run(key!, "manual");

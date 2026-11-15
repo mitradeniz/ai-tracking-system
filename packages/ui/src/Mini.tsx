@@ -90,7 +90,8 @@ function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
       const sendable = (av?.dispatchable ?? []).map((id) => model.snap.get(id)).filter((s): s is TaskSnapshot => Boolean(s));
       const review = board.tasks.filter((s) => s.status === "review" && (s.agent ?? model.task.get(s.id)?.agent) === a.id);
       const blocked = holding.find((s) => s.status === "blocked" && !waitingFor(s));
-      const parked = holding.find((s) => waitingFor(s));
+      // Parked until other tasks are done: it no longer holds the chat, so it is looked up among the chat's tasks.
+      const parked = board.tasks.find((s) => s.status === "blocked" && waitingFor(s) && (s.agent ?? model.task.get(s.id)?.agent) === a.id);
       const working = holding.find((s) => s.status === "in_progress");
       const sent = holding.find((s) => s.status === "dispatched");
       const mineAll = board.tasks.filter((s) => (s.agent ?? model.task.get(s.id)?.agent) === a.id);
@@ -124,11 +125,6 @@ function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
           ? `${blocked.id} · ${model.task.get(blocked.id)?.title ?? ""}`
           : `${blocked.id}${blocked.reason ? ` · ${localReason(blocked.reason, t)}` : ""}`;
         row.focus = blocked.id;
-      } else if (parked) {
-        row.state = "sent";
-        row.label = t("status_waiting");
-        row.text = `${parked.id} · ${t("card_waitingFor", { tasks: waitingFor(parked)!.join(", ") })}`;
-        row.focus = parked.id;
       } else if (working) {
         row.state = "working";
         row.label = t("status_in_progress");
@@ -144,6 +140,11 @@ function chatRows(model: Model, t: T, only: Set<string> | null): ChatRow[] {
         row.label = t("sendable");
         row.text = t("chat_idle_ready", { n: sendable.length });
         row.focus = sendable[0]!.id;
+      } else if (parked) {
+        row.state = "sent";
+        row.label = t("status_waiting");
+        row.text = `${parked.id} · ${t("card_waitingFor", { tasks: waitingFor(parked)!.join(", ") })}`;
+        row.focus = parked.id;
       } else if (review.length > 0) {
         row.state = "review";
         row.label = t("status_review");

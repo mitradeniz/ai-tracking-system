@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type ManagerProvider, type ManagerRun, type ManagerSettings } from "../api.ts";
+import { api, type ManagerApproval, type ManagerProvider, type ManagerRun, type ManagerSettings } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import { formatTime, localError, type Model } from "../model.ts";
 import { Dialog } from "./Dialogs.tsx";
@@ -7,7 +7,7 @@ import { InfoTip } from "./Info.tsx";
 import { useEyeHidden } from "./ManagerEye.tsx";
 import { CLI_NAME, GENERATORS, useProviders } from "./NewProject.tsx";
 
-const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve"]);
+const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve", "revise", "merge"]);
 
 /** What the manager left for the person in its recent runs, newest first, once each. */
 function leftForYou(log: ManagerRun[]): string[] {
@@ -69,6 +69,52 @@ export function ManagerSwitch({ model, onOpen, onError, onInfo }: { model: Model
       <button className="btn tiny ghost" onClick={onOpen} title={t("mgr_title")} aria-label={t("mgr_title")}>
         ⚙{waiting > 0 && <span className="count-dot">{waiting}</span>}
       </button>
+    </div>
+  );
+}
+
+function ApprovalEntry({
+  approval: a,
+  lang,
+  onOpenTask,
+  onSeen,
+}: {
+  approval: ManagerApproval;
+  lang: string;
+  onOpenTask?: (id: string) => void;
+  onSeen: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className={`mgr-approval ${a.seen ? "seen" : "unseen"}`}>
+      <div className="row small">
+        <span aria-hidden="true">✓</span>
+        {onOpenTask ? (
+          <button className="linklike mono" onClick={() => onOpenTask(a.task)}>
+            {a.task}
+          </button>
+        ) : (
+          <span className="mono">{a.task}</span>
+        )}
+        <span className="grow">{a.title}</span>
+        <span className="muted">{formatTime(a.at, lang)}</span>
+        {!a.seen && (
+          <button className="btn tiny ghost" onClick={onSeen}>
+            {t("appr_seen")}
+          </button>
+        )}
+      </div>
+      {a.check && (
+        <div className="small appr-check">
+          <strong>{t("appr_check")}:</strong> {a.check}
+        </div>
+      )}
+      {a.note && (
+        <div className="small muted">
+          {t("appr_why")}: {a.note}
+        </div>
+      )}
+      {a.pr && <div className="small muted mono">PR: {a.pr}</div>}
     </div>
   );
 }
@@ -153,6 +199,7 @@ export function ManagerDialog({
   const models = providers?.find((p) => p.id === draft.provider)?.models ?? [];
   const forYou = leftForYou(state.log);
   const manualChats = (model.detail.project?.agents ?? []).filter((a) => (model.runners?.settings.chats[a.id]?.provider ?? "manual") === "manual");
+  const approving = draft.approveDone || Boolean(draft.fullAuto);
 
   const save = async (patch: Partial<ManagerSettings>, message?: string) => {
     setBusy(true);
@@ -171,6 +218,8 @@ export function ManagerDialog({
     model: draft.model ?? "",
     resumeStopped: draft.resumeStopped,
     approveDone: draft.approveDone,
+    fullAuto: Boolean(draft.fullAuto),
+    mergeGreen: Boolean(draft.mergeGreen),
   });
   const runNow = async () => {
     setBusy(true);
@@ -220,12 +269,31 @@ export function ManagerDialog({
         <input type="checkbox" checked={draft.resumeStopped} disabled={busy} onChange={(e) => setDraft({ ...draft, resumeStopped: e.target.checked })} />
         {t("mgr_resume")} <InfoTip text={t("mgr_resumeHint")} />
       </label>
-      <label className="check">
-        <input type="checkbox" checked={draft.approveDone} disabled={busy} onChange={(e) => setDraft({ ...draft, approveDone: e.target.checked })} />
+      <label className="check" title={draft.fullAuto ? t("mgr_fullAutoIncludes") : undefined}>
+        <input
+          type="checkbox"
+          checked={draft.approveDone || Boolean(draft.fullAuto)}
+          disabled={busy || Boolean(draft.fullAuto)}
+          onChange={(e) => setDraft({ ...draft, approveDone: e.target.checked })}
+        />
         {t("mgr_approve")} <InfoTip text={t("mgr_approveHint")} />
       </label>
+      <label className="check">
+        <input type="checkbox" checked={Boolean(draft.fullAuto)} disabled={busy} onChange={(e) => setDraft({ ...draft, fullAuto: e.target.checked })} />
+        {t("mgr_fullAuto")} <InfoTip text={t("mgr_fullAutoHint")} />
+      </label>
+      <label className="check" title={approving ? undefined : t("mgr_mergeNeedsApprove")}>
+        <input
+          type="checkbox"
+          checked={Boolean(draft.mergeGreen) && approving}
+          disabled={busy || !approving}
+          onChange={(e) => setDraft({ ...draft, mergeGreen: e.target.checked })}
+        />
+        {t("mgr_mergeGreen")} <InfoTip text={t("mgr_mergeGreenHint")} />
+      </label>
       <div className="mgr-notes">
-        {draft.approveDone && !model.detail.project?.settings.requireApproval && <p className="small muted">{t("mgr_approveUnused")}</p>}
+        {approving && !model.detail.project?.settings.requireApproval && <p className="small muted">{t("mgr_approveUnused")}</p>}
+        {draft.mergeGreen && approving && <p className="small muted">{t("mgr_mergeNote")}</p>}
         {providers && !installed.length && <p className="error small">{t("prop_noCli")}</p>}
         {manualChats.length > 0 && <p className="small muted">{t("mgr_manualChats", { chats: manualChats.map((a) => a.name).join(", ") })}</p>}
         <p className="small muted">{t("mgr_awake")}</p>
@@ -262,6 +330,28 @@ export function ManagerDialog({
               <li key={i}>{item}</li>
             ))}
           </ul>
+        </section>
+      )}
+      {(state.approvals?.length ?? 0) > 0 && (
+        <section className="section">
+          <h3 className="row">
+            <span>
+              {t("mgr_approvals")}
+              {(state.unseen ?? 0) > 0 && <span className="pill run-done appr-new">{t("appr_new", { n: state.unseen! })}</span>}
+            </span>
+            <span className="spacer" />
+            {(state.unseen ?? 0) > 0 && (
+              <button className="btn small ghost" onClick={() => void api.approvalsSeen(key).catch((e: Error) => onError(e.message))}>
+                {t("appr_allSeen")}
+              </button>
+            )}
+          </h3>
+          <p className="small muted">{t("mgr_approvalsHint")}</p>
+          <div className="mgr-approvals">
+            {state.approvals!.slice(0, 20).map((a) => (
+              <ApprovalEntry key={`${a.task}-${a.at}`} approval={a} lang={lang} onOpenTask={onOpenTask} onSeen={() => void api.approvalsSeen(key, [a.task]).catch((e: Error) => onError(e.message))} />
+            ))}
+          </div>
         </section>
       )}
       <section className="section">

@@ -100,6 +100,24 @@ export interface ManagerSettings {
   resumeStopped: boolean;
   /** Also approve finished tasks that wait in review. */
   approveDone: boolean;
+  /** Review finished work itself, send back what is not done, approve the rest (includes approving). */
+  fullAuto?: boolean;
+  /** Have a reviewed task's own chat merge its PRs into main when their checks are green. */
+  mergeGreen?: boolean;
+}
+
+/** A finished task the manager approved, for the person to look over. */
+export interface ManagerApproval {
+  task: string;
+  title: string;
+  agent?: string;
+  at: string;
+  note?: string;
+  /** What the person may want to look at themselves, and how. */
+  check?: string;
+  pr?: string;
+  run: string;
+  seen?: boolean;
 }
 
 export interface ManagerAction {
@@ -130,6 +148,9 @@ export interface ManagerState {
   settings: ManagerSettings;
   running: boolean;
   log: ManagerRun[];
+  /** Newest first. */
+  approvals?: ManagerApproval[];
+  unseen?: number;
 }
 
 /** What writing a plan changed. */
@@ -501,6 +522,8 @@ export const api = {
   runManager: (key: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/run`, {}),
   /** Writes to the manager: it looks at once with the message and answers. */
   messageManager: (key: string, text: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/message`, { text }),
+  approvalsSeen: (key: string, tasks?: string[]) =>
+    request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/approvals/seen`, tasks ? { tasks } : {}),
   // Work chats left for later.
   addProposal: (key: string, id: string, agent?: string) =>
     request<ApplyResult>("POST", `/api/projects/${enc(key)}/proposals/add`, { id, agent }),

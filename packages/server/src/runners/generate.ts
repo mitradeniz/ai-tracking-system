@@ -60,6 +60,10 @@ export interface PromptRequest {
   binary?: string;
   cwd: string;
   prompt: string;
+  /** Read-only commands it may run without asking (Claude Code rules, e.g. "Bash(git diff:*)"). */
+  readTools?: string[];
+  /** More folders it may read. */
+  addDirs?: string[];
 }
 
 const MAX_MINUTES = 20;
@@ -113,10 +117,12 @@ export class ProjectGenerator {
         model: req.model?.trim() || undefined,
         effort: req.effort?.trim() || undefined,
         binary: req.binary,
+        ...(req.provider === "claude" && req.readTools?.length && { allowedTools: req.readTools.join("\n") }),
       },
       prompt,
       cwd,
       newSessionId: randomUUID(),
+      ...(req.addDirs?.length && { addDirs: req.addDirs.filter((d) => existsSync(d)) }),
     });
     // Claude Code's plan mode answers with a plan instead of the file. In its default mode it may read
     // files, and anything that would change them is refused, because nobody is there to approve it.

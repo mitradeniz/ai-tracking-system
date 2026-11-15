@@ -8,15 +8,17 @@ import { applyPlan, chatsTable, notesTable, openNotes, PLAN_RULES, PLAN_SHAPE, p
 import { writeFileAtomic } from "../store.ts";
 import type { ProjectGenerator } from "./generate.ts";
 import { usageLimit } from "./limits.ts";
-import { planFolder, type RunManager } from "./runs.ts";
-import type { ManagerSettings } from "./store.ts";
+import { defaultWorkdir, planFolder, type RunManager } from "./runs.ts";
+import { approves, type ManagerSettings } from "./store.ts";
 
 /**
  * The manager: an AI CLI that stands in for the person while they are away. When something waits
  * for the person (a chat's question, a failed run, refused steps, work left for later), it reads
  * the situation and answers with actions; the app checks each one and carries it out. The CLI runs
- * read-only and can only choose from the actions below, never run commands of its own. Payments,
- * credentials, legal terms, publishing, deleting, pushing and risky steps stay with the person.
+ * read-only and can only choose from the actions below, never run commands of its own (with full
+ * automation it may run read-only git and gh commands to review finished work). Payments,
+ * credentials, legal terms, publishing, deleting, pushing and risky steps stay with the person;
+ * merging into main only when the person turned on "merge green PRs", and then by the task's own chat.
  */
 
 export interface ManagerAction {
@@ -43,10 +45,30 @@ export interface ManagerRun {
   error?: string;
 }
 
+/** A finished task the manager approved: listed for the person to look over when they want. */
+export interface ManagerApproval {
+  task: string;
+  title: string;
+  agent?: string;
+  at: string;
+  /** Why it approved. */
+  note?: string;
+  /** What the person may want to look at themselves (a visual check, a real device), and how. */
+  check?: string;
+  pr?: string;
+  run: string;
+  /** The person looked at it. */
+  seen?: boolean;
+}
+
 export interface ManagerState {
   settings: ManagerSettings;
   running: boolean;
   log: ManagerRun[];
+  /** Newest first. */
+  approvals: ManagerApproval[];
+  /** Approvals the person has not looked at yet. */
+  unseen: number;
 }
 
 interface Options {
@@ -60,6 +82,33 @@ interface Options {
 }
 
 const STOPPED = "Stopped from the tracker.";
+/** A finished task goes back to its chat at most this many times; then it is left for the person. */
+const MAX_SEND_BACKS = 2;
+/** Read-only commands the manager may run to review finished work itself (full automation, Claude Code). */
+export const REVIEW_TOOLS = [
+  "Bash(git status:*)",
+  "Bash(git log:*)",
+  "Bash(git diff:*)",
+  "Bash(git show:*)",
+  "Bash(gh pr view:*)",
+  "Bash(gh pr diff:*)",
+  "Bash(gh pr checks:*)",
+  "Bash(gh pr list:*)",
+  "Bash(gh run view:*)",
+  "Bash(gh run list:*)",
+];
+/** What a chat asked to merge its PRs may run for that one reply (Claude Code). */
+export const MERGE_TOOLS = [
+  "Bash(git fetch:*)",
+  "Bash(gh pr view:*)",
+  "Bash(gh pr checks:*)",
+  "Bash(gh pr list:*)",
+  "Bash(gh pr edit:*)",
+  "Bash(gh pr merge:*)",
+  "Bash(gh run view:*)",
+  "Bash(gh run list:*)",
+  "Bash(gh run watch:*)",
+];
 /** Not a setting: only a guard against a loop, when every run of the manager causes another. */
 const SAFETY_RUNS_PER_HOUR = 30;
 const clip = (s: string, n: number) => {
@@ -74,6 +123,8 @@ export interface Attention {
   provider: string;
   canReply: boolean;
   stopped: boolean;
+  /** Where its chat worked (finished tasks): the manager may read it when it reviews the work. */
+  folder?: string;
 }
 
 /**
@@ -90,6 +141,7 @@ export class Supervisor extends EventEmitter {
   private failures = new Map<string, number>();
   private retryAt = new Map<string, number>();
   private logs = new Map<string, ManagerRun[]>();
+  private approved = new Map<string, ManagerApproval[]>();
   /** What the last run looked at, so the same situation is not sent twice. */
   private handled = new Map<string, string>();
   /** Tasks the manager left for the person, and how they looked then: not shown to it again until they change. */
@@ -145,7 +197,24 @@ export class Supervisor extends EventEmitter {
   }
 
   state(key: string): ManagerState {
-    return { settings: this.settings(key), running: this.busy.has(key), log: this.log(key).slice(-30).reverse() };
+    const approvals = this.approvals(key);
+    return {
+      settings: this.settings(key),
+      running: this.busy.has(key),
+      log: this.log(key).slice(-30).reverse(),
+      approvals: approvals.slice(-50).reverse(),
+      unseen: approvals.filter((a) => !a.seen).length,
+    };
+  }
+
+  /** The person looked over approvals: these tasks, or all of them. */
+  markSeen(key: string, tasks?: string[]): ManagerState {
+    this.manager.context(key);
+    const only = tasks?.length ? new Set(tasks) : null;
+    for (const a of this.approvals(key)) if (!only || only.has(a.task)) a.seen = true;
+    this.persist(key);
+    this.changed(key);
+    return this.state(key);
   }
 
   async setSettings(key: string, patch: unknown): Promise<ManagerState> {
@@ -169,6 +238,8 @@ export class Supervisor extends EventEmitter {
       this.handled.delete(key);
       this.schedule(key, Math.min(1000, this.delayMs));
     }
+    // What it left for the person may be its to do now.
+    if (settings.enabled) for (const k of [...this.leftFor.keys()]) if (k.startsWith(`${key}\u0000`)) this.leftFor.delete(k);
     this.changed(key);
     return this.state(key);
   }
@@ -239,6 +310,7 @@ export class Supervisor extends EventEmitter {
     // What the person wrote may ask for an approval, even when approving is otherwise off.
     const effective: ManagerSettings = asked ? { ...settings, approveDone: true } : settings;
     const { project, board, filePath } = this.manager.context(key);
+    const ctxPlan = planFolder(filePath);
     // A look the person asked for also shows what was left for them.
     const attention = this.attention(key, board, effective, trigger === "manual" || asked);
     const proposals = board.proposals.filter((p) => p.state === "open");
@@ -250,7 +322,7 @@ export class Supervisor extends EventEmitter {
     const fingerprint = createHash("sha1")
       .update(
         JSON.stringify([
-          attention.map((a) => [a.view.task.id, a.view.status, a.view.runtime.reason, a.view.runtime.lastMessage, a.view.runtime.issues]),
+          attention.map((a) => [a.view.task.id, a.view.status, lastEvent(a.view), a.view.runtime.reason, a.view.runtime.lastMessage, a.view.runtime.issues]),
           proposals.map((p) => p.id),
           notes.map((n) => `${n.task}#${n.index}`),
         ]),
@@ -283,13 +355,19 @@ export class Supervisor extends EventEmitter {
     this.record(key, run);
     try {
       const prompt = managerPrompt(project, board, attention, effective, messages);
+      // Reviewing finished work itself: it may read the chats' folders and run read-only git and gh commands.
+      const reviews = effective.fullAuto ? attention.filter((a) => a.view.status === "review") : [];
       const job = await this.generator.startPrompt({
         provider: settings.provider,
         model: settings.model,
         effort: settings.effort,
         binary: settings.binary,
-        cwd: planFolder(filePath),
+        cwd: ctxPlan,
         prompt,
+        ...(reviews.length && {
+          readTools: REVIEW_TOOLS,
+          addDirs: [...new Set(reviews.map((a) => a.folder).filter((d): d is string => Boolean(d) && d !== ctxPlan))],
+        }),
       });
       const ended = await this.generator.wait(job.id);
       if (ended.state !== "done" || !ended.answer) throw new Error(ended.error || "The manager gave no answer.");
@@ -332,9 +410,27 @@ export class Supervisor extends EventEmitter {
       if (!withLeft && this.leftFor.get(`${key}\u0000${view.task.id}`) === taskPrint(view)) continue;
       // Finished work that waits for approval, when the person let the manager approve it.
       if (view.status === "review") {
-        if (!settings.approveDone) continue;
+        if (!approves(settings)) continue;
         const agent = view.runtime.agent ?? view.task.agent;
-        out.push({ view, agent, provider: this.runs.store.chat(key, agent).provider, canReply: false, stopped: false });
+        const runner = this.runs.store.chat(key, agent);
+        const lastRun = this.runs.state(key).runs.find((r) => r.task === view.task.id && r.agent === agent);
+        let folder = lastRun?.workdir;
+        if (!folder) {
+          try {
+            const ctx = this.manager.context(key);
+            folder = runner.workdir || defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
+          } catch {
+            folder = runner.workdir;
+          }
+        }
+        out.push({
+          view,
+          agent,
+          provider: runner.provider,
+          canReply: runner.provider !== "manual" && Boolean(lastRun?.sessionId || runner.sessionId),
+          stopped: false,
+          ...(folder && { folder }),
+        });
         continue;
       }
       if (view.status !== "blocked" && view.status !== "failed") continue;
@@ -391,11 +487,13 @@ export class Supervisor extends EventEmitter {
           continue;
         }
         const view = this.manager.context(key).board.byId.get(task)!;
-        // A finished task in review can have notes closed (work that other tasks cover) and be approved; nothing else.
-        if (view.status === "review" && type !== "approve" && type !== "close") throw new Error("A finished task in review is only approved, or left for the person.");
+        // A finished task in review can have notes closed (work that other tasks cover) and be approved;
+        // with full automation also sent back, and its PRs merged when that is allowed. Nothing else.
+        const forReview = ["approve", "close", ...(settings.fullAuto ? ["revise"] : []), ...(settings.mergeGreen && approves(settings) ? ["merge"] : [])];
+        if (view.status === "review" && !forReview.includes(type)) throw new Error("A finished task in review is only approved, or left for the person.");
         switch (type) {
           case "approve": {
-            if (!settings.approveDone) throw new Error("Approving finished tasks is turned off.");
+            if (!approves(settings)) throw new Error("Approving finished tasks is turned off.");
             if (view.status !== "review") throw new Error("Only a finished task in review is approved.");
             const open = view.runtime.issues.filter((i) => !i.state && i.kind !== "warning");
             if (open.length) {
@@ -403,8 +501,52 @@ export class Supervisor extends EventEmitter {
               throw new Error("It has open problems; left for the person.");
             }
             const why = typeof a.note === "string" ? a.note.trim() : "";
-            await this.manager.addEvent(key, { type: "approved", task, message: `Manager: approved${why ? ` — ${why}` : ""}`.slice(0, 2000) }, "manager");
-            done(type, task, true, why || "approved");
+            const check = typeof a.check === "string" ? a.check.trim().slice(0, 1500) : "";
+            await this.manager.addEvent(
+              key,
+              { type: "approved", task, message: `Manager: approved${why ? ` — ${why}` : ""}${check ? ` · To look at: ${check}` : ""}`.slice(0, 2000) },
+              "manager",
+            );
+            this.addApproval(key, {
+              task,
+              title: view.task.title,
+              agent: item.agent,
+              at: new Date().toISOString(),
+              ...(why && { note: clip(why, 1000) }),
+              ...(check && { check }),
+              ...(view.runtime.pr && { pr: view.runtime.pr }),
+              run: run.id,
+            });
+            done(type, task, true, [why || "approved", check].filter(Boolean).join(" · "));
+            break;
+          }
+          case "revise": {
+            if (!settings.fullAuto || view.status !== "review") throw new Error("Only finished work is sent back, with full automation on.");
+            const text = String(a.text ?? "").trim();
+            if (!text) throw new Error("Nothing to fix was given.");
+            const before = view.runtime.history.filter((e) => e.type === "note" && e.message?.startsWith("Manager: sent back")).length;
+            if (before >= MAX_SEND_BACKS) {
+              run.forYou.push(`${task}: sent back ${before} times already and still not done as asked — ${clip(text, 300)}`);
+              throw new Error(`Sent back ${before} times already; left for the person.`);
+            }
+            if (!item.canReply) throw new Error("Its chat has no session to continue; left for the person.");
+            await this.runs.reply(key, item.agent, `${REVISE_INTRO}\n${text}\n${REVISE_END}`, task);
+            await note(task, `sent back — ${text}`);
+            done(type, task, true, text);
+            break;
+          }
+          case "merge": {
+            if (!settings.mergeGreen || !approves(settings) || view.status !== "review") throw new Error("Merging is not turned on.");
+            if (view.runtime.history.some((e) => e.type === "note" && e.message?.startsWith("Manager: asked to merge"))) {
+              throw new Error("Its chat was asked to merge once already; approve it, or it is left for the person.");
+            }
+            const open = view.runtime.issues.filter((i) => !i.state && i.kind !== "warning");
+            if (open.length) throw new Error("It has open problems; close them or leave it for the person.");
+            if (!item.canReply) throw new Error("Its chat has no session to continue; left for the person.");
+            const which = typeof a.note === "string" ? a.note.trim() : "";
+            await this.runs.reply(key, item.agent, mergeText(task, which || view.runtime.pr || ""), task, { extraTools: MERGE_TOOLS });
+            await note(task, `asked to merge${which ? ` — ${which}` : ""}`);
+            done(type, task, true, which || "asked its chat to merge its PRs");
             break;
           }
           case "reply": {
@@ -527,17 +669,31 @@ export class Supervisor extends EventEmitter {
   private log(key: string): ManagerRun[] {
     let list = this.logs.get(key);
     if (!list) {
+      let raw: { runs?: ManagerRun[]; approvals?: ManagerApproval[] } = {};
       try {
-        const raw = JSON.parse(readFileSync(this.file(key), "utf8")) as { runs?: ManagerRun[] };
-        list = Array.isArray(raw.runs) ? raw.runs : [];
-        // A run cut off by quitting the app.
-        for (const r of list) if (r.state === "running") Object.assign(r, { state: "failed", error: "The app closed during this run." });
+        raw = JSON.parse(readFileSync(this.file(key), "utf8")) as typeof raw;
       } catch {
-        list = [];
+        raw = {};
       }
+      list = Array.isArray(raw.runs) ? raw.runs : [];
+      // A run cut off by quitting the app.
+      for (const r of list) if (r.state === "running") Object.assign(r, { state: "failed", error: "The app closed during this run." });
       this.logs.set(key, list);
+      this.approved.set(key, Array.isArray(raw.approvals) ? raw.approvals.filter((a) => a && typeof a.task === "string") : []);
     }
     return list;
+  }
+
+  private approvals(key: string): ManagerApproval[] {
+    this.log(key);
+    return this.approved.get(key) ?? [];
+  }
+
+  private addApproval(key: string, approval: ManagerApproval): void {
+    const list = this.approvals(key);
+    list.push(approval);
+    if (list.length > 100) list.splice(0, list.length - 100);
+    this.persist(key);
   }
 
   private file(key: string): string {
@@ -550,13 +706,18 @@ export class Supervisor extends EventEmitter {
     if (i >= 0) list[i] = { ...run, actions: [...run.actions], forYou: [...run.forYou] };
     else list.push({ ...run, actions: [...run.actions], forYou: [...run.forYou] });
     if (list.length > 50) list.splice(0, list.length - 50);
+    this.persist(key);
+    this.changed(key);
+  }
+
+  private persist(key: string): void {
     try {
       mkdirSync(path.dirname(this.file(key)), { recursive: true });
     } catch {
       // Written below or not at all.
     }
-    void writeFileAtomic(this.file(key), JSON.stringify({ runs: list }, null, 1) + "\n").catch(() => undefined);
-    this.changed(key);
+    const body = { runs: this.log(key), approvals: this.approvals(key) };
+    void writeFileAtomic(this.file(key), JSON.stringify(body, null, 1) + "\n").catch(() => undefined);
   }
 
   private changed(key: string): void {
@@ -596,22 +757,52 @@ export function parseAnswer(text: string): ManagerAnswer {
   };
 }
 
+const REVISE_INTRO = "The manager reviewed this task and it is not done as asked yet. Fix this, then report the task again:";
+const REVISE_END = "Keep to the task and its acceptance; do not push to main or merge.";
+
+/** What a reviewed task's chat is told when the manager lets it merge its own PRs. */
+export function mergeText(task: string, which: string): string {
+  return [
+    `The manager reviewed task ${task} and it may go into main now. Merge its own pull requests yourself${which ? `: ${which}` : "."}`,
+    "- Only when CI and the required checks are green on the latest commit. If they are still running, wait for them; if they stay red, do not merge and report why.",
+    "- Use a merge commit (gh pr merge <number> --merge). Do not delete branches, do not force-push, never push to main directly.",
+    "- Stacked PRs: start with the lowest one, and point the next one at main (gh pr edit <number> --base main) before you merge it.",
+    "- Merge only this task's own PRs, nothing of other chats.",
+    "When you are done, report the task done again and list the PRs you merged, with their merge commits.",
+  ].join("\n");
+}
+
 /** How a task looks to the manager: when this changes, a task left for the person comes back to it. */
 function taskPrint(v: TaskView): string {
-  return createHash("sha1").update(JSON.stringify([v.status, v.runtime.reason, v.runtime.lastMessage, v.runtime.issues])).digest("hex");
+  return createHash("sha1").update(JSON.stringify([v.status, lastEvent(v), v.runtime.reason, v.runtime.lastMessage, v.runtime.issues])).digest("hex");
+}
+
+/** The task's last event other than a note: a chat that reports again, even with the same words, is something new. */
+function lastEvent(v: TaskView): string | undefined {
+  for (let i = v.runtime.history.length - 1; i >= 0; i -= 1) if (v.runtime.history[i]!.type !== "note") return v.runtime.history[i]!.id;
+  return undefined;
 }
 
 function attentionText(a: Attention): string {
   const v = a.view;
   if (v.status === "review") {
-    const lines = [`### ${v.task.id} · ${clip(v.task.title, 100)} · chat ${a.agent} · IN REVIEW (finished, waits for approval)`];
+    const back = v.runtime.history.filter((e) => e.type === "note" && e.message?.startsWith("Manager: sent back")).length;
+    const merging = v.runtime.history.some((e) => e.type === "note" && e.message?.startsWith("Manager: asked to merge"));
+    const lines = [
+      `### ${v.task.id} · ${clip(v.task.title, 100)} · chat ${a.agent} (${a.canReply ? `${a.provider}, can be sent back` : `${a.provider}, no session`}) · IN REVIEW (finished, waits for approval)${back ? ` · sent back ${back} time(s)` : ""}${merging ? " · its chat was already asked to merge" : ""}`,
+    ];
+    if (v.task.instructions) lines.push(`Task: ${clip(v.task.instructions, 800)}`);
     if (v.task.acceptance) lines.push(`Acceptance: ${clip(v.task.acceptance, 800)}`);
     if (v.runtime.summary) lines.push(`Summary: ${clip(v.runtime.summary, 1500)}`);
     if (v.runtime.verify) lines.push(`How to verify: ${clip(v.runtime.verify, 600)}`);
     if (v.runtime.pr) lines.push(`PR: ${clip(v.runtime.pr, 300)}`);
+    if (a.folder) lines.push(`Chat's folder: ${a.folder}`);
     if (v.runtime.lastMessage) lines.push(`Last message: ${clip(v.runtime.lastMessage, 1500)}`);
-    const open = v.runtime.issues.filter((i) => !i.state);
-    if (open.length) lines.push(`Open problems: ${open.map((i) => `${i.kind ?? "error"}: ${clip(i.title, 160)}`).join("; ")}`);
+    const open = v.runtime.issues.map((i, index) => ({ i, index })).filter(({ i }) => !i.state);
+    if (open.length) {
+      lines.push("Open problems:");
+      for (const { i, index } of open) lines.push(`  [${index}] ${i.kind ?? "error"}: ${clip(i.title, 200)}${i.detail ? ` — ${clip(i.detail, 300)}` : ""}`);
+    }
     return lines.join("\n");
   }
   const lines = [
@@ -645,6 +836,38 @@ function attentionText(a: Attention): string {
   return lines.join("\n");
 }
 
+const mergeAllowed = (s: ManagerSettings) => s.mergeGreen && approves(s);
+
+/** The actions on finished tasks, as the settings allow them. */
+function reviewActions(s: ManagerSettings): string {
+  if (!approves(s)) return "";
+  const lines: string[] = [];
+  if (s.fullAuto) {
+    lines.push(
+      "- approve: you review finished work for the person. Accept a task IN REVIEW when the work does what the task and its acceptance ask. Look at the change yourself when you can, read-only: the chat's folder, git status/log/diff/show there, gh pr view/diff/checks for its PR (with --repo or the PR's URL); if you cannot, judge from the report and say so in \"note\". Gaps that do not stop other work do not hold it back: a test that is skipped or not in CI yet, a check only a person can do (comparing with a design, a real device), a small deviation the chat explains. Close those problems first (\"close\"), add real remaining work to the plan, put what the person may want to look at in \"check\" (what and how, in one or two sentences), and approve. Give the reason in \"note\".",
+      `- revise: send a task IN REVIEW back to its chat with what to fix ("text"), when the work does not do what was asked or its checks fail. At most ${MAX_SEND_BACKS} times per task; after that leave it for the person.`,
+    );
+  } else {
+    lines.push(
+      "- approve: accept a task IN REVIEW when its report shows the work is done as asked: the summary covers the task and its acceptance, it says how it was verified, and nothing is left open. Give the reason in \"note\". When in doubt, leave it for the person with what to check.",
+    );
+  }
+  if (mergeAllowed(s)) {
+    lines.push(
+      "- merge: when a task IN REVIEW is good to approve but its own PRs are not merged into main yet, have its chat merge them (\"note\": which PRs, in what order). The chat merges only with green checks, then reports again and you approve it then. Once per task; do not use it for work that is not done, or whose PRs belong to other tasks or are already merged.",
+    );
+  }
+  return `\n${lines.join("\n")}`;
+}
+
+function reviewShapes(s: ManagerSettings): string {
+  if (!approves(s)) return "";
+  return [
+    s.fullAuto ? ',{"type":"approve","task":"<id>","note":"…","check":"…"},{"type":"revise","task":"<id>","text":"…"}' : ',{"type":"approve","task":"<id>","note":"…"}',
+    mergeAllowed(s) ? ',{"type":"merge","task":"<id>","note":"…"}' : "",
+  ].join("");
+}
+
 /** What the manager is told: its job, the limits, the actions, and the project as it is now. */
 export function managerPrompt(project: ProjectFile, board: Board, attention: Attention[], settings: ManagerSettings, messages: string[] = []): string {
   const language = project.settings.language === "tr" ? "Turkish" : "English";
@@ -657,7 +880,7 @@ Do what it asks with the actions you have, on the tasks listed below (a finished
     : "";
   const proposals = board.proposals.filter((p) => p.state === "open");
   const notes = openNotes(board);
-  return `You are the manager of the project "${project.project.name}" in AI Tracking System, standing in for the person while they are away. AI chats work on the tasks of the plan, and automatic dispatch sends ready tasks to free chats. Your job is to keep the work moving: decide what the person would decide when it is safe and easy to undo, answer the chats, and keep the plan up to date. You only read (you may look at the files in this folder); the app carries out the actions you return.
+  return `You are the manager of the project "${project.project.name}" in AI Tracking System, standing in for the person while they are away. AI chats work on the tasks of the plan, and automatic dispatch sends ready tasks to free chats. Your job is to keep the work moving: decide what the person would decide when it is safe and easy to undo, answer the chats, and keep the plan up to date. You only read (you may look at the files in this folder${settings.fullAuto ? ", and run the read-only git and gh commands named below to review finished work" : ""}); the app carries out the actions you return.
 
 ACTIONS
 - reply: answer a chat waiting on a task (its question, the approval of its plan, "go on"). Be concrete and decisive. Prefer the chat's own recommendation when it is sensible.
@@ -666,28 +889,30 @@ ACTIONS
 - wait: when a task cannot go on until other tasks of the plan are done, park it; it goes back to its chat when they are done.
 - resend: send a failed task again, with a short note on what to do differently.
 - close: mark problems of a task resolved or ignored when nothing has to be done about them.
-- leave: leave something for the person, in one clear sentence, when only they can do it.${
-    settings.approveDone
-      ? "\n- approve: accept a task IN REVIEW when its report shows the work is done as asked: the summary covers the task and its acceptance, it says how it was verified, and nothing is left open. Give the reason in \"note\". When in doubt, leave it for the person with what to check."
-      : ""
-  }
+- leave: leave something for the person, in one clear sentence, when only they can do it.${reviewActions(settings)}
 - plan: fold the proposals and notes into the plan (rules below).
-At most one action per task, plus "close".
+At most one action per task, plus "close" (put "close" before the action it makes possible).
 
-NEVER: approve payments, enter or ask for credentials, accept legal terms, publish, delete data, push to or merge into a main branch, or allow [risky] steps. Leave those for the person.${
-    settings.approveDone ? " Never approve a task whose report mentions failing checks, skipped parts or work left undone." : ""
+NEVER: approve payments, enter or ask for credentials, accept legal terms, publish, delete data, push to a main branch${
+    mergeAllowed(settings) ? ", merge into it other than with the \"merge\" action" : " or merge into it"
+  }, or allow [risky] steps. Leave those for the person.${
+    settings.fullAuto
+      ? " Never approve work whose checks fail or that does not do what the task asks: send it back instead."
+      : approves(settings)
+        ? " Never approve a task whose report mentions failing checks, skipped parts or work left undone."
+        : ""
   } Act only on the tasks listed under ATTENTION.${settings.resumeStopped ? " A task STOPPED BY THE PERSON may be continued with a reply when its messages give no reason to keep it stopped." : ""}
-Write replies, notes and the summary in ${language}.
+Write replies, notes, checks and the summary in ${language}.
 
 PLAN RULES
 ${PLAN_RULES}
 - Write titles, instructions and acceptance in ${language}.
 
 Answer with one JSON object in a \`\`\`json fence, and nothing after it:
-{"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${settings.approveDone ? ',{"type":"approve","task":"<id>","note":"…"}' : ""}],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"${messages.length ? ',"reply":"<your answer to the person>"' : ""}}
+{"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${reviewShapes(settings)}],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"${messages.length ? ',"reply":"<your answer to the person>"' : ""}}
 Leave out what you do not use.
 
-${fromPerson}ATTENTION (tasks waiting for a decision, failed${settings.approveDone ? ", or finished and waiting for approval" : ""})
+${fromPerson}ATTENTION (tasks waiting for a decision, failed${approves(settings) ? ", or finished and waiting for approval" : ""})
 ${attention.length ? attention.map(attentionText).join("\n\n") : "(none)"}
 
 PROPOSALS (work chats left for later)

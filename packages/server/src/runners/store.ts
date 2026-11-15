@@ -20,9 +20,20 @@ export interface ManagerSettings {
   resumeStopped: boolean;
   /** Also let it approve finished tasks that wait in review (projects with requireApproval). */
   approveDone: boolean;
+  /**
+   * Full automation: it reviews finished work itself (reads the change and its checks), sends back
+   * what is not done, and approves work whose remaining gaps do not stop others, listing what the
+   * person may want to look at among its approvals. Implies approving.
+   */
+  fullAuto: boolean;
+  /** Let it have a reviewed task's own chat merge that task's PRs into main when their checks are green. */
+  mergeGreen: boolean;
 }
 
-export const DEFAULT_MANAGER: ManagerSettings = { enabled: false, provider: "claude", resumeStopped: true, approveDone: false };
+export const DEFAULT_MANAGER: ManagerSettings = { enabled: false, provider: "claude", resumeStopped: true, approveDone: false, fullAuto: false, mergeGreen: false };
+
+/** Whether the manager may approve finished tasks with these settings. */
+export const approves = (s: ManagerSettings): boolean => s.approveDone || s.fullAuto;
 
 export interface ProjectRunners {
   /** Give the next ready task to a chat as soon as it is free. */
@@ -60,6 +71,8 @@ export function normalizeManager(input: unknown, base: ManagerSettings = DEFAULT
     binary,
     resumeStopped: typeof o.resumeStopped === "boolean" ? o.resumeStopped : base.resumeStopped,
     approveDone: typeof o.approveDone === "boolean" ? o.approveDone : base.approveDone,
+    fullAuto: typeof o.fullAuto === "boolean" ? o.fullAuto : (base.fullAuto ?? false),
+    mergeGreen: typeof o.mergeGreen === "boolean" ? o.mergeGreen : (base.mergeGreen ?? false),
   };
 }
 
