@@ -5788,8 +5788,9 @@ details.advanced[open] {
 .holo-swatch.holo {
   background: radial-gradient(circle, #d8ffe0, #00ff41 55%, #003b12);
 }
-.holo-swatch.dot {
-  background: radial-gradient(circle, #fff 0 32%, #000 36%);
+.holo-swatch.ra {
+  background: radial-gradient(circle, #000 0 28%, #e6b422 32% 48%, #1a1205 52%);
+  border-color: #e6b422;
 }
 .holo-swatch.liquid {
   background: radial-gradient(circle at 35% 30%, #fff, #e5e5ea 60%, #c7c7cc);
@@ -5799,80 +5800,97 @@ details.advanced[open] {
   outline-offset: 1px;
 }
 
-/* Classic dot: black and white, high contrast, no glow or scan lines; red only for what is wrong. */
-.eye-dock.theme-dot,
-.eye-dock.theme-dot .eye-btn.alert,
-.eye-dock.theme-dot .eye-holo.alert,
-.eye-dock.theme-dot:has(.eye-btn.alert) {
-  --eye-main: #ffffff;
-  --eye-core: #ffffff;
-  --eye-deep: #ffffff;
-  --eye-glow: rgba(255, 255, 255, 0);
-  --holo-top: #000000;
-  --holo-bottom: #000000;
+/* The Eye of Ra: gold on a dark sun disk, after the ancient Egyptian sign; the iris turns red when
+ * something is wrong. The projection is black with gold. */
+.eye-dock.theme-ra,
+.eye-dock.theme-ra .eye-btn.alert,
+.eye-dock.theme-ra .eye-holo.alert,
+.eye-dock.theme-ra:has(.eye-btn.alert) {
+  --eye-main: #e6b422;
+  --eye-core: #fff2c4;
+  --eye-deep: #6b4e00;
+  --eye-glow: rgba(230, 180, 34, 0.35);
+  --holo-top: rgba(14, 11, 4, 0.97);
+  --holo-bottom: rgba(4, 3, 1, 0.98);
   --holo-line: transparent;
-  --holo-text: #d4d4d4;
-  --holo-strong: #ffffff;
-  --holo-hover: rgba(255, 255, 255, 0.09);
-  --holo-track: rgba(255, 255, 255, 0.2);
-  --holo-rule: rgba(255, 255, 255, 0.3);
+  --holo-text: #e6dcc3;
+  --holo-strong: #fff6dc;
+  --holo-hover: rgba(230, 180, 34, 0.08);
+  --holo-track: rgba(230, 180, 34, 0.16);
+  --holo-rule: rgba(230, 180, 34, 0.25);
   --holo-sweep: transparent;
-  --holo-beam-end: transparent;
+  --holo-beam-end: rgba(230, 180, 34, 0.04);
   --holo-ink: #000000;
-  --holo-ok: #ffffff;
-  --holo-warn: #ffffff;
-  --holo-bad: #ff453a;
-  --holo-field: #000000;
-  --holo-card: #111111;
-  --eye-face: #000000;
-  --eye-bg: #000000;
+  --holo-ok: #c9d97a;
+  --holo-warn: #e6b422;
+  --holo-bad: #ff5a3d;
+  --holo-field: rgba(0, 0, 0, 0.6);
+  --holo-card: rgba(20, 16, 6, 0.9);
+  --eye-face: #0d0903;
+  --eye-bg: rgba(0, 0, 0, 0);
+  --ra-disk-core: #2a1e05;
+  --ra-disk-edge: #0d0903;
+  --ra-iris: #e6b422;
 }
-.eye-dock.theme-dot .eye-btn {
-  filter: none;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+.eye-dock.theme-ra .eye-btn.alert,
+.eye-dock.theme-ra:has(.eye-btn.alert) {
+  --ra-iris: #e0442b;
+  --ra-disk-core: #331006;
 }
-.eye-dock.theme-dot .eye-ring.ticks,
-.eye-dock.theme-dot .eye-iris-ring,
-.eye-dock.theme-dot .eye-scan,
-.eye-dock.theme-dot .eye-glint,
-.eye-dock.theme-dot .eye-holo::after {
+.eye-dock.theme-ra .eye-btn {
+  background: none;
+  filter: drop-shadow(0 0 8px var(--eye-glow));
+}
+.eye-art.ra .ra-disk {
+  fill: url(#ra-disk);
+  stroke: var(--eye-main);
+  stroke-width: 2;
+  stroke-dasharray: none;
+  opacity: 1;
+}
+.eye-art.ra .eye-ring.ticks {
+  stroke-width: 3;
+  stroke-dasharray: 1.5 5;
+  opacity: 0.5;
+}
+.eye-art.ra .ra-gold {
+  fill: var(--eye-main);
+}
+.eye-art.ra .ra-spiral {
+  fill: none;
+  stroke: var(--eye-main);
+  stroke-width: 3.2;
+  stroke-linecap: round;
+}
+.eye-art.ra .ra-white {
+  fill: #f3e7c9;
+}
+.eye-art.ra .ra-line {
+  fill: none;
+  stroke: var(--eye-main);
+  stroke-width: 3;
+  stroke-linejoin: round;
+}
+.eye-art.ra .ra-iris {
+  fill: var(--ra-iris);
+  transition: fill 0.4s ease;
+}
+.eye-art.ra .eye-pupil {
+  fill: #000;
+  transform-origin: 59px 58px;
+}
+.eye-dock.theme-ra .eye-holo {
+  border-radius: 4px;
+  box-shadow: 0 0 22px rgba(230, 180, 34, 0.18), 0 14px 40px rgba(0, 0, 0, 0.6);
+}
+.eye-dock.theme-ra .eye-holo::after {
   display: none;
 }
-.eye-dock.theme-dot .eye-ring.outer {
-  stroke-dasharray: none;
-  stroke-width: 2;
-  opacity: 1;
-  animation: none;
-}
-.eye-dock.theme-dot .eye-iris {
-  fill: #ffffff;
-}
-.eye-dock.theme-dot .eye-pupil {
-  fill: #000000;
-}
-.eye-dock.theme-dot .eye-art.alert .eye-pupil {
-  fill: var(--holo-bad);
-}
-.eye-dock.theme-dot .eye-holo {
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 14px 40px rgba(0, 0, 0, 0.6);
-}
-.eye-dock.theme-dot .eye-holo h4.alert,
-.eye-dock.theme-dot .holo-status.alert .dot {
+.eye-dock.theme-ra .eye-holo h4.alert {
   color: var(--holo-bad);
-  background: var(--holo-bad);
-  box-shadow: none;
 }
-.eye-dock.theme-dot .eye-holo h4.alert {
-  background: none;
-}
-.eye-dock.theme-dot .eye-count {
-  --eye-badge: #ffffff;
-  box-shadow: 0 0 0 2px #000;
-}
-.eye-dock.theme-liquid .eye-count {
-  --eye-badge: #ff3b30;
-  --eye-badge-ink: #ffffff;
-  box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(0, 0, 0, 0.25);
+.eye-dock.theme-ra .eye-count {
+  --eye-badge: #e6b422;
 }
 
 /* Liquid glass: white, translucent, soft; the eye a glass bead with a dark pupil. */
@@ -5965,4 +5983,9 @@ details.advanced[open] {
   --primary: #0a0a0a;
   --primary-text: #ffffff;
   --primary-hover: #2a2a2a;
+}
+.eye-dock.theme-liquid .eye-count {
+  --eye-badge: #ff3b30;
+  --eye-badge-ink: #ffffff;
+  box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(0, 0, 0, 0.25);
 }

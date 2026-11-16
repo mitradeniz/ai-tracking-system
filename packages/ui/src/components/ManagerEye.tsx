@@ -10,10 +10,11 @@ import { useNow } from "./Info.tsx";
 import { CLI_NAME } from "./NewProject.tsx";
 import { QuickTask } from "./QuickTask.tsx";
 
-/** How the eye looks: the green hologram, a classic black-and-white dot, or white liquid glass. */
-export const EYE_THEMES = ["holo", "dot", "liquid"] as const;
+/** How the eye looks: the green hologram, the Eye of Ra in gold, or white liquid glass. */
+export const EYE_THEMES = ["holo", "ra", "liquid"] as const;
 export type EyeTheme = (typeof EYE_THEMES)[number];
-const eyeTheme = (v: EyeTheme): EyeTheme => (EYE_THEMES.includes(v) ? v : "holo");
+// "dot" was the black-and-white look the Eye of Ra replaced.
+const eyeTheme = (v: EyeTheme | "dot"): EyeTheme => (v === "dot" ? "ra" : EYE_THEMES.includes(v) ? v : "holo");
 
 /** Projects whose eye the person hid; it comes back when the manager is switched on again. */
 export function useEyeHidden(key: string): [boolean, (hidden: boolean) => void] {
@@ -92,7 +93,48 @@ function ShowInApp({ label, onClick }: { label: string; onClick: () => void }) {
 }
 
 /** The eye itself: looks around, blinks, spins faster while the manager is looking, turns red on errors. */
-function EyeArt({ mood }: { mood: "watching" | "busy" | "alert" }) {
+/**
+ * The Eye of Ra, drawn after the ancient Egyptian sign (the wedjat): the eye with its brow, the line
+ * that runs on from its corner, the drop below and the spiral, on the sun disk. Lids, gaze and pupil
+ * move like the other eye's; the iris turns red when something is wrong.
+ */
+function RaArt({ mood }: { mood: "watching" | "busy" | "alert" }) {
+  const almond = "M28 60 Q56 41 92 55 Q64 75 28 60 Z";
+  return (
+    <svg className={`eye-art ra ${mood}`} viewBox="0 0 120 120" aria-hidden="true">
+      <defs>
+        <radialGradient id="ra-disk" cx="50%" cy="50%" r="50%">
+          <stop offset="0" stopColor="var(--ra-disk-core)" />
+          <stop offset=".8" stopColor="var(--ra-disk-edge)" />
+          <stop offset="1" stopColor="#000" />
+        </radialGradient>
+        <clipPath id="ra-lid">
+          <path d={almond} />
+        </clipPath>
+      </defs>
+      <circle className="eye-ring outer ra-disk" cx="60" cy="60" r="56" />
+      <circle className="eye-ring ticks" cx="60" cy="60" r="50" />
+      <path className="ra-gold" d="M26 44 Q59 25 102 38 L102 43 Q60 32 27 48 Z" />
+      <path className="ra-gold" d="M48 67 L50.5 66 L51 92 Q51 98 46 98 Q41 98 42 93 Z" />
+      <path className="ra-spiral" d="M64 69 Q67 86 80 90 Q93 93 95 84 Q96 77 89 76 Q83 76 84 82" />
+      <g className="eye-lids">
+        <path className="ra-white" d={almond} />
+        <g clipPath="url(#ra-lid)">
+          <g className="eye-look">
+            <circle className="ra-iris" cx="59" cy="58" r="11" />
+            <circle className="eye-pupil" cx="59" cy="58" r="6" />
+            <circle className="eye-glint" cx="56" cy="55" r="1.8" fill="#fff" opacity=".8" />
+          </g>
+        </g>
+        <path className="ra-line" d={almond} />
+        <path className="ra-gold" d="M90 54 L108 54 L108 58.5 L90 59.5 Z" />
+      </g>
+    </svg>
+  );
+}
+
+function EyeArt({ mood, theme }: { mood: "watching" | "busy" | "alert"; theme: EyeTheme }) {
+  if (theme === "ra") return <RaArt mood={mood} />;
   return (
     <svg className={`eye-art ${mood}`} viewBox="0 0 120 120" aria-hidden="true">
       <defs>
@@ -329,7 +371,7 @@ export function ManagerEye({
           aria-label={open ? t("eye_close") : t("eye_open")}
           title={`${t("mgr_title")} · ${status}${waiting.length ? ` · ${t("eye_waitingN", { n: waiting.length })}` : ""}`}
         >
-          <EyeArt mood={mood} />
+          <EyeArt mood={mood} theme={theme} />
         </button>
         {waiting.length > 0 && (
           <span className="eye-count" aria-label={t("eye_waitingN", { n: waiting.length })}>
