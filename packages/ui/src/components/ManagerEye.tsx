@@ -5,8 +5,15 @@ import { useI18n, type Key } from "../i18n.ts";
 import { agentName, formatDuration, formatTime, localMessage, localReason, problemsOf, PROVIDER_LABEL, untilText, type Model } from "../model.ts";
 import type { EyeProject } from "../eyeOverview.ts";
 import { usePref } from "../prefs.ts";
+import { waitingForYou } from "../waiting.ts";
 import { useNow } from "./Info.tsx";
 import { CLI_NAME } from "./NewProject.tsx";
+import { QuickTask } from "./QuickTask.tsx";
+
+/** How the eye looks: the green hologram, a classic black-and-white dot, or white liquid glass. */
+export const EYE_THEMES = ["holo", "dot", "liquid"] as const;
+export type EyeTheme = (typeof EYE_THEMES)[number];
+const eyeTheme = (v: EyeTheme): EyeTheme => (EYE_THEMES.includes(v) ? v : "holo");
 
 /** Projects whose eye the person hid; it comes back when the manager is switched on again. */
 export function useEyeHidden(key: string): [boolean, (hidden: boolean) => void] {
@@ -104,11 +111,11 @@ function EyeArt({ mood }: { mood: "watching" | "busy" | "alert" }) {
         <path className="eye-white" d="M12 60 Q60 18 108 60 Q60 102 12 60 Z" />
         <g clipPath="url(#eye-lid)">
           <g className="eye-look">
-            <circle cx="60" cy="60" r="21" fill="url(#eye-iris)" />
+            <circle className="eye-iris" cx="60" cy="60" r="21" fill="url(#eye-iris)" />
             <circle className="eye-iris-ring" cx="60" cy="60" r="15" />
             <circle className="eye-iris-ring" cx="60" cy="60" r="10.5" />
             <circle className="eye-pupil" cx="60" cy="60" r="7" />
-            <circle cx="55" cy="55" r="2.6" fill="#fff" opacity=".85" />
+            <circle className="eye-glint" cx="55" cy="55" r="2.6" fill="#fff" opacity=".85" />
           </g>
           <rect className="eye-scan" x="0" y="0" width="120" height="3" />
         </g>
@@ -174,6 +181,10 @@ export function ManagerEye({
   // On the board, where the person dragged the eye to (from its place at the top right).
   const [shift, setShift] = usePref<Shift>("managerEyeShift", { x: 0, y: 0 });
   const [moving, setMoving] = useState<Shift | null>(null);
+  const [theme, setTheme] = usePref<EyeTheme>("eyeTheme", "holo", eyeTheme);
+  // What waits for the person that they marked seen: it comes back when it says something new.
+  const [seenWaiting, setSeenWaiting] = usePref<string[]>(`eyeSeen:${key}`, []);
+  const [flash, setFlash] = useState<string | null>(null);
   const now = useNow(on && !hidden && open, 1000);
   const visible = on && !hidden && Boolean(state);
 
@@ -290,13 +301,15 @@ export function ManagerEye({
         ? t("eye_alertOther", { n: othersProblems })
         : t("eye_watching");
   const tabs = projects.length > 1 ? projects : [];
+  const waiting = waitingForYou(model, state.log, state.settings, t).filter((w) => !seenWaiting.includes(w.id));
+  const markWaiting = (id: string) => setSeenWaiting((list) => [...list.filter((x) => x !== id), id].slice(-100));
   let i = 0;
   const line = (): CSSProperties => ({ ["--i" as string]: i++ });
 
   return (
     <div
       ref={dock}
-      className={`eye-dock ${open ? "open" : ""} ${windowed ? "windowed" : ""} ${moving ? "moving" : ""}`}
+      className={`eye-dock theme-${theme} ${open ? "open" : ""} ${windowed ? "windowed" : ""} ${moving ? "moving" : ""}`}
       style={
         windowed
           ? apex !== null
@@ -314,10 +327,15 @@ export function ManagerEye({
           {...pointer}
           aria-expanded={open}
           aria-label={open ? t("eye_close") : t("eye_open")}
-          title={`${t("mgr_title")} · ${status}`}
+          title={`${t("mgr_title")} · ${status}${waiting.length ? ` · ${t("eye_waitingN", { n: waiting.length })}` : ""}`}
         >
           <EyeArt mood={mood} />
         </button>
+        {waiting.length > 0 && (
+          <span className="eye-count" aria-label={t("eye_waitingN", { n: waiting.length })}>
+            {waiting.length}
+          </span>
+        )}
         <button
           className="eye-hide"
           onClick={() => {
@@ -347,6 +365,19 @@ export function ManagerEye({
               </span>
               <span className="spacer" />
               <span className="holo-cli">{CLI_NAME[state.settings.provider] ?? state.settings.provider}</span>
+              <span className="holo-themes" role="radiogroup" aria-label={t("eye_theme")}>
+                {EYE_THEMES.map((th) => (
+                  <button
+                    key={th}
+                    role="radio"
+                    aria-checked={theme === th}
+                    className={`holo-swatch ${th}`}
+                    title={t(`eye_theme_${th}` as Key)}
+                    aria-label={t(`eye_theme_${th}` as Key)}
+                    onClick={() => setTheme(th)}
+                  />
+                ))}
+              </span>
             </header>
 
             {tabs.length > 0 && (
@@ -390,6 +421,63 @@ export function ManagerEye({
                 </div>
               </div>
             </div>
+
+            {waiting.length > 0 && (
+              <>
+                <h4 className="holo-waiting-head" style={line()}>
+                  {t("eye_waiting", { n: waiting.length })}
+                </h4>
+                {waiting.map((w) => (
+                  <Item
+                    key={w.id}
+                    id={`wait:${w.id}`}
+                    open={expanded}
+                    onToggle={toggle}
+                    style={line()}
+                    className="holo-row waiting"
+                    head={
+                      <>
+                        <span className="holo-ask">?</span>
+                        <span className="holo-what">
+                          {w.task && <b>{w.task}</b>} {clip(w.message ?? w.problems[0]?.title ?? "", 90)}
+                        </span>
+                      </>
+                    }
+                    more={
+                      <>
+                        {w.message && (
+                          <p className="holo-quote">
+                            <strong>{t("eye_managerSays")}:</strong> {w.message}
+                          </p>
+                        )}
+                        {w.task && (
+                          <div className="holo-answer-box">
+                            <QuickTask
+                              model={model}
+                              taskId={w.task}
+                              onClose={() => toggle(`wait:${w.id}`)}
+                              onInfo={(m) => {
+                                setFlash(m);
+                                window.setTimeout(() => setFlash((cur) => (cur === m ? null : cur)), 6000);
+                              }}
+                            />
+                          </div>
+                        )}
+                      </>
+                    }
+                    action={
+                      <div className="holo-actions">
+                        <button className="holo-go" title={t("eye_waitingSeenHint")} onClick={() => markWaiting(w.id)}>
+                          ✓ {t("appr_seen")}
+                        </button>
+                        {w.task && <ShowInApp label={t("eye_showInApp")} onClick={() => onOpenTask(w.task!)} />}
+                      </div>
+                    }
+                  />
+                ))}
+                {flash && <p className={flash.startsWith("⚠") ? "holo-err" : "holo-flash"}>{flash}</p>}
+              </>
+            )}
 
             {limits.map((l) => (
               <div key={l.cli} className="holo-limit" style={line()} title={`${t(`limit_basis_${l.basis}` as Key)}\n${l.message}`}>

@@ -227,8 +227,10 @@ export function QuickTask({
           )}
           {p.permission && (
             <div className="small perm-asked">
-              {t("perm_asked", { what: "" })}
-              <code className="mono">{p.permission.value ?? t(`perm_kind_${p.permission.kind}` as Key)}</code>
+              {p.permission.inferred ? t("perm_inferred") : t("perm_asked", { what: "" })}
+              <code className="mono">
+                {p.permission.value ?? t(p.permission.inferred && p.permission.kind === "command" ? "perm_kind_sandbox" : (`perm_kind_${p.permission.kind}` as Key))}
+              </code>
             </div>
           )}
           <div className="row wrap">
@@ -240,7 +242,7 @@ export function QuickTask({
                 const grant = permissionGrant(runner, p.permission);
                 const cli = PROVIDER_LABEL[runner.provider] || runner.provider;
                 // Full access is a bigger step: it is given from the main window, where it is explained.
-                if (grant.how === "full") return null;
+                if (grant.how === "full") return <span className="small muted">{t("perm_fullInMain", { cli })}</span>;
                 return (
                   <button
                     className="btn tiny primary"

@@ -6,6 +6,7 @@ import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
 import { useEyeHidden } from "./ManagerEye.tsx";
 import { CLI_NAME, GENERATORS, useProviders } from "./NewProject.tsx";
+import { waitingForYou } from "../waiting.ts";
 
 const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve", "revise", "merge", "grant", "assign", "drop"]);
 
@@ -30,7 +31,8 @@ export function ManagerSwitch({ model, onOpen, onError, onInfo }: { model: Model
   const [eyeHidden, setEyeHidden] = useEyeHidden(model.detail.key);
   if (!state) return null;
   const on = state.settings.enabled;
-  const waiting = leftForYou(state.log.slice(0, 5)).length;
+  // What waits for the person, as the eye counts it.
+  const waiting = waitingForYou(model, state.log, state.settings, t).length;
   const toggle = async () => {
     // Turning it on goes through the dialog: the person picks the CLI and reads what it may do.
     if (!on) {

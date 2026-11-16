@@ -5,6 +5,7 @@ import type { RunSummary } from "../src/api.ts";
 import { translator } from "../src/i18n.ts";
 import { cardNote, explainStep, localMessage, notesOf, permissionRules, problemsOf, shownStatus, type Model } from "../src/model.ts";
 import { choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, settledBy } from "../src/problemActions.ts";
+import { waitingForYou } from "../src/waiting.ts";
 import type { ChatRunner } from "../src/api.ts";
 
 describe("permission rules", () => {
@@ -178,6 +179,34 @@ describe("refused steps and decisions", () => {
     // The same problems with a Claude Code chat: nothing to grant.
     const claude = { ...model, runners: { runs: [], settings: { chats: { "codex-c": { ...codex, provider: "claude" } } } } } as unknown as Model;
     expect(problemsOf(claude, snap, t).some((p) => p.permission)).toBe(false);
+  });
+
+  it("lists what waits for the person while a manager runs the project, one item per task", () => {
+    const codex: ChatRunner = { provider: "codex", access: "edit", session: "keep", unattended: true, network: true };
+    const snaps = [
+      { id: "T1", agent: "c", status: "blocked", reasons: [], issues: [{ title: "Chromium açılamıyor", detail: "Mach bootstrap Permission denied (1100)", kind: "error" }] },
+      { id: "T2", agent: "c", status: "blocked", reasons: [], issues: [{ title: "Bölge?", kind: "needs-you" }] },
+      { id: "T3", agent: "c", status: "done", reasons: [], issues: [] },
+    ] as unknown as TaskSnapshot[];
+    const model = {
+      task: new Map(["T1", "T2", "T3"].map((id) => [id, { id, title: id, agent: "c" }])),
+      snap: new Map(snaps.map((s) => [s.id, s])),
+      runners: { runs: [], settings: { chats: { c: codex } } },
+    } as unknown as Model;
+    const log = [
+      { forYou: ["T2: Bölge kararı senin.", "Alan adını satın al."] },
+      { forYou: ["T2: older message", "T3: done already", "General from an older look"] },
+    ] as never;
+    const items = waitingForYou(model, log, { fullAuthority: false }, t);
+    expect(items.map((i) => [i.task ?? null, i.message ?? null, i.problems.length])).toEqual([
+      ["T2", "Bölge kararı senin.", 1],
+      ["T1", null, 1],
+      [null, "Alan adını satın al.", 0],
+    ]);
+    // With full authority the manager gives permissions itself: they do not wait for the person.
+    expect(waitingForYou(model, log, { fullAuthority: true }, t).map((i) => i.task ?? null)).toEqual(["T2", null]);
+    // An item keeps its id while it says the same thing.
+    expect(waitingForYou(model, log, { fullAuthority: false }, t)[0]!.id).toBe(items[0]!.id);
   });
 
   it("shows the permission a chat asked for on its problem", () => {

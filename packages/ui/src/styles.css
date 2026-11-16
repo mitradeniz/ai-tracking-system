@@ -4705,6 +4705,20 @@ details.advanced[open] {
   --holo-top: rgba(0, 40, 14, 0.95);
   --holo-bottom: rgba(0, 8, 3, 0.97);
   --holo-line: rgba(0, 255, 65, 0.035);
+  --holo-text: #c8ffd2;
+  --holo-strong: #eaffef;
+  --holo-hover: rgba(0, 255, 65, 0.08);
+  --holo-track: rgba(0, 255, 65, 0.12);
+  --holo-rule: rgba(0, 255, 65, 0.2);
+  --holo-sweep: rgba(0, 255, 65, 0.12);
+  --holo-beam-end: rgba(0, 255, 65, 0.06);
+  --holo-ink: #000;
+  --holo-ok: #00ff41;
+  --holo-warn: var(--holo-warn);
+  --holo-bad: #ff6b6b;
+  --holo-font: var(--mono);
+  --eye-face: rgba(0, 12, 4, 0.95);
+  --eye-bg: rgba(0, 20, 8, 0.92);
   position: fixed;
   top: 132px;
   right: 28px;
@@ -4728,7 +4742,7 @@ details.advanced[open] {
   padding: 0;
   border: 0;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(0, 20, 8, 0.92) 55%, rgba(0, 0, 0, 0) 72%);
+  background: radial-gradient(circle, var(--eye-bg) 55%, rgba(0, 0, 0, 0) 72%);
   cursor: pointer;
   filter: drop-shadow(0 0 10px var(--eye-glow));
   transition: transform 0.2s ease, filter 0.2s ease;
@@ -4801,7 +4815,7 @@ details.advanced[open] {
 }
 
 .eye-white {
-  fill: rgba(0, 12, 4, 0.95);
+  fill: var(--eye-face);
 }
 
 .eye-outline {
@@ -4848,7 +4862,7 @@ details.advanced[open] {
   padding: 3px;
   border-radius: 50%;
   border: 1px solid var(--eye-main);
-  background: rgba(0, 12, 4, 0.95);
+  background: var(--eye-face);
   color: var(--eye-main);
   cursor: pointer;
   opacity: 0;
@@ -4875,7 +4889,7 @@ details.advanced[open] {
 
 .eye-hide:hover {
   background: var(--eye-main);
-  color: #000;
+  color: var(--holo-ink);
 }
 
 /* The projection: a cone of light from the eye down to a hologram. */
@@ -4884,7 +4898,7 @@ details.advanced[open] {
   height: 40px;
   margin-top: -14px;
   clip-path: polygon(calc(var(--apex, 50%) - 10px) 0, calc(var(--apex, 50%) + 10px) 0, 100% 100%, 0 100%);
-  background: linear-gradient(to bottom, var(--eye-glow), rgba(0, 255, 65, 0.06));
+  background: linear-gradient(to bottom, var(--eye-glow), var(--holo-beam-end));
   animation: eye-beam 0.45s cubic-bezier(0.2, 0.9, 0.3, 1) both;
   pointer-events: none;
 }
@@ -4901,8 +4915,8 @@ details.advanced[open] {
     repeating-linear-gradient(to bottom, var(--holo-line) 0 1px, transparent 1px 3px),
     linear-gradient(to bottom, var(--holo-top), var(--holo-bottom));
   box-shadow: 0 0 28px var(--eye-glow), inset 0 0 22px var(--holo-line);
-  color: #c8ffd2;
-  font-family: var(--mono);
+  color: var(--holo-text);
+  font-family: var(--holo-font);
   font-size: 12px;
   pointer-events: auto;
   transform-origin: top center;
@@ -4914,7 +4928,7 @@ details.advanced[open] {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: linear-gradient(to bottom, transparent, rgba(0, 255, 65, 0.12), transparent);
+  background: linear-gradient(to bottom, transparent, var(--holo-sweep), transparent);
   height: 40px;
   animation: eye-sweep 3.2s linear infinite;
 }
@@ -4934,7 +4948,7 @@ details.advanced[open] {
 }
 
 .eye-holo h4.alert {
-  color: #ff6b6b;
+  color: var(--holo-bad);
 }
 
 .holo-head {
@@ -5007,7 +5021,7 @@ details.advanced[open] {
 .holo-bar {
   height: 6px;
   border-radius: 3px;
-  background: rgba(0, 255, 65, 0.12);
+  background: var(--holo-track);
   overflow: hidden;
 }
 
@@ -5048,7 +5062,7 @@ details.advanced[open] {
 .holo-row:hover,
 .holo-news:hover,
 .holo-foot:hover {
-  background: rgba(0, 255, 65, 0.08);
+  background: var(--holo-hover);
 }
 
 .holo-row .holo-pulse {
@@ -5064,7 +5078,7 @@ details.advanced[open] {
   display: flex;
   flex-direction: column;
   min-width: 92px;
-  color: #eaffef;
+  color: var(--holo-strong);
 }
 
 .holo-who small,
@@ -5091,7 +5105,7 @@ details.advanced[open] {
 
 .holo-row.alert b,
 .holo-bang {
-  color: #ff6b6b;
+  color: var(--holo-bad);
 }
 
 .holo-bang {
@@ -5109,12 +5123,12 @@ details.advanced[open] {
 
 .holo-news.failed .holo-type,
 .holo-news.blocked .holo-type {
-  color: #ff8a80;
+  color: var(--holo-bad);
 }
 
 .holo-news.done .holo-type,
 .holo-news.approved .holo-type {
-  color: #00ff41;
+  color: var(--holo-ok);
 }
 
 .holo-empty {
@@ -5125,9 +5139,9 @@ details.advanced[open] {
 .holo-limit {
   margin-top: 8px;
   padding: 5px 8px;
-  border: 1px dashed #ffd166;
+  border: 1px dashed var(--holo-warn);
   border-radius: 4px;
-  color: #ffd166;
+  color: var(--holo-warn);
 }
 
 /* A line opened in place: the whole text, and the one button that goes to the app. */
@@ -5156,7 +5170,7 @@ details.advanced[open] {
 }
 
 .holo-quote {
-  color: #eaffef;
+  color: var(--holo-strong);
 }
 
 .holo-when {
@@ -5190,7 +5204,7 @@ details.advanced[open] {
 
 .holo-go:hover {
   background: var(--eye-main);
-  color: #000;
+  color: var(--holo-ink);
 }
 
 @keyframes eye-more {
@@ -5209,14 +5223,14 @@ details.advanced[open] {
 .holo-foot {
   margin-top: 10px;
   padding-top: 8px;
-  border-top: 1px solid rgba(0, 255, 65, 0.2);
+  border-top: 1px solid var(--holo-rule);
   border-radius: 0;
   flex-wrap: wrap;
   opacity: 0.85;
 }
 
 .holo-foryou {
-  color: #ffd166;
+  color: var(--holo-warn);
 }
 
 .eye-show svg {
@@ -5430,7 +5444,7 @@ details.advanced[open] {
 }
 
 .holo-you b {
-  color: #ffd166;
+  color: var(--holo-warn);
 }
 
 .holo-answer b {
@@ -5443,7 +5457,7 @@ details.advanced[open] {
 }
 
 .holo-err {
-  color: #ff8a80;
+  color: var(--holo-bad);
   margin: 4px 0 0;
 }
 
@@ -5462,8 +5476,8 @@ details.advanced[open] {
   padding: 6px 8px;
   border: 1px solid color-mix(in srgb, var(--eye-main) 55%, transparent);
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.5);
-  color: #eaffef;
+  background: var(--holo-field, rgba(0, 0, 0, 0.5));
+  color: var(--holo-strong);
   font: inherit;
   line-height: 1.4;
 }
@@ -5475,7 +5489,7 @@ details.advanced[open] {
 }
 
 .holo-input textarea::placeholder {
-  color: color-mix(in srgb, #eaffef 40%, transparent);
+  color: color-mix(in srgb, var(--holo-strong) 40%, transparent);
 }
 
 .mgr-said {
@@ -5558,20 +5572,20 @@ details.advanced[open] {
 }
 
 .holo-row.approved.unseen .holo-what {
-  color: #eaffef;
+  color: var(--holo-strong);
 }
 
 .holo-look {
   flex-shrink: 0;
   padding: 0 5px;
-  border: 1px solid #ffd166;
+  border: 1px solid var(--holo-warn);
   border-radius: 3px;
-  color: #ffd166;
+  color: var(--holo-warn);
   font-size: 10px;
 }
 
 .holo-checkline strong {
-  color: #ffd166;
+  color: var(--holo-warn);
 }
 
 .holo-actions {
@@ -5628,7 +5642,7 @@ details.advanced[open] {
 }
 
 .holo-tab.alert {
-  border-color: #ff6b6b;
+  border-color: var(--holo-bad);
 }
 
 .holo-tab-name {
@@ -5642,7 +5656,7 @@ details.advanced[open] {
 }
 
 .holo-tab-bang {
-  color: #ff6b6b;
+  color: var(--holo-bad);
   font-weight: 700;
 }
 
@@ -5703,4 +5717,252 @@ details.advanced[open] {
 .folder-list .input {
   flex: 1;
   min-width: 0;
+}
+
+/* ── What waits for the person, in the eye: a count next to it, answered in place ── */
+.eye-count {
+  position: absolute;
+  top: -4px;
+  left: -8px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--eye-badge, #ffd166);
+  color: var(--eye-badge-ink, #000);
+  font: 700 11px/18px var(--sans);
+  text-align: center;
+  box-shadow: 0 0 0 2px var(--eye-face), 0 0 10px color-mix(in srgb, var(--eye-badge, #ffd166) 55%, transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+.eye-holo h4.holo-waiting-head {
+  color: var(--holo-warn);
+}
+.holo-ask {
+  flex-shrink: 0;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  border: 1px solid var(--holo-warn);
+  color: var(--holo-warn);
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+}
+.holo-row.waiting b {
+  color: var(--holo-warn);
+}
+.holo-flash {
+  margin: 4px 0 0;
+  color: var(--holo-ok);
+}
+/* The task's own card (as in the floating window), inside the projection. */
+.holo-answer-box {
+  margin: 6px 0;
+  font-family: var(--sans);
+  color: var(--text);
+}
+.holo-answer-box .mini-quick {
+  margin: 0;
+  border-top: 1px solid var(--edge-strong);
+  border-radius: 8px;
+  background: var(--holo-card, rgba(0, 0, 0, 0.45));
+}
+.holo-answer-box .mini-quick-head .icon-btn {
+  display: none;
+}
+.holo-themes {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 6px;
+}
+.holo-swatch {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, var(--eye-main) 60%, transparent);
+  cursor: pointer;
+}
+.holo-swatch.holo {
+  background: radial-gradient(circle, #d8ffe0, #00ff41 55%, #003b12);
+}
+.holo-swatch.dot {
+  background: radial-gradient(circle, #fff 0 32%, #000 36%);
+}
+.holo-swatch.liquid {
+  background: radial-gradient(circle at 35% 30%, #fff, #e5e5ea 60%, #c7c7cc);
+}
+.holo-swatch[aria-checked="true"] {
+  outline: 2px solid var(--eye-main);
+  outline-offset: 1px;
+}
+
+/* Classic dot: black and white, high contrast, no glow or scan lines; red only for what is wrong. */
+.eye-dock.theme-dot,
+.eye-dock.theme-dot .eye-btn.alert,
+.eye-dock.theme-dot .eye-holo.alert,
+.eye-dock.theme-dot:has(.eye-btn.alert) {
+  --eye-main: #ffffff;
+  --eye-core: #ffffff;
+  --eye-deep: #ffffff;
+  --eye-glow: rgba(255, 255, 255, 0);
+  --holo-top: #000000;
+  --holo-bottom: #000000;
+  --holo-line: transparent;
+  --holo-text: #d4d4d4;
+  --holo-strong: #ffffff;
+  --holo-hover: rgba(255, 255, 255, 0.09);
+  --holo-track: rgba(255, 255, 255, 0.2);
+  --holo-rule: rgba(255, 255, 255, 0.3);
+  --holo-sweep: transparent;
+  --holo-beam-end: transparent;
+  --holo-ink: #000000;
+  --holo-ok: #ffffff;
+  --holo-warn: #ffffff;
+  --holo-bad: #ff453a;
+  --holo-field: #000000;
+  --holo-card: #111111;
+  --eye-face: #000000;
+  --eye-bg: #000000;
+}
+.eye-dock.theme-dot .eye-btn {
+  filter: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.eye-dock.theme-dot .eye-ring.ticks,
+.eye-dock.theme-dot .eye-iris-ring,
+.eye-dock.theme-dot .eye-scan,
+.eye-dock.theme-dot .eye-glint,
+.eye-dock.theme-dot .eye-holo::after {
+  display: none;
+}
+.eye-dock.theme-dot .eye-ring.outer {
+  stroke-dasharray: none;
+  stroke-width: 2;
+  opacity: 1;
+  animation: none;
+}
+.eye-dock.theme-dot .eye-iris {
+  fill: #ffffff;
+}
+.eye-dock.theme-dot .eye-pupil {
+  fill: #000000;
+}
+.eye-dock.theme-dot .eye-art.alert .eye-pupil {
+  fill: var(--holo-bad);
+}
+.eye-dock.theme-dot .eye-holo {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.12), 0 14px 40px rgba(0, 0, 0, 0.6);
+}
+.eye-dock.theme-dot .eye-holo h4.alert,
+.eye-dock.theme-dot .holo-status.alert .dot {
+  color: var(--holo-bad);
+  background: var(--holo-bad);
+  box-shadow: none;
+}
+.eye-dock.theme-dot .eye-holo h4.alert {
+  background: none;
+}
+.eye-dock.theme-dot .eye-count {
+  --eye-badge: #ffffff;
+  box-shadow: 0 0 0 2px #000;
+}
+.eye-dock.theme-liquid .eye-count {
+  --eye-badge: #ff3b30;
+  --eye-badge-ink: #ffffff;
+  box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(0, 0, 0, 0.25);
+}
+
+/* Liquid glass: white, translucent, soft; the eye a glass bead with a dark pupil. */
+.eye-dock.theme-liquid,
+.eye-dock.theme-liquid .eye-btn.alert,
+.eye-dock.theme-liquid .eye-holo.alert,
+.eye-dock.theme-liquid:has(.eye-btn.alert) {
+  --eye-main: #1c1c1e;
+  --eye-core: #f5f5f7;
+  --eye-deep: #3a3a3c;
+  --eye-glow: rgba(255, 255, 255, 0.55);
+  --holo-top: rgba(255, 255, 255, 0.97);
+  --holo-bottom: rgba(244, 244, 248, 0.95);
+  --holo-line: transparent;
+  --holo-text: #3a3a3c;
+  --holo-strong: #111111;
+  --holo-hover: rgba(0, 0, 0, 0.05);
+  --holo-track: rgba(0, 0, 0, 0.08);
+  --holo-rule: rgba(0, 0, 0, 0.1);
+  --holo-sweep: transparent;
+  --holo-beam-end: rgba(255, 255, 255, 0);
+  --holo-ink: #ffffff;
+  --holo-ok: #1f8f4e;
+  --holo-warn: #b25e00;
+  --holo-bad: #d70015;
+  --holo-font: var(--sans);
+  --holo-field: rgba(255, 255, 255, 0.85);
+  --holo-card: rgba(255, 255, 255, 0.7);
+  --eye-face: rgba(255, 255, 255, 0.92);
+  --eye-bg: rgba(255, 255, 255, 0.75);
+}
+.eye-dock.theme-liquid .eye-btn.alert,
+.eye-dock.theme-liquid:has(.eye-btn.alert) {
+  --eye-main: #d70015;
+  --eye-deep: #7a0010;
+}
+.eye-dock.theme-liquid .eye-btn {
+  background: radial-gradient(circle at 35% 28%, #ffffff 0, rgba(255, 255, 255, 0.92) 40%, rgba(235, 235, 240, 0.85) 62%, rgba(255, 255, 255, 0) 72%);
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.28));
+}
+.eye-dock.theme-liquid .eye-btn:hover {
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.32));
+}
+.eye-dock.theme-liquid .eye-ring.outer {
+  stroke-dasharray: none;
+  stroke-width: 1.2;
+  opacity: 0.18;
+}
+.eye-dock.theme-liquid .eye-ring.ticks,
+.eye-dock.theme-liquid .eye-scan,
+.eye-dock.theme-liquid .eye-holo::after {
+  display: none;
+}
+.eye-dock.theme-liquid .eye-outline {
+  stroke-width: 1.6;
+  opacity: 0.75;
+}
+.eye-dock.theme-liquid .eye-holo {
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 18px;
+  font-size: 12.5px;
+  -webkit-backdrop-filter: blur(26px) saturate(170%);
+  backdrop-filter: blur(26px) saturate(170%);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+}
+.eye-dock.theme-liquid .eye-beam {
+  opacity: 0.6;
+}
+.eye-dock.theme-liquid .holo-title,
+.eye-dock.theme-liquid .holo-pct {
+  text-shadow: none;
+}
+.eye-dock.theme-liquid .holo-bar span,
+.eye-dock.theme-liquid .holo-status .dot {
+  box-shadow: none;
+}
+.eye-dock.theme-liquid .eye-holo h4.alert {
+  color: var(--holo-bad);
+}
+/* The task card inside reads as the light theme of the app. */
+.eye-dock.theme-liquid .holo-answer-box {
+  --text: #0a0a0a;
+  --muted: #5b5b5b;
+  --faint: #8a8a8a;
+  --edge: rgba(0, 0, 0, 0.08);
+  --edge-strong: rgba(0, 0, 0, 0.16);
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-2: rgba(255, 255, 255, 0.72);
+  --glass-3: rgba(255, 255, 255, 0.9);
+  --primary: #0a0a0a;
+  --primary-text: #ffffff;
+  --primary-hover: #2a2a2a;
 }
