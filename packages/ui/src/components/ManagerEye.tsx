@@ -10,7 +10,7 @@ import { useNow } from "./Info.tsx";
 import { CLI_NAME } from "./NewProject.tsx";
 import { QuickTask } from "./QuickTask.tsx";
 
-/** How the eye looks: the green hologram, the Eye of Ra in gold, or white liquid glass. */
+/** How the eye looks: the green hologram, the Eye of Ra in black glass, or white liquid glass. */
 export const EYE_THEMES = ["holo", "ra", "liquid"] as const;
 export type EyeTheme = (typeof EYE_THEMES)[number];
 // "dot" was the black-and-white look the Eye of Ra replaced.
@@ -95,8 +95,8 @@ function ShowInApp({ label, onClick }: { label: string; onClick: () => void }) {
 /** The eye itself: looks around, blinks, spins faster while the manager is looking, turns red on errors. */
 /**
  * The Eye of Ra, drawn after the ancient Egyptian sign (the wedjat): the eye with its brow, the line
- * that runs on from its corner, the drop below and the spiral, on the sun disk. Lids, gaze and pupil
- * move like the other eye's; the iris turns red when something is wrong.
+ * that runs on from its corner, the drop below and the spiral, in white on a black glass bead. Lids,
+ * gaze and pupil move like the other eye's; the iris turns red when something is wrong.
  */
 function RaArt({ mood }: { mood: "watching" | "busy" | "alert" }) {
   const almond = "M28 60 Q56 41 92 55 Q64 75 28 60 Z";
@@ -108,14 +108,19 @@ function RaArt({ mood }: { mood: "watching" | "busy" | "alert" }) {
           <stop offset=".8" stopColor="var(--ra-disk-edge)" />
           <stop offset="1" stopColor="#000" />
         </radialGradient>
+        <linearGradient id="ra-gloss" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fff" stopOpacity=".55" />
+          <stop offset="1" stopColor="#fff" stopOpacity="0" />
+        </linearGradient>
         <clipPath id="ra-lid">
           <path d={almond} />
         </clipPath>
       </defs>
       <circle className="eye-ring outer ra-disk" cx="60" cy="60" r="56" />
+      <ellipse className="ra-gloss" cx="60" cy="30" rx="40" ry="22" fill="url(#ra-gloss)" />
       <circle className="eye-ring ticks" cx="60" cy="60" r="50" />
-      <path className="ra-gold" d="M26 44 Q59 25 102 38 L102 43 Q60 32 27 48 Z" />
-      <path className="ra-gold" d="M48 67 L50.5 66 L51 92 Q51 98 46 98 Q41 98 42 93 Z" />
+      <path className="ra-ink" d="M26 44 Q59 25 102 38 L102 43 Q60 32 27 48 Z" />
+      <path className="ra-ink" d="M48 67 L50.5 66 L51 92 Q51 98 46 98 Q41 98 42 93 Z" />
       <path className="ra-spiral" d="M64 69 Q67 86 80 90 Q93 93 95 84 Q96 77 89 76 Q83 76 84 82" />
       <g className="eye-lids">
         <path className="ra-white" d={almond} />
@@ -127,7 +132,7 @@ function RaArt({ mood }: { mood: "watching" | "busy" | "alert" }) {
           </g>
         </g>
         <path className="ra-line" d={almond} />
-        <path className="ra-gold" d="M90 54 L108 54 L108 58.5 L90 59.5 Z" />
+        <path className="ra-ink" d="M90 54 L108 54 L108 58.5 L90 59.5 Z" />
       </g>
     </svg>
   );
