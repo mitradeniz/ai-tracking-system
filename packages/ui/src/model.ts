@@ -55,6 +55,7 @@ export const PROVIDER_LABEL: Record<string, string> = {
   codex: "Codex",
   claude: "Claude Code",
   copilot: "Copilot",
+  antigravity: "Antigravity",
   gemini: "Gemini",
   cursor: "Cursor",
   deepseek: "DeepSeek",
@@ -91,6 +92,7 @@ export const INSTALL: Record<string, { install: string; login: string }> = {
   claude: { install: "curl -fsSL https://claude.ai/install.sh | bash", login: "claude" },
   codex: { install: "npm install -g @openai/codex", login: "codex login" },
   copilot: { install: "npm install -g @github/copilot", login: "copilot" },
+  antigravity: { install: "curl -fsSL https://antigravity.google/cli/install.sh | bash", login: "agy" },
   gemini: { install: "npm install -g @google/gemini-cli", login: "gemini" },
   cursor: { install: "curl https://cursor.com/install -fsS | bash", login: "cursor-agent login" },
   // DeepSeek Harness needs Node.js 24.9 or newer. It reads the API key from ~/.dsh/.env; the key never goes through the tracker.

@@ -19,7 +19,8 @@ The tracker runs the official command line tools, with **your own sign-in, plan 
 | **Codex CLI** | `codex exec --json -C <folder> -s workspace-write [resume <thread>] -` | standard input | thread id from the `thread.started` event |
 | **Claude Code** | `claude -p --output-format stream-json --verbose --permission-mode auto (--session-id <uuid> \| --resume <id>)` | standard input | session id chosen by the tracker |
 | **GitHub Copilot CLI** | `copilot -p <prompt> -s --no-color --no-ask-user --session-id <uuid> --allow-tool write` | argument | the same `--session-id` |
-| **Gemini CLI** | `gemini -p <prompt> -o stream-json --skip-trust --approval-mode auto_edit (--session-id <uuid> \| --resume <uuid>)` | argument | session id chosen by the tracker |
+| **Antigravity CLI** | `agy -p <prompt> --output-format stream-json --mode auto [--conversation <id>] [--add-dir <folder>]… [--model <slug>] [--effort <level>]` | argument | `conversation_id` from the `init` event |
+| **Gemini CLI** (chats set to it before) | `gemini -p <prompt> -o stream-json --skip-trust --approval-mode auto_edit (--session-id <uuid> \| --resume <uuid>)` | argument | session id chosen by the tracker |
 | **Cursor CLI** | `cursor-agent -p --output-format stream-json --trust --workspace <folder> --force --sandbox enabled [--resume=<id>] <prompt>` | argument | `session_id` from the first line |
 | **DeepSeek CLI** | `dsh --profile headless [--patch <model overlay>] --json --permission-mode workspace-write --approval-policy never [--session-id <id>] [--add-dir <folder>]… -` | standard input | `sessionId` from the opening `session` event |
 | **Custom command** | anything, e.g. `aider --message {{prompt}}` | `{{prompt}}`, or standard input | `{{sessionId}}` is a stable id per chat |
@@ -28,15 +29,19 @@ Cursor's CLI is found as `cursor-agent`, or as `agent` in newer installs when it
 
 DeepSeek's CLI is DeepSeek Harness (`dsh`, npm `@deepseek-ai/dsh`, Node.js 24.9 or newer; a `dsh` whose help does not name DeepSeek is not taken for it). The tracker runs its one-shot *headless* profile: one task per run, read from standard input, events as JSON lines, and the next message continues the same Session with `--session-id` from the same folder. It takes its key from the environment or `~/.dsh/.env` (`DEEPSEEK_API_KEY=…`); keys saved in DeepSeek's web app are not used by this mode, and the key never goes through the tracker. Its model is a setting rather than a flag: when you pick a model or an effort (off, low, high, max) in the run settings, the tracker writes a small overlay with only those two values to the temp folder (`aitrack-deepseek/<model>-<effort>.yml`) and passes it with `--patch`; an effort without a model uses DeepSeek Flash. Nobody can answer its approval prompts in this mode, so `--approval-policy never` refuses what the access level does not allow and the refusal becomes a problem on the task. With *Edit files*, the folders in *Other folders it may use* and the plan's repository are added with `--add-dir`, and so is a worktree's shared `.git` folder, so the chat can commit (that also lets it change the repository's hooks and settings: use worktrees you trust). Its sandbox may keep commands off the network.
 
+Antigravity CLI (`agy`, Google Antigravity's command line tool, which follows Gemini CLI) replaces Gemini CLI in the lists; a chat already set to Gemini CLI keeps it. Install it with `curl -fsSL https://antigravity.google/cli/install.sh | bash` (it goes to `~/.local/bin`) and sign in once by running `agy` in a terminal. The tracker runs it in print mode, one prompt per run, with events as JSON lines (`init`, `step_update`, `result`); the next message continues the same conversation with `--conversation`. Its models depend on your plan — Gemini, and on paid plans also Claude and GPT models — so the run settings list what `agy models` returns for the signed-in account, grouped by family, and say so; when it lists nothing (not signed in yet), sign in and refresh. Effort (`low` to `max`, depending on the model) goes with `--effort`. Nobody can approve a step in print mode: with *Edit files* it runs in `--mode auto`, where workspace edits and safe commands run and risky ones are refused (soft-denied) and become a problem on the task; *Read only* is `--mode plan`, *Full access* `--dangerously-skip-permissions`. Other folders go with `--add-dir`. A run out of its AI credits waits like any usage limit.
+
 The custom command is plain text output: everything it prints is the final message, and an `aitrack-report` block in it is read like any other. It is how other agents (Aider, your own scripts) can be plugged in; the tracker does not test those tools.
 
 ### Access
 
-| Access | Codex | Claude Code | Copilot | Gemini | Cursor | DeepSeek |
+| Access | Codex | Claude Code | Copilot | Antigravity | Cursor | DeepSeek |
 | --- | --- | --- | --- | --- | --- | --- |
-| Read only | `-s read-only` | `--permission-mode plan` | no extra permissions | `--approval-mode plan` | `--mode ask` | `--permission-mode read-only` |
-| **Edit files** (default) | `-s workspace-write` (+ optional network) | `--permission-mode auto` (or `acceptEdits`, see below) + the usual work commands | `--allow-tool write` | `--approval-mode auto_edit` | `--force --sandbox enabled` (commands in Cursor's sandbox) | `--permission-mode workspace-write` (its sandbox) |
-| Full access | `--dangerously-bypass-approvals-and-sandbox` | `--permission-mode bypassPermissions` | `--allow-all-tools` | `--approval-mode yolo` | `--force --sandbox disabled` | `--permission-mode danger-full-access` |
+| Read only | `-s read-only` | `--permission-mode plan` | no extra permissions | `--mode plan` | `--mode ask` | `--permission-mode read-only` |
+| **Edit files** (default) | `-s workspace-write` (+ optional network) | `--permission-mode auto` (or `acceptEdits`, see below) + the usual work commands | `--allow-tool write` | `--mode auto` | `--force --sandbox enabled` (commands in Cursor's sandbox) | `--permission-mode workspace-write` (its sandbox) |
+| Full access | `--dangerously-bypass-approvals-and-sandbox` | `--permission-mode bypassPermissions` | `--allow-all-tools` | `--dangerously-skip-permissions` | `--force --sandbox disabled` | `--permission-mode danger-full-access` |
+
+Gemini CLI, for chats set to it before: `--approval-mode plan`, `auto_edit`, `yolo`.
 
 A headless run cannot ask for permission, so anything outside its access is refused and the refusal shows up in the output and as a problem on the task.
 

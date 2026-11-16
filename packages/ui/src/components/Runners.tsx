@@ -6,11 +6,13 @@ import { activeRun, agentName, INSTALL, PROVIDER_LABEL, runnerOf, untilText, typ
 import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
 
-const PROVIDERS: RunnerProvider[] = ["manual", "codex", "claude", "copilot", "gemini", "cursor", "deepseek", "custom"];
+// Antigravity CLI follows Gemini CLI: Gemini is offered only to a chat that is set to it already.
+const PROVIDERS: RunnerProvider[] = ["manual", "codex", "claude", "copilot", "antigravity", "cursor", "deepseek", "custom"];
 const RESUME: Record<string, string> = {
   codex: "codex resume {id}",
   claude: "claude --resume {id}",
   copilot: "copilot --resume {id}",
+  antigravity: "agy --conversation {id}",
   gemini: "gemini --resume {id}",
   cursor: "cursor-agent --resume={id}",
   deepseek: 'dsh --profile headless --session-id {id} "…"',
@@ -126,7 +128,7 @@ export function RunnerDialog({
           {t("run_provider")} <InfoTip text={t("info_provider")} />
         </label>
         <div className="segmented" role="radiogroup" aria-label={t("run_provider")}>
-          {PROVIDERS.map((id) => (
+          {(p === "gemini" ? [...PROVIDERS.slice(0, -1), "gemini" as const, "custom" as const] : PROVIDERS).map((id) => (
             <button key={id} role="radio" aria-checked={p === id} onClick={() => set({ provider: id })}>
               {id !== "manual" && id !== "custom" && providers && (
                 <span className={`dot ${providers.find((x) => x.id === id)?.path ? "ok" : "off"}`} aria-hidden="true" />
@@ -396,7 +398,17 @@ export function RunnerDialog({
   );
 }
 
-const MODEL_ID = /^[\w.:@/[\]-]+$/;
+const MODEL_ID = /^[\w.:@/[\]-]+$|^[A-Za-z][\w .-]*\([\w .-]+\)$/;
+
+/** The family of a model, to group a long list (Antigravity offers Gemini, Claude and GPT models). */
+function family(m: { id: string; label: string }): string {
+  const s = `${m.id} ${m.label}`.toLowerCase();
+  if (/claude|opus|sonnet|haiku|fable/.test(s)) return "Claude";
+  if (/\bgpt|codex|\bo\d/.test(s)) return "GPT";
+  if (/gemini|orchestrator/.test(s)) return "Gemini";
+  if (/deepseek/.test(s)) return "DeepSeek";
+  return "";
+}
 const EFFORT_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
 const OTHER = "__other__";
 
@@ -423,6 +435,20 @@ function ModelPicker({
   const invalid = Boolean(model) && !MODEL_ID.test(model);
   const effortLabel = (e: string) => (EFFORT_ORDER.includes(e) ? t(`effort_${e}` as Key) : e);
   const value = other ? OTHER : model;
+  const option = (m: { id: string; label: string }) => (
+    <option key={m.id} value={m.id}>
+      {m.label}
+      {m.label !== m.id ? ` (${m.id})` : ""}
+    </option>
+  );
+  // Grouped by family when the list mixes them; in the order the CLI gave.
+  const groups: Array<[string, typeof models]> = [];
+  for (const m of models) {
+    const f = family(m);
+    const g = groups.find(([name]) => name === f);
+    if (g) g[1].push(m);
+    else groups.push([f, [m]]);
+  }
   return (
     <div className="row wrap">
       <div className="field grow">
@@ -442,12 +468,13 @@ function ModelPicker({
           }}
         >
           <option value="">{t("run_modelDefault")}</option>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-              {m.label !== m.id ? ` (${m.id})` : ""}
-            </option>
-          ))}
+          {groups.length > 1
+            ? groups.map(([name, list]) => (
+                <optgroup key={name || "other"} label={name || t("run_modelOtherGroup")}>
+                  {list.map(option)}
+                </optgroup>
+              ))
+            : models.map(option)}
           <option value={OTHER}>{t("run_modelOther")}</option>
         </select>
         {other && (
@@ -462,6 +489,10 @@ function ModelPicker({
         )}
         {invalid ? (
           <span className="error small">{t("run_modelInvalid")}</span>
+        ) : provider?.listed ? (
+          <span className="small muted">{t("run_modelsListed", { cli: provider.name })}</span>
+        ) : fallback === "antigravity" && provider?.path ? (
+          <span className="small muted">{t("run_modelsNotListed")}</span>
         ) : (
           fallback === "claude" && !other && <span className="small muted">{t("run_modelAliasHint")}</span>
         )}
@@ -639,7 +670,7 @@ export function AutoDispatch({
 }
 
 /** CLIs that take other folders besides their working folder (the tracker passes them as --add-dir or --include-directories). */
-const FOLDER_CLIS = new Set<RunnerProvider>(["claude", "codex", "deepseek", "copilot", "gemini"]);
+const FOLDER_CLIS = new Set<RunnerProvider>(["claude", "codex", "deepseek", "copilot", "antigravity", "gemini"]);
 
 /** Folders given one per line, without empty lines. */
 const dirLines = (text: string) => text.split(/\r?\n/).map((d) => d.trim()).filter(Boolean);

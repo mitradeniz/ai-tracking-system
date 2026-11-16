@@ -11,7 +11,7 @@ import { DEFAULT_RUNNER, PROVIDERS, type Access, type ChatRunner, type SessionMo
 /** An AI CLI that runs the project while the person is away: answers chats, keeps the plan up to date. */
 export interface ManagerSettings {
   enabled: boolean;
-  provider: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "deepseek";
+  provider: "claude" | "codex" | "antigravity" | "gemini" | "copilot" | "cursor" | "deepseek";
   model?: string;
   effort?: string;
   /** Program path when the CLI is not on PATH. */
@@ -125,10 +125,10 @@ export const DEFAULT_PROJECT_RUNNERS: ProjectRunners = { autoDispatch: false, ma
 export function normalizeManager(input: unknown, base: ManagerSettings = DEFAULT_MANAGER): ManagerSettings {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const provider =
-    (["claude", "codex", "gemini", "copilot", "cursor", "deepseek"] as const).find((p) => p === o.provider) ?? base.provider;
+    (["claude", "codex", "antigravity", "gemini", "copilot", "cursor", "deepseek"] as const).find((p) => p === o.provider) ?? base.provider;
   const pick = (k: "model" | "effort" | "binary", max: number) => (k in o ? str(o[k], max) : base[k]);
   const model = pick("model", 200);
-  if (model && !/^[\w.:@/[\]-]+$/.test(model)) throw new Error(`"${model}" is not a model name the CLI understands.`);
+  if (model && !modelName(model)) throw new Error(`"${model}" is not a model name the CLI understands.`);
   const effort = pick("effort", 20);
   if (effort && !/^[a-z]+$/.test(effort)) throw new Error(`Unknown effort level "${effort}".`);
   const binary = pick("binary", 1000);
@@ -146,6 +146,9 @@ export function normalizeManager(input: unknown, base: ManagerSettings = DEFAULT
     fullAuthority: typeof o.fullAuthority === "boolean" ? o.fullAuthority : (base.fullAuthority ?? false),
   };
 }
+
+/** A model id a CLI takes: no spaces, except a name like Antigravity's "Orchestrator (Carbon)". */
+const modelName = (m: string) => /^[\w.:@/[\]-]+$/.test(m) || /^[A-Za-z][\w .-]*\([\w .-]+\)$/.test(m);
 
 const str = (v: unknown, max = 4000): string | undefined => {
   if (typeof v !== "string") return undefined;
@@ -170,7 +173,7 @@ export function normalizeRunner(input: unknown, base: ChatRunner = DEFAULT_RUNNE
   const workdir = pick("workdir", 1000);
   if (workdir && !path.isAbsolute(workdir)) throw new Error("The working folder must be an absolute path.");
   const model = pick("model", 200);
-  if (model && !/^[\w.:@/[\]-]+$/.test(model)) {
+  if (model && !modelName(model)) {
     throw new Error(`"${model}" is not a model name the CLI understands. Pick one from the list, or type its id without spaces (for example "opus" or "gpt-6-sol").`);
   }
   const effort = pick("effort", 20);

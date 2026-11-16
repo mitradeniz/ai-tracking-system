@@ -12,7 +12,7 @@ import path from "node:path";
  * The CLIs run with the user's own login. Nothing here stores or forwards credentials.
  */
 
-export const PROVIDERS = ["codex", "claude", "copilot", "gemini", "cursor", "deepseek", "custom"] as const;
+export const PROVIDERS = ["codex", "claude", "copilot", "antigravity", "gemini", "cursor", "deepseek", "custom"] as const;
 export type ProviderId = (typeof PROVIDERS)[number];
 export type Access = "readonly" | "edit" | "full";
 export type SessionMode = "keep" | "perTask";
@@ -156,6 +156,21 @@ export const PROVIDER_INFO: Record<ProviderId, ProviderInfo> = {
     },
     resumeHint: "copilot --resume {{sessionId}}",
   },
+  antigravity: {
+    id: "antigravity",
+    name: "Antigravity CLI",
+    // Google Antigravity's CLI (agy), which follows Gemini CLI. Its models (Gemini, Claude, GPT) are
+    // the ones the signed-in account may use: `agy models` lists them (see modelsOf in env.ts).
+    bin: "agy",
+    models: [],
+    efforts: ["low", "medium", "high", "xhigh", "max"],
+    access: {
+      readonly: "--mode plan",
+      edit: "--mode auto",
+      full: "--dangerously-skip-permissions",
+    },
+    resumeHint: "agy --conversation {{sessionId}}",
+  },
   gemini: {
     id: "gemini",
     name: "Gemini CLI",
@@ -265,7 +280,7 @@ export interface Invocation {
   /** Session id fixed before the run (Claude Code, Copilot, Gemini); Codex, Cursor and DeepSeek report their own. */
   sessionId?: string;
   /** How the output is read. */
-  format: "codex" | "claude" | "gemini" | "cursor" | "dsh" | "text";
+  format: "codex" | "claude" | "gemini" | "cursor" | "dsh" | "agy" | "text";
   /** Files to write before the run (DeepSeek: the model it uses, as a settings overlay). No secrets. */
   files?: { path: string; content: string }[];
   /** Claude Code: the permission mode asked for. */
@@ -372,6 +387,21 @@ export function buildInvocation(input: BuildInput): Invocation {
       if (effort) args.push("--reasoning-effort", effort);
       args.push(...extra);
       return { command: runner.binary || "copilot", args, sessionId: session, format: "text" };
+    }
+    case "antigravity": {
+      // One prompt per run (print mode); events as JSON lines. The conversation's id comes with the
+      // first line, and the next message continues it with --conversation. Nobody can approve a step:
+      // in auto mode routine edits and commands run and risky ones are refused (soft-denied).
+      const args = ["-p", prompt, "--output-format", "stream-json"];
+      if (resume) args.push("--conversation", resume);
+      if (runner.access === "readonly") args.push("--mode", "plan");
+      else if (runner.access === "edit") args.push("--mode", "auto");
+      else args.push("--dangerously-skip-permissions");
+      for (const dir of addDirs) if (dir.startsWith("/")) args.push("--add-dir", dir);
+      if (model) args.push("--model", model);
+      if (effort) args.push("--effort", effort);
+      args.push(...extra);
+      return { command: runner.binary || "agy", args, format: "agy" };
     }
     case "gemini": {
       const args = ["-p", prompt, "-o", "stream-json", "--skip-trust"];
@@ -725,6 +755,78 @@ function parseDsh(o: Record<string, unknown>, st: DshState): StreamEvent[] {
   }
 }
 
+/** Antigravity CLI tools named like Claude Code's, so a refused step reads the same everywhere. */
+function agyStep(tool: string, input: Record<string, unknown>): { shown: string; named: string } {
+  const command = String(input.CommandLine ?? input.command_line ?? input.command ?? input.cmd ?? "");
+  const file = String(input.TargetFile ?? input.target_file ?? input.AbsolutePath ?? input.path ?? input.file_path ?? "");
+  if (command || /command|shell|terminal/i.test(tool)) return { shown: `$ ${clip(command || tool, 200)}`, named: `Bash ${clip(command, 200)}` };
+  if (/write|edit|replace|create_file|patch/i.test(tool)) return { shown: `✎ ${clip(file || tool, 160)}`, named: `Edit ${file}`.trim() };
+  return { shown: `⚙ ${describeToolInput(tool, input)}`, named: describeToolInput(tool, input) };
+}
+
+/** A tool error that is a permission the run did not have (soft-denied, or outside the sandbox). */
+const AGY_REFUSED = /permission|denied|not allowed|approval|soft[- ]?den|sandbox/i;
+
+/**
+ * Antigravity CLI `--output-format stream-json`: "init" (conversation id), "step_update" (each step
+ * of the agent: its text as it is written, tools with their input and output) and "result".
+ */
+function parseAgy(o: Record<string, unknown>): StreamEvent[] {
+  const event = String(o.event ?? "");
+  const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+  const out: StreamEvent[] = [];
+  if (event === "init") {
+    const init = (o.init && typeof o.init === "object" ? o.init : {}) as Record<string, unknown>;
+    const id = o.conversation_id ?? init.conversation_id;
+    if (typeof id === "string") out.push({ kind: "session", id });
+    if (typeof init.model === "string") out.push({ kind: "usage", usage: { model: init.model } });
+    return out;
+  }
+  if (event === "step_update") {
+    const s = (o.step_update && typeof o.step_update === "object" ? o.step_update : {}) as Record<string, unknown>;
+    if (typeof s.conversation_id === "string") out.push({ kind: "session", id: s.conversation_id });
+    const type = String(s.step_type ?? "");
+    const done = s.state === "DONE";
+    if (type === "agent_response") {
+      if (typeof s.text_delta === "string" && s.text_delta) out.push({ kind: "message", text: s.text_delta, partial: true });
+      // The end of a response closes its text, so the next response is a message of its own.
+      if (done) out.push({ kind: "usage", usage: {} });
+      return out;
+    }
+    if (type === "tool") {
+      const info = (s.tool_info && typeof s.tool_info === "object" ? s.tool_info : {}) as Record<string, unknown>;
+      const tool = String(info.name ?? s.tool_name ?? "tool");
+      const input = (info.parameters && typeof info.parameters === "object" ? info.parameters : {}) as Record<string, unknown>;
+      const step = agyStep(tool, input);
+      const error = (info.error && typeof info.error === "object" ? info.error : null) as { type?: string; message?: string } | null;
+      if (!done) return [...out, { kind: "activity", text: step.shown }];
+      out.push({ kind: "tool" });
+      if (error && AGY_REFUSED.test(`${error.type ?? ""} ${error.message ?? ""}`)) {
+        out.push({ kind: "denied", tool: step.named }, { kind: "activity", text: `⛔ permission denied: ${step.named}` });
+      } else if (error) out.push({ kind: "activity", text: `  ↳ ${clip(String(error.message ?? error.type ?? "tool error"), 160)}` });
+      return out;
+    }
+    return out;
+  }
+  if (event === "result") {
+    const r = (o.result && typeof o.result === "object" ? o.result : {}) as Record<string, unknown>;
+    const u = (r.usage && typeof r.usage === "object" ? r.usage : {}) as Record<string, unknown>;
+    const cached = n(u.cache_read_tokens);
+    const input = n(u.input_tokens);
+    const ok = r.status === "SUCCESS";
+    const err = r.error && typeof r.error === "object" ? (r.error as { message?: string; type?: string }) : null;
+    const error = ok ? undefined : (err?.message ?? (typeof r.error === "string" ? r.error : undefined) ?? `Run ended: ${String(r.status ?? "no answer")}`);
+    if (typeof r.conversation_id === "string") out.push({ kind: "session", id: r.conversation_id });
+    out.push(
+      { kind: "usage", usage: { input, cached, output: n(u.output_tokens), turns: n(r.num_turns) } },
+      { kind: "result", ok, ...(typeof r.response === "string" && r.response.trim() && { text: r.response }), ...(error && { error }) },
+    );
+    return out;
+  }
+  if (event === "error") return [{ kind: "error", text: String(o.message ?? o.error ?? "error") }];
+  return [];
+}
+
 /** Reads a CLI's stdout line by line and keeps the last assistant message. */
 export class OutputParser {
   private messages: string[] = [];
@@ -765,7 +867,9 @@ export class OutputParser {
             ? parseCursor(o as Record<string, unknown>)
             : this.format === "dsh"
               ? parseDsh(o as Record<string, unknown>, this.dsh)
-              : parseGemini(o as Record<string, unknown>);
+              : this.format === "agy"
+                ? parseAgy(o as Record<string, unknown>)
+                : parseGemini(o as Record<string, unknown>);
     for (const e of events) {
       if (e.kind === "session") this.sessionId = e.id;
       if (e.kind === "mode") this.mode = e.mode;

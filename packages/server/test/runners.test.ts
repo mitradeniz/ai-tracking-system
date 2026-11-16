@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProjectFileSchema, serializeProject } from "@aitrack/core";
 import { startServer, type RunningServer } from "../src/index.ts";
-import { clearAutoModeCache, helpHasAutoMode, parseCodexModels, parseCopilotModels, parseCursorModels } from "../src/runners/env.ts";
+import { clearAutoModeCache, helpHasAutoMode, parseAgyModels, parseCodexModels, parseCopilotModels, parseCursorModels } from "../src/runners/env.ts";
 import { claudeMemoryDir, conversationUsage, gitCommonDir, runUsage } from "../src/runners/runs.ts";
 import { normalizeHook } from "../src/runners/hooks.ts";
 import { normalizeRunner, RunnerStore } from "../src/runners/store.ts";
@@ -1092,6 +1092,69 @@ describe("provider adapters", () => {
     const second = (await invocations()).find((x) => x.args.includes("--session-id"))!;
     expect(second.args[second.args.indexOf("--session-id") + 1]).toBe("session-dsh-1");
     expect(second.stdin).toBe("One more thing.");
+  });
+
+  it("builds Antigravity CLI's command line: print mode, its permission modes, the same conversation next time", () => {
+    const base = { ...DEFAULT_RUNNER, provider: "antigravity" as const };
+    const edit = buildInvocation({ runner: { ...base, model: "claude-opus-5.5-thinking", effort: "high" }, prompt: "P", cwd: "/w", newSessionId: "u", addDirs: ["/plan"] });
+    expect(edit.command).toBe("agy");
+    expect(edit.args).toEqual(["-p", "P", "--output-format", "stream-json", "--mode", "auto", "--add-dir", "/plan", "--model", "claude-opus-5.5-thinking", "--effort", "high"]);
+    expect(edit.format).toBe("agy");
+    expect(edit.sessionId).toBeUndefined();
+    const again = buildInvocation({ runner: { ...base, access: "readonly" }, prompt: "P", cwd: "/w", resume: "conv-9", newSessionId: "u" });
+    expect(again.args).toEqual(["-p", "P", "--output-format", "stream-json", "--conversation", "conv-9", "--mode", "plan"]);
+    expect(buildInvocation({ runner: { ...base, access: "full" }, prompt: "P", cwd: "/w", newSessionId: "u" }).args).toContain("--dangerously-skip-permissions");
+    // Its quoted model names are taken as they are.
+    expect(normalizeRunner({ provider: "antigravity", model: "Orchestrator (Carbon)" }).model).toBe("Orchestrator (Carbon)");
+    expect(() => normalizeRunner({ provider: "antigravity", model: "two words" })).toThrow();
+  });
+
+  it("reads Antigravity CLI's events and the models of the signed-in account", () => {
+    const p = new OutputParser("agy");
+    const lines = [
+      { event: "init", conversation_id: "c-1", init: { cwd: "/w", model: "gemini-3.8-flash-medium" } },
+      { event: "step_update", step_update: { conversation_id: "c-1", state: "ACTIVE", step_type: "tool", tool_info: { name: "run_command", parameters: { CommandLine: "npm ci" } } } },
+      { event: "step_update", step_update: { conversation_id: "c-1", state: "DONE", step_type: "tool", tool_info: { name: "run_command", parameters: { CommandLine: "npm ci" }, error: { type: "PERMISSION_DENIED", message: "soft-denied" } } } },
+      { event: "step_update", step_update: { conversation_id: "c-1", state: "ACTIVE", step_type: "agent_response", text_delta: "Hello " } },
+      { event: "step_update", step_update: { conversation_id: "c-1", state: "ACTIVE", step_type: "agent_response", text_delta: "there." } },
+      { event: "step_update", step_update: { conversation_id: "c-1", state: "DONE", step_type: "agent_response" } },
+      { event: "result", result: { conversation_id: "c-1", status: "SUCCESS", response: "Hello there.", num_turns: 3, usage: { input_tokens: 500, cache_read_tokens: 300, output_tokens: 20 } } },
+    ];
+    const events = lines.flatMap((l) => p.feed(JSON.stringify(l)));
+    expect(p.sessionId).toBe("c-1");
+    expect(events.find((e) => e.kind === "activity")).toEqual({ kind: "activity", text: "$ npm ci" });
+    expect(p.denials).toEqual(["Bash npm ci"]);
+    expect(p.tools).toBe(1);
+    expect(p.finalMessage()).toBe("Hello there.");
+    expect(p.result).toMatchObject({ ok: true });
+    expect(p.usage).toMatchObject({ model: "gemini-3.8-flash-medium", input: 500, cached: 300, output: 20, turns: 3 });
+    const failed = new OutputParser("agy");
+    failed.feed(JSON.stringify({ event: "result", result: { status: "ERROR", error: { message: "unknown model" } } }));
+    expect(failed.result).toEqual({ ok: false, error: "unknown model" });
+
+    expect(parseAgyModels('Available models:\n  gemini-3.8-flash-medium   Gemini 3.8 Flash (Medium)\n  * claude-opus-5.5-thinking - Claude Opus 5.5 (Thinking)\n  "Orchestrator (Carbon)"\n')).toEqual([
+      { id: "gemini-3.8-flash-medium", label: "Gemini 3.8 Flash (Medium)" },
+      { id: "claude-opus-5.5-thinking", label: "Claude Opus 5.5 (Thinking)" },
+      { id: "Orchestrator (Carbon)", label: "Orchestrator (Carbon)" },
+    ]);
+    expect(parseAgyModels('[{"slug":"gpt-oss-120b","display_name":"GPT-OSS-120b"}]')).toEqual([{ id: "gpt-oss-120b", label: "GPT-OSS-120b" }]);
+  });
+
+  it("runs a task with Antigravity CLI and continues its conversation", async () => {
+    process.env.FAKE_FORMAT = "agy";
+    process.env.FAKE_SCENARIO = "ask";
+    await setRunner("b", { provider: "antigravity" });
+    await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    await waitFor("T3", "blocked");
+    const state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    expect(state.settings.chats.b.sessionId).toBe("conv-1");
+    expect(state.runs[0].usage).toMatchObject({ input: 1200, cached: 900, output: 80 });
+    process.env.FAKE_SCENARIO = "done";
+    await call("POST", `/api/projects/${key}/agents/b/reply`, { text: "Go on." });
+    await waitFor("T3", "done");
+    const second = (await invocations())[1]!;
+    expect(second.args.slice(0, 2)).toEqual(["-p", "Go on."]);
+    expect(second.args[second.args.indexOf("--conversation") + 1]).toBe("conv-1");
   });
 
   it("finds the shared git folder of a worktree, for DeepSeek's sandbox", async () => {

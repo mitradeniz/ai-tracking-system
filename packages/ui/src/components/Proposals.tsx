@@ -185,7 +185,7 @@ export function ProposalsDialog({
   const now = useNow(running);
 
   useEffect(() => {
-    if (!provider && installed.length) setProvider(preferred && installed.includes(preferred) ? preferred : installed[0]!);
+    if (!provider && installed.length) setProvider(preferred && (installed as readonly string[]).includes(preferred) ? preferred : installed[0]!);
   }, [provider, installed, preferred]);
   useEffect(
     () => () => {

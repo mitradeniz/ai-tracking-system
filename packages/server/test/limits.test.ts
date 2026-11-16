@@ -22,6 +22,8 @@ describe("usage limits", () => {
     expect(usageLimit("Prompt is too long", NOW)).toBeNull();
     expect(usageLimit("context window exceeded: token limit reached", NOW)).toBeNull();
     expect(usageLimit("Credit balance is too low", NOW)).toBeNull();
+    // Antigravity counts its use in AI credits.
+    expect(usageLimit("You are out of AI credits for this period", NOW, { provider: "antigravity", windowStart: NOW - 3_600_000 })).toMatchObject({ basis: "window", known: false });
     expect(usageLimit("boom: not signed in", NOW)).toBeNull();
     expect(usageLimit("Claude AI usage limit reached|1794655200", NOW)).toMatchObject({ known: true, until: 1794655200 * 1000 + 60_000 });
   });

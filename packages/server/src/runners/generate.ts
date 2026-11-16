@@ -15,7 +15,7 @@ import { buildInvocation, OutputParser, PROVIDER_INFO, writeInvocationFiles, typ
  * but not change it, and answers with the project file as JSON.
  */
 
-export const GENERATOR_PROVIDERS = ["claude", "codex", "gemini", "copilot", "cursor", "deepseek"] as const;
+export const GENERATOR_PROVIDERS = ["claude", "codex", "antigravity", "gemini", "copilot", "cursor", "deepseek"] as const;
 export type GeneratorProvider = (typeof GENERATOR_PROVIDERS)[number];
 
 export interface GenerateRequest {

@@ -81,7 +81,7 @@ const COMMAND_RULE: Partial<Record<string, (command: string) => string>> = {
   copilot: (c) => `shell(${c}:*)`,
 };
 /** CLIs that take other folders from the run settings. */
-const FOLDERS = new Set(["claude", "deepseek", "codex", "copilot", "gemini"]);
+const FOLDERS = new Set(["claude", "deepseek", "codex", "copilot", "antigravity", "gemini"]);
 
 /**
  * The change to a chat's run settings that gives it a permission for good. A CLI with no finer
@@ -108,7 +108,7 @@ export function permissionGrant(runner: GrantRunner, permission: IssuePermission
       if (runner.network) return { ...full, shown: "network" };
       return { how: "network", patch: { network: true, ...(runner.access === "readonly" && { access: "edit" as const }) }, shown: "network" };
     }
-    if (p === "claude" || p === "copilot" || p === "gemini") return none("network");
+    if (p === "claude" || p === "copilot" || p === "antigravity" || p === "gemini") return none("network");
     return { ...full, shown: "network" };
   }
   if (!value.startsWith("/") && !/^[A-Za-z]:\\/.test(value)) return full;

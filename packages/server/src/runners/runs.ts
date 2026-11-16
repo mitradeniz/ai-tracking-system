@@ -62,7 +62,7 @@ interface Run extends RunSummary {
 }
 
 /** CLIs that take other folders besides their working folder (--add-dir, --include-directories). */
-export const FOLDER_CLIS = new Set<ProviderId>(["claude", "codex", "deepseek", "copilot", "gemini"]);
+export const FOLDER_CLIS = new Set<ProviderId>(["claude", "codex", "deepseek", "copilot", "antigravity", "gemini"]);
 
 /**
  * Counters a CLI reports for its whole conversation instead of for one run: Codex's tokens, Claude

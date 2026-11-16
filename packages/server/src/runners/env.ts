@@ -121,6 +121,8 @@ export interface DetectedProvider {
   efforts: string[];
   /** Claude Code: whether the installed version has auto mode. */
   autoMode?: boolean;
+  /** The models came from the CLI itself (for Antigravity, Codex and Cursor: the ones the signed-in account may use). */
+  listed?: boolean;
 }
 
 let detectCache: { at: number; value: Promise<DetectedProvider[]> } | null = null;
@@ -198,6 +200,44 @@ export function parseCursorModels(text: string): ModelChoice[] {
   return out.slice(0, 60);
 }
 
+/**
+ * `agy models`: every model the signed-in account may use, one per line: its id (a slug such as
+ * gemini-3.8-flash-medium, or a quoted name such as "Orchestrator (Carbon)"), maybe with a name after
+ * it. A JSON list (of strings, or of objects with an id/slug and a name) is read too.
+ */
+export function parseAgyModels(text: string): ModelChoice[] {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
+    try {
+      const data = JSON.parse(trimmed) as unknown;
+      const list = Array.isArray(data) ? data : ((data as { models?: unknown[] }).models ?? []);
+      return list
+        .map((m) => {
+          if (typeof m === "string") return { id: m, label: m };
+          const o = (m ?? {}) as Record<string, unknown>;
+          const id = String(o.slug ?? o.id ?? o.model ?? o.name ?? "");
+          return { id, label: String(o.display_name ?? o.displayName ?? o.label ?? o.name ?? id) };
+        })
+        .filter((m) => m.id)
+        .slice(0, 80);
+    } catch {
+      // Not JSON after all: read it as lines.
+    }
+  }
+  const out: ModelChoice[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.replace(/\x1b\[[0-9;]*m/g, "").replace(/^[-*•>\s]+/, "").trim();
+    if (!line || line.endsWith(":") || /^(available|models?|id|slug|name|usage|tip|note|run |you |your )\b/i.test(line) || /^[-=─━│|+ ]+$/.test(line)) continue;
+    const named = /^"?([A-Z][\w .-]*\([\w .-]+\))"?(?:\s{2,}|\s+[-–—:|]\s+|$)(.*)$/.exec(line);
+    const slug = /^([a-z0-9][\w.:-]*)(?:\s+(?:[-–—:|]\s*)?(.+))?$/.exec(line);
+    const id = named?.[1] ?? slug?.[1];
+    if (!id || out.some((x) => x.id === id)) continue;
+    const rest = (named ? named[2] : slug?.[2])?.replace(/\((?:current|default|selected)\)|\*/gi, "").trim();
+    out.push({ id, label: rest || id });
+  }
+  return out.slice(0, 80);
+}
+
 /** Whether `claude --help` lists "auto" among the permission modes. */
 export function helpHasAutoMode(help: string): boolean {
   return /--permission-mode[^(]{0,200}\(choices:[^)]*["'`]auto["'`]/.test(help);
@@ -263,6 +303,12 @@ async function modelsOf(id: ProviderId, file: string, envPath: string): Promise<
     const list = out ? parseCursorModels(out) : [];
     return list.length ? [...fallback, ...list.filter((m) => m.id !== "auto")] : fallback;
   }
+  if (id === "antigravity") {
+    // The models of the signed-in account's plan (Gemini, Claude, GPT); nothing when not signed in.
+    const out = await output(file, ["models"], envPath, 15_000);
+    const list = out ? parseAgyModels(out) : [];
+    return list.length ? list : fallback;
+  }
   return fallback;
 }
 
@@ -281,7 +327,8 @@ export function detectProviders(force = false): Promise<DetectedProvider[]> {
           canRun ? modelsOf(id, found!, envPath) : Promise.resolve(info.models),
           canRun && id === "claude" ? claudeHasAutoMode(found!, envPath) : Promise.resolve(undefined),
         ]);
-        return { id, name: info.name, path: found, version: ver, models, efforts: info.efforts, ...(autoMode !== undefined && { autoMode }) };
+        const listed = canRun && ["antigravity", "codex", "cursor"].includes(id) && models !== info.models && models.length > info.models.length;
+        return { id, name: info.name, path: found, version: ver, models, efforts: info.efforts, ...(autoMode !== undefined && { autoMode }), ...(listed && { listed: true }) };
       }),
     );
   })();

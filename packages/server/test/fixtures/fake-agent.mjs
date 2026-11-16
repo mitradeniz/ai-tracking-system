@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // A stand-in for the agent CLIs in tests. FAKE_FORMAT picks the output format (codex, claude,
-// gemini, cursor, dsh, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done,
+// gemini, cursor, dsh, agy, text) and FAKE_SCENARIO what the agent does (done, ask, fail, sleep, wait: blocked until FAKE_WAIT is done,
 // followups: done with work left for later, askonce: asks first and finishes after a reply, limit / limitonce: the
 // plan's usage limit is used up, always or until told to go on). A manager or plan-integration prompt is answered with FAKE_MANAGER_ANSWER
 // or FAKE_PLAN_ANSWER.
@@ -17,8 +17,9 @@ const format = (args.includes("--fake-format") && args[args.indexOf("--fake-form
 let scenario = process.env.FAKE_SCENARIO || "done";
 let stdin = "";
 if (!process.stdin.isTTY) for await (const c of process.stdin) stdin += c;
-// Cursor CLI takes the prompt as its last argument.
+// Cursor CLI takes the prompt as its last argument; Antigravity CLI after -p.
 if (format === "cursor" && !stdin) stdin = args[args.length - 1] ?? "";
+if (format === "agy" && !stdin && args.includes("-p")) stdin = args[args.indexOf("-p") + 1] ?? "";
 // askonce: asks when it gets the task, finishes when it gets a reply.
 if (scenario === "askonce") scenario = stdin.includes("REPORTING") ? "ask" : "done";
 // limitonce: the plan's usage limit is used up, until it is told the limit has reset (or to go on).
@@ -175,6 +176,31 @@ if (format === "dsh") {
     modelUsage: { "claude-fake": { contextWindow: 1000000 } },
     permission_denials: process.env.FAKE_DENY ? [{ tool_name: "Bash", tool_input: { command: "npm test" } }] : [],
   });
+} else if (format === "agy") {
+  // `agy models`: the account's models, one per line.
+  if (args[0] === "models") {
+    process.stdout.write("Available models:\n  gemini-3.8-flash-medium   Gemini 3.8 Flash (Medium)\n  claude-opus-5.5-thinking  Claude Opus 5.5 (Thinking)\n  \"Orchestrator (Carbon)\"\n");
+    process.exit(0);
+  }
+  const conv = flag("--conversation") ?? "conv-1";
+  out({ event: "init", conversation_id: conv, init: { cwd: process.cwd(), tools: ["run_command"], permission_mode: args.includes("--dangerously-skip-permissions") ? "always-proceed" : "request-review", model: flag("--model") ?? "gemini-3.8-flash-medium" } });
+  out({ event: "step_update", step_update: { conversation_id: conv, step_index: 1, state: "ACTIVE", step_type: "tool", tool_name: "run_command", tool_info: { name: "run_command", parameters: { CommandLine: "npm test" } } } });
+  out({
+    event: "step_update",
+    step_update: {
+      conversation_id: conv,
+      step_index: 1,
+      state: "DONE",
+      step_type: "tool",
+      tool_name: "run_command",
+      tool_info: process.env.FAKE_DENY
+        ? { name: "run_command", parameters: { CommandLine: "npm test" }, error: { type: "PERMISSION_DENIED", message: "soft-denied: approval needed" } }
+        : { name: "run_command", parameters: { CommandLine: "npm test" }, output: "ok" },
+    },
+  });
+  for (const part of final.match(/[\s\S]{1,20}/g)) out({ event: "step_update", step_update: { conversation_id: conv, step_index: 2, state: "ACTIVE", step_type: "agent_response", text_delta: part } });
+  out({ event: "step_update", step_update: { conversation_id: conv, step_index: 2, state: "DONE", step_type: "agent_response" } });
+  out({ event: "result", result: { conversation_id: conv, status: "SUCCESS", response: final, duration_seconds: 1, num_turns: 2, usage: { input_tokens: 1200, output_tokens: 80, thinking_tokens: 40, cache_read_tokens: 900, total_tokens: 1320 } } });
 } else if (format === "gemini") {
   out({ type: "init", session_id: flag("--resume") ?? flag("--session-id"), model: "fake" });
   out({ type: "tool_use", tool_name: "run_shell_command", parameters: { command: "npm test" } });

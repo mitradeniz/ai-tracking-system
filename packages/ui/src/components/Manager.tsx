@@ -194,7 +194,7 @@ export function ManagerDialog({
   }, [draft, state]);
   // A CLI that is not installed is replaced by the first one that is.
   useEffect(() => {
-    if (draft && providers && installed.length && !installed.includes(draft.provider)) setDraft({ ...draft, provider: installed[0]!, model: undefined });
+    if (draft && providers && installed.length && !(installed as readonly string[]).includes(draft.provider)) setDraft({ ...draft, provider: installed[0]!, model: undefined });
   }, [draft, providers, installed]);
   if (!state || !draft) return null;
   const on = state.settings.enabled;

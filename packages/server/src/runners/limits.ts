@@ -26,7 +26,7 @@ export interface LimitContext {
 
 /** Messages that mean "your plan's limit is used up, wait". Not a full context window or a too-long prompt. */
 const LIMIT =
-  /usage limit|(?:5-hour|five-hour|hourly|daily|weekly|monthly|session|opus|sonnet) limit|hit your (?:usage )?limit|limit (?:has been )?reached|limit will reset|rate[ _-]?limit|quota (?:exceeded|exhausted|reached)|exceeded your (?:current )?quota|resource_exhausted|too many requests|\b429\b|usage_limit/i;
+  /usage limit|(?:5-hour|five-hour|hourly|daily|weekly|monthly|session|opus|sonnet) limit|hit your (?:usage )?limit|limit (?:has been )?reached|limit will reset|rate[ _-]?limit|quota (?:exceeded|exhausted|reached)|exceeded your (?:current )?quota|resource_exhausted|too many requests|\b429\b|usage_limit|out of (?:ai )?credits|(?:ai )?credits? (?:exhausted|depleted|used up|ran out)|insufficient (?:ai )?credits/i;
 const NOT_A_LIMIT = /context (?:window|length|limit)|token limit|prompt is too long|max_tokens|credit balance is too low/i;
 
 /** The short window of Claude Code and Codex plans. */
@@ -186,7 +186,7 @@ export function usageLimit(text: string, now = Date.now(), ctx: LimitContext = {
     return { until: now + 24 * 3_600_000, known: false, basis: "cycle", message };
   }
   // A rate limit without a plan's words passes in a minute or two, the first time.
-  const plan = /usage|hour|session|plan|quota|opus|sonnet|limit reached|hit your/i.test(text);
+  const plan = /usage|hour|session|plan|quota|credit|opus|sonnet|limit reached|hit your/i.test(text);
   if (!plan && !ctx.again) return { until: now + RATE_MS, known: false, basis: "rate", message };
   // The 5-hour window of Claude Code and Codex: it resets 5 hours after its first message.
   const start = ctx.windowStart && ctx.windowStart > now - WINDOW_MS ? ctx.windowStart : now;

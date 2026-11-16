@@ -30,7 +30,7 @@ export interface AgentPayload {
   bootstrapPrompts?: string[];
 }
 
-export type ProviderId = "codex" | "claude" | "copilot" | "gemini" | "cursor" | "deepseek" | "custom";
+export type ProviderId = "codex" | "claude" | "copilot" | "antigravity" | "gemini" | "cursor" | "deepseek" | "custom";
 export type RunnerProvider = ProviderId | "manual";
 
 /** How a chat is run on this computer. Kept by the local tracker, never in the project file. */
@@ -87,7 +87,7 @@ export interface RunSummary {
   denials?: string[];
 }
 
-export type ManagerProvider = "claude" | "codex" | "gemini" | "copilot" | "cursor" | "deepseek";
+export type ManagerProvider = "claude" | "codex" | "antigravity" | "gemini" | "copilot" | "cursor" | "deepseek";
 
 /** A CLI that takes the decisions while the person is away. */
 export interface ManagerSettings {
@@ -210,6 +210,8 @@ export interface DetectedProvider {
   efforts: string[];
   /** Claude Code: whether the installed version has auto mode. */
   autoMode?: boolean;
+  /** The models came from the CLI: the ones the signed-in account may use. */
+  listed?: boolean;
 }
 
 export interface RunLogEvent {
@@ -297,7 +299,7 @@ export interface AuthoringCheck {
 
 export interface GenerateJob {
   id: string;
-  provider: "claude" | "codex" | "gemini" | "copilot" | "cursor" | "deepseek";
+  provider: "claude" | "codex" | "antigravity" | "gemini" | "copilot" | "cursor" | "deepseek";
   state: "running" | "done" | "failed" | "stopped";
   startedAt: string;
   endedAt?: string;

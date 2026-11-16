@@ -9,7 +9,7 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 
 ![version](https://img.shields.io/badge/version-0.1.0-f5f4ef?style=flat-square&labelColor=111111)
 ![platforms](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-desktop-f5f4ef?style=flat-square&labelColor=111111)
-![agents](https://img.shields.io/badge/runs-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Copilot%20%C2%B7%20Gemini-f5f4ef?style=flat-square&labelColor=111111)
+![agents](https://img.shields.io/badge/runs-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Copilot%20%C2%B7%20Antigravity-f5f4ef?style=flat-square&labelColor=111111)
 ![local first](https://img.shields.io/badge/runs%20on-127.0.0.1-8fcfa6?style=flat-square&labelColor=111111)
 ![no telemetry](https://img.shields.io/badge/telemetry-none-8fcfa6?style=flat-square&labelColor=111111)
 ![ethos](https://img.shields.io/badge/%E2%92%B6-no%20masters%2C%20just%20agents-00ff41?style=flat-square&labelColor=000000)
@@ -33,7 +33,7 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 ```
 
 > [!TIP]
-> **The whole idea in one line:** a task turns **green** when everything it depends on is done and its chat is free. Send it — paste the prompt into that chat, or let a Codex / Claude Code / Copilot / Gemini chat **run it by itself**. The chat reports back, the board moves, the next tasks turn green. If something went wrong, the task gets a red **!** with a fix prompt ready to send.
+> **The whole idea in one line:** a task turns **green** when everything it depends on is done and its chat is free. Send it — paste the prompt into that chat, or let a Codex / Claude Code / Copilot / Antigravity chat **run it by itself**. The chat reports back, the board moves, the next tasks turn green. If something went wrong, the task gets a red **!** with a fix prompt ready to send.
 
 <details>
 <summary><b>Contents</b></summary>
@@ -69,7 +69,7 @@ Plan once, send the green tasks — or let the chats run themselves — and watc
 | 🆕 **New project wizard** | Pick the folder, the chats (suggested from the AI CLIs on your computer) and how to plan: Claude Code or Codex writes the tasks from your plan, any other AI does it by copy and paste, or you start empty. No JSON to write. |
 | ✏️ **Plan editor** | Add, change and remove tasks and prompts in the app: which chat takes a task, what it waits for, its instructions, allowed paths and acceptance criteria. |
 | 🟢 **A board that knows what's next** | Tasks unlock when their dependencies are done and their chat has room. *Ready to send* shows the green ones at a glance; every other task says why it is waiting. |
-| 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI, DeepSeek CLI or any command run the task in their own session, in your repository. Output streams in live; you reply, approve and stop from the app or the floating window. |
+| 🤖 **Chats that run themselves** | Codex CLI, Claude Code, GitHub Copilot CLI, Antigravity CLI, Cursor CLI, DeepSeek CLI or any command run the task in their own session, in your repository. Output streams in live; you reply, approve and stop from the app or the floating window. |
 | ⚡ **Auto-dispatch** | One switch: free chats pick up their most urgent ready task, up to *N* at once, as soon as it turns green. |
 | 🌙 **Manager** | Going to bed? Hand the project to an AI CLI you choose: it answers waiting chats, picks options, parks tasks that wait for others, sends failed ones again and adds work left for later to the plan. With *Full automation* it reviews finished work itself and only lists what you may want to look at; with *Full authority* it decides as you would — grants the permissions chats need, moves tasks between chats, takes duplicates out of the plan, has green PRs merged. Payments, accounts, legal terms, publishing and deleting stay with you; what it did and what it left for you is listed. While it runs, a small eye floats above all your apps, like the floating window: drag it anywhere, click it and it projects what each model is doing, how far the project is, what broke and the latest news; a number next to it counts what waits for you, which you can answer right there. It comes as a green hologram, the Eye of Ra in black glass or white liquid glass. |
 | 📋 **Proposed tasks** | Work a chat left for later — a placeholder to replace, a check to add — becomes a proposed task instead of a question for you: add it to the plan, ignore it, or let a CLI fold them all into the current plan, previewed before anything is written. |
@@ -324,9 +324,9 @@ sequenceDiagram
 Click **+ New project** in the sidebar. Three short steps:
 
 1. **Project** — a name and the folder, usually the root of the repository the chats will work in. The file `<name>.aitrack` is saved there, next to the code. If the folder already has a project file, you can open it instead. Pick the **language of the plan** (English or Türkçe): titles, prompts and the problems chats report are written in it.
-2. **Chats** — the AI chats that will work on the project. The wizard looks for Claude Code, Codex, Copilot and Gemini on your computer and suggests **Claude A** and **Codex A**; add more (**+ Claude**, **+ Codex**, **+ Cursor** …), rename them and write what each is good at. Optionally let the chats whose CLI is installed run by themselves.
+2. **Chats** — the AI chats that will work on the project. The wizard looks for Claude Code, Codex, Copilot and Antigravity on your computer and suggests **Claude A** and **Codex A**; add more (**+ Claude**, **+ Codex**, **+ Cursor** …), rename them and write what each is good at. Optionally let the chats whose CLI is installed run by themselves.
 3. **Plan** — choose one:
-   - **Create with AI here** — describe what to build; Claude Code, Codex, Gemini or Copilot writes the tasks. It runs **read-only** in the folder: it may read the code and README to choose realistic tasks and paths, but cannot change anything. Usually one to five minutes.
+   - **Create with AI here** — describe what to build; Claude Code, Codex, Antigravity or Copilot writes the tasks. It runs **read-only** in the folder: it may read the code and README to choose realistic tasks and paths, but cannot change anything. Usually one to five minutes.
    - **Use another AI** — **Copy the instructions** (your plan and chats included) into ChatGPT, Claude or any chat, paste its answer back and **Check** it.
    - **Start empty** — only the chats; add tasks yourself.
 
@@ -382,8 +382,8 @@ Set a chat up once — click the **⚙ by hand** badge on its lane — and **Sen
 
 | | |
 | --- | --- |
-| **Runs with** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · Cursor CLI · DeepSeek CLI · any command (Aider, scripts). Installed CLIs are found automatically, with their versions. |
-| **Model and effort** | Picked from lists, not typed: Codex's model catalog with each model's reasoning levels, Copilot's models, and the Claude Code (`opus`, `sonnet`, `haiku`, `fable`) and Gemini (`pro`, `flash`, …) aliases that always follow the latest version. **Other** takes any model id; **Default** leaves it to the CLI. |
+| **Runs with** | Codex CLI · Claude Code · GitHub Copilot CLI · Antigravity CLI · Cursor CLI · DeepSeek CLI · any command (Aider, scripts). Installed CLIs are found automatically, with their versions. |
+| **Model and effort** | Picked from lists, not typed: Codex's model catalog with each model's reasoning levels, the models your Antigravity plan offers (Gemini, Claude, GPT; from `agy models`, grouped by family), Copilot's models, and the Claude Code aliases (`opus`, `sonnet`, `haiku`, `fable`) that always follow the latest version. **Other** takes any model id; **Default** leaves it to the CLI. |
 | **Where** | The project's code folder — the repository the project file is in, or the one the plan names (**Project settings → Code folder**) — or a folder per chat (a git worktree when several chats edit code). If the plan names a folder that is not on this computer yet, the board offers to create it. |
 | **Access** | Read only · edit files (default) · full access. With *edit files*, Claude Code runs in its **auto mode** when the installed version has it — a safety check approves routine steps and blocks risky ones — and runs the usual work commands without asking: read and search, details of this computer, `mkdir`/`cp`/`mv`, local git, build and test. `git push`, `rm` and the rest still ask. Refused steps are listed on one problem with **Allow and continue**. |
 | **Conversation** | Continues the same session, like a chat you keep open — or a new session per task. Paste an existing session id to continue *that* chat. |
@@ -433,7 +433,7 @@ flowchart LR
       L[(event log)] --> B
     end
     T --> UI["🖥️ Desktop app<br/>panels · floating window"]
-    UI -- "copy prompt & mark sent" --> C["🤖 AI chats<br/>Claude · Codex · Copilot · Gemini · you"]
+    UI -- "copy prompt & mark sent" --> C["🤖 AI chats<br/>Claude · Codex · Copilot · Antigravity · you"]
     T -- "Send ▶ runs the CLI<br/>codex · claude · copilot · gemini" --> C
     C -- "started / blocked / done / issues<br/>HTTP · CLI · inbox · paste · run output · hooks" --> L
 ```
@@ -657,7 +657,7 @@ More in [SECURITY.md](SECURITY.md).
 <details>
 <summary><b>Does it talk to Claude or Codex for me?</b></summary>
 
-Yes, if you want. A chat set to run by itself is started through its official CLI — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI, DeepSeek CLI or your own command — with your sign-in; the session continues across tasks and you can reply from the app. Chats you run by hand keep working with copy and paste, and can report through hooks. See [docs/agent-runners.md](docs/agent-runners.md).
+Yes, if you want. A chat set to run by itself is started through its official CLI — Codex CLI, Claude Code, GitHub Copilot CLI, Antigravity CLI, Cursor CLI, DeepSeek CLI or your own command — with your sign-in; the session continues across tasks and you can reply from the app. Chats you run by hand keep working with copy and paste, and can report through hooks. See [docs/agent-runners.md](docs/agent-runners.md).
 
 </details>
 

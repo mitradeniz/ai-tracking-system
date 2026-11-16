@@ -9,7 +9,7 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 
 ![sürüm](https://img.shields.io/badge/s%C3%BCr%C3%BCm-0.1.0-f5f4ef?style=flat-square&labelColor=111111)
 ![platformlar](https://img.shields.io/badge/macOS%20%C2%B7%20Windows%20%C2%B7%20Linux-masa%C3%BCst%C3%BC-f5f4ef?style=flat-square&labelColor=111111)
-![ajanlar](https://img.shields.io/badge/%C3%A7al%C4%B1%C5%9Ft%C4%B1r%C4%B1r-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Copilot%20%C2%B7%20Gemini-f5f4ef?style=flat-square&labelColor=111111)
+![ajanlar](https://img.shields.io/badge/%C3%A7al%C4%B1%C5%9Ft%C4%B1r%C4%B1r-Codex%20%C2%B7%20Claude%20Code%20%C2%B7%20Copilot%20%C2%B7%20Antigravity-f5f4ef?style=flat-square&labelColor=111111)
 ![yerel](https://img.shields.io/badge/%C3%A7al%C4%B1%C5%9Ft%C4%B1%C4%9F%C4%B1%20yer-127.0.0.1-8fcfa6?style=flat-square&labelColor=111111)
 ![telemetri yok](https://img.shields.io/badge/telemetri-yok-8fcfa6?style=flat-square&labelColor=111111)
 ![ilke](https://img.shields.io/badge/%E2%92%B6-efendi%20yok%2C%20sadece%20ajanlar-00ff41?style=flat-square&labelColor=000000)
@@ -33,7 +33,7 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 ```
 
 > [!TIP]
-> **Bütün fikir tek satırda:** bir görev, bağlı olduğu her şey bitince ve sohbeti boştayken **yeşil** yanar. Gönder: promptu o sohbete yapıştır ya da Codex / Claude Code / Copilot / Gemini sohbetinin **kendi kendine çalıştırmasına** bırak. Sohbet geri bildirir, pano ilerler, sıradaki görevler yeşile döner. Bir şey ters giderse görev, gönderilmeye hazır bir çözüm promptuyla birlikte kırmızı **!** alır.
+> **Bütün fikir tek satırda:** bir görev, bağlı olduğu her şey bitince ve sohbeti boştayken **yeşil** yanar. Gönder: promptu o sohbete yapıştır ya da Codex / Claude Code / Copilot / Antigravity sohbetinin **kendi kendine çalıştırmasına** bırak. Sohbet geri bildirir, pano ilerler, sıradaki görevler yeşile döner. Bir şey ters giderse görev, gönderilmeye hazır bir çözüm promptuyla birlikte kırmızı **!** alır.
 
 <details>
 <summary><b>İçindekiler</b></summary>
@@ -69,7 +69,7 @@ Planı bir kez yaz, yeşil görevleri gönder — ya da sohbetlerin kendi kendin
 | 🆕 **Yeni proje sihirbazı** | Klasörü, sohbetleri (bilgisayarındaki yapay zekâ CLI'larından önerilir) ve nasıl planlanacağını seç: Claude Code ya da Codex planından görevleri yazsın, başka bir yapay zekâ kopyala-yapıştırla yazsın ya da boş başla. JSON yazmak yok. |
 | ✏️ **Plan düzenleyici** | Görevleri ve promptları uygulamada ekle, değiştir, kaldır: görevi hangi sohbetin alacağı, neyi beklediği, talimatı, izinli yolları ve kabul kriteri. |
 | 🟢 **Sırada ne olduğunu bilen pano** | Görevler, bağlı oldukları işler bitince ve sohbetlerinde yer varken açılır. *Şimdi gönderilebilir* yeşil olanları tek bakışta gösterir; diğer her görev neden beklediğini söyler. |
-| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI, DeepSeek CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
+| 🤖 **Kendi kendine çalışan sohbetler** | Codex CLI, Claude Code, GitHub Copilot CLI, Antigravity CLI, Cursor CLI, DeepSeek CLI ya da herhangi bir komut görevi kendi oturumunda, senin reponda çalıştırır. Çıktı canlı akar; yanıtlamak, onaylamak ve durdurmak uygulamadan ya da kayan pencereden. |
 | ⚡ **Otomatik dağıtım** | Tek anahtar: boştaki sohbetler, en acil hazır görevlerini yeşile döner dönmez alır; aynı anda en fazla *N* tane. |
 | 🌙 **Yönetici** | Uyumaya mı gidiyorsun? Projeyi seçtiğin bir yapay zekâ CLI'ına devret: bekleyen sohbetlere yanıt verir, seçenek seçer, başka görevi bekleyenleri beklemeye alır, başarısız olanları yeniden gönderir, sonraya bırakılan işleri plana ekler. *Tam otomatik* açıksa biten işi kendisi inceler, sana yalnızca göz atmak isteyebileceklerini listeler; *Tam yetki* açıksa senin vereceğin kararları verir — sohbetlerin ihtiyaç duyduğu izinleri verir, görevleri sohbetler arasında taşır, tekrar eden görevleri plandan çıkarır, yeşil PR'ları birleştirtir. Ödeme, hesap, yasal şartlar, yayınlama ve silme sende kalır; ne yaptığı ve sana ne bıraktığı listelenir. Çalışırken kayan pencere gibi bütün uygulamaların üstünde küçük bir göz süzülür: istediğin yere sürükle, tıkla, modellerin ne yaptığını, projenin yüzde kaçta olduğunu, neyin bozulduğunu ve son gelişmeleri aşağıya yansıtsın; yanındaki sayı senden bekleneni gösterir, oradan yanıtlayabilirsin. Yeşil hologram, siyah cam Ra'nın gözü ya da beyaz liquid cam görünümü seçilebilir. |
 | 📋 **Önerilen görevler** | Sohbetin sonraya bıraktığı iş — değiştirilecek bir yer tutucu, eklenecek bir kontrol — sana soru olarak değil önerilen görev olarak gelir: plana ekle, yoksay ya da hepsini bir CLI'ın mevcut plana yerleştirmesine bırak; hiçbir şey yazılmadan önce önizlenir. |
@@ -324,9 +324,9 @@ sequenceDiagram
 Kenar çubuğunda **+ Yeni proje**'ye tıkla. Üç kısa adım:
 
 1. **Proje** — bir ad ve klasör; genelde sohbetlerin çalışacağı reponun kökü. `<ad>.aitrack` dosyası oraya, kodun yanına kaydedilir. Klasörde zaten bir proje dosyası varsa onu açabilirsin. **Planın dilini** seç (English ya da Türkçe): başlıklar, promptlar ve sohbetlerin bildirdiği sorunlar bu dilde yazılır.
-2. **Sohbetler** — projede çalışacak yapay zekâ sohbetleri. Sihirbaz bilgisayarında Claude Code, Codex, Copilot ve Gemini'yi arar ve **Claude A** ile **Codex A** önerir; daha fazlasını ekle (**+ Claude**, **+ Codex**, **+ Cursor** …), adlarını değiştir ve her birinin neyde iyi olduğunu yaz. İstersen CLI'ı kurulu sohbetler kendi kendine çalışsın.
+2. **Sohbetler** — projede çalışacak yapay zekâ sohbetleri. Sihirbaz bilgisayarında Claude Code, Codex, Copilot ve Antigravity'yi arar ve **Claude A** ile **Codex A** önerir; daha fazlasını ekle (**+ Claude**, **+ Codex**, **+ Cursor** …), adlarını değiştir ve her birinin neyde iyi olduğunu yaz. İstersen CLI'ı kurulu sohbetler kendi kendine çalışsın.
 3. **Plan** — birini seç:
-   - **Burada yapay zekâyla oluştur** — ne yapılacağını anlat; Claude Code, Codex, Gemini ya da Copilot görevleri yazsın. Klasörde **salt okunur** çalışır: gerçekçi görevler ve yollar seçmek için kodu ve README'yi okuyabilir ama hiçbir şeyi değiştiremez. Genelde bir ile beş dakika sürer.
+   - **Burada yapay zekâyla oluştur** — ne yapılacağını anlat; Claude Code, Codex, Antigravity ya da Copilot görevleri yazsın. Klasörde **salt okunur** çalışır: gerçekçi görevler ve yollar seçmek için kodu ve README'yi okuyabilir ama hiçbir şeyi değiştiremez. Genelde bir ile beş dakika sürer.
    - **Başka bir yapay zekâ kullan** — **Talimatı kopyala** (planın ve sohbetlerin dahil) ve ChatGPT'ye, Claude'a ya da herhangi bir sohbete yapıştır; cevabını geri yapıştır ve **Kontrol et**.
    - **Boş başla** — yalnızca sohbetler; görevleri kendin ekle.
 
@@ -382,8 +382,8 @@ Bir sohbeti bir kez ayarla — şeridindeki **⚙ elle** rozetine tıkla — art
 
 | | |
 | --- | --- |
-| **Çalıştıran** | Codex CLI · Claude Code · GitHub Copilot CLI · Gemini CLI · Cursor CLI · DeepSeek CLI · herhangi bir komut (Aider, betikler). Kurulu CLI'lar sürümleriyle birlikte kendiliğinden bulunur. |
-| **Model ve düşünme düzeyi** | Yazılmaz, listeden seçilir: Codex'in model kataloğu ve her modelin düşünme düzeyleri, Copilot'un modelleri, Claude Code (`opus`, `sonnet`, `haiku`, `fable`) ve Gemini (`pro`, `flash`, …) için her zaman en güncel sürümü seçen takma adlar. **Diğer** herhangi bir model kimliğini alır; **Varsayılan** seçimi CLI'a bırakır. |
+| **Çalıştıran** | Codex CLI · Claude Code · GitHub Copilot CLI · Antigravity CLI · Cursor CLI · DeepSeek CLI · herhangi bir komut (Aider, betikler). Kurulu CLI'lar sürümleriyle birlikte kendiliğinden bulunur. |
+| **Model ve düşünme düzeyi** | Yazılmaz, listeden seçilir: Codex'in model kataloğu ve her modelin düşünme düzeyleri, Antigravity planının sunduğu modeller (Gemini, Claude, GPT; `agy models` ile, aileye göre gruplu), Copilot'un modelleri ve Claude Code için her zaman en güncel sürümü seçen takma adlar (`opus`, `sonnet`, `haiku`, `fable`). **Diğer** herhangi bir model kimliğini alır; **Varsayılan** seçimi CLI'a bırakır. |
 | **Nerede** | Projenin kod klasöründe — proje dosyasının bulunduğu repo ya da planın gösterdiği klasör (**Proje ayarları → Kod klasörü**) — ya da sohbete özel bir klasörde (birden fazla sohbet kod değiştiriyorsa git worktree). Plan bu bilgisayarda henüz olmayan bir klasörü gösteriyorsa pano onu oluşturmayı önerir. |
 | **Erişim** | Salt okunur · dosya düzenleme (varsayılan) · tam erişim. *Dosya düzenleme*'de Claude Code, kurulu sürümde varsa **otomatik modda** çalışır — bir güvenlik denetimi olağan adımları onaylar, riskli olanları engeller — ve olağan çalışma komutlarını sormadan çalıştırır: okuma ve arama, bu bilgisayarın bilgileri, `mkdir`/`cp`/`mv`, yerel git, derleme ve test. `git push`, `rm` ve diğerleri yine sorar. Reddedilen adımlar tek bir sorunda **İzin ver ve devam et** ile listelenir. |
 | **Sohbet** | Açık tuttuğun bir sohbet gibi aynı oturumda devam eder — ya da her görevde yeni oturum. Var olan bir oturumun kimliğini yapıştırırsan tam *o* sohbet devam eder. |
@@ -433,7 +433,7 @@ flowchart LR
       L[(olay günlüğü)] --> B
     end
     T --> UI["🖥️ Masaüstü uygulaması<br/>paneller · kayan pencere"]
-    UI -- "promptu kopyala & gönderildi işaretle" --> C["🤖 Yapay zekâ sohbetleri<br/>Claude · Codex · Copilot · Gemini · sen"]
+    UI -- "promptu kopyala & gönderildi işaretle" --> C["🤖 Yapay zekâ sohbetleri<br/>Claude · Codex · Copilot · Antigravity · sen"]
     T -- "Gönder ▶ CLI'ı çalıştırır<br/>codex · claude · copilot · gemini" --> C
     C -- "started / blocked / done / issues<br/>HTTP · CLI · gelen kutusu · yapıştır · çalıştırma çıktısı · kancalar" --> L
 ```
@@ -657,7 +657,7 @@ Daha fazlası [SECURITY.md](SECURITY.md) içinde.
 <details>
 <summary><b>Benim yerime Claude'la ya da Codex'le konuşuyor mu?</b></summary>
 
-İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmi CLI'ı üzerinden — Codex CLI, Claude Code, GitHub Copilot CLI, Gemini CLI, Cursor CLI, DeepSeek CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle yürüttüğün sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
+İstersen evet. Kendi kendine çalışacak şekilde ayarlanan bir sohbet resmi CLI'ı üzerinden — Codex CLI, Claude Code, GitHub Copilot CLI, Antigravity CLI, Cursor CLI, DeepSeek CLI ya da kendi komutun — senin girişinle başlatılır; oturum görevler boyunca devam eder ve uygulamadan yanıt verebilirsin. Elle yürüttüğün sohbetler kopyala-yapıştırla çalışmaya devam eder ve kancalarla bildirebilir. Bkz. [docs/agent-runners.md](docs/agent-runners.md).
 
 </details>
 
