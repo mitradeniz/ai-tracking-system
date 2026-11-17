@@ -158,6 +158,8 @@ export interface ManagerState {
   /** Newest first. */
   approvals?: ManagerApproval[];
   unseen?: number;
+  /** What it keeps across its looks (the person's decisions and rules, facts), oldest first. */
+  notes?: Array<{ text: string; at: string; from: "manager" | "person" }>;
 }
 
 /** What writing a plan changed. */
@@ -537,6 +539,9 @@ export const api = {
   runManager: (key: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/run`, {}),
   /** Writes to the manager: it looks at once with the message and answers. */
   messageManager: (key: string, text: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/message`, { text }),
+  addManagerNote: (key: string, text: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/notes`, { text }),
+  removeManagerNotes: (key: string, texts: string[] | "all") =>
+    request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/notes/remove`, texts === "all" ? { all: true } : { texts }),
   approvalsSeen: (key: string, tasks?: string[]) =>
     request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/approvals/seen`, tasks ? { tasks } : {}),
   // Work chats left for later.

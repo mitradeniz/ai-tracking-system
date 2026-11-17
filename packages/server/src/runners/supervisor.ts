@@ -77,6 +77,17 @@ export interface ManagerApproval {
   seen?: boolean;
 }
 
+/**
+ * Something that stays true across the manager's looks: a decision or rule of the person ("PR work
+ * goes to Claude Control"), or a fact that changes how it decides. Written by the manager in its
+ * answer ("remember"), or by the person; at most MAX_NOTES, the manager drops what no longer holds.
+ */
+export interface ManagerNote {
+  text: string;
+  at: string;
+  from: "manager" | "person";
+}
+
 export interface ManagerState {
   settings: ManagerSettings;
   running: boolean;
@@ -85,6 +96,8 @@ export interface ManagerState {
   approvals: ManagerApproval[];
   /** Approvals the person has not looked at yet. */
   unseen: number;
+  /** What it keeps across looks, oldest first. */
+  notes: ManagerNote[];
 }
 
 interface Options {
@@ -129,6 +142,8 @@ export const MERGE_TOOLS = [
 const AUTHORITY_STEPS = new Set<RefusedStep["what"]>(["network", "gitPush"]);
 /** At most this many tasks taken out of the plan in one look: a guard against a manager that clears the plan. */
 const MAX_DROPS = 10;
+/** At most this many standing notes; a new one pushes out the oldest. */
+export const MAX_NOTES = 20;
 /** How many of its last looks the manager is shown, and at most how many of their actions. */
 const HISTORY_LOOKS = 15;
 const HISTORY_ACTIONS = 40;
@@ -165,6 +180,7 @@ export class Supervisor extends EventEmitter {
   private retryAt = new Map<string, number>();
   private logs = new Map<string, ManagerRun[]>();
   private approved = new Map<string, ManagerApproval[]>();
+  private kept = new Map<string, ManagerNote[]>();
   /** What the last run looked at, so the same situation is not sent twice. */
   private handled = new Map<string, string>();
   /** Tasks the manager left for the person, and how they looked then: not shown to it again until they change. */
@@ -227,6 +243,7 @@ export class Supervisor extends EventEmitter {
       log: this.log(key).slice(-30).reverse(),
       approvals: approvals.slice(-50).reverse(),
       unseen: approvals.filter((a) => !a.seen).length,
+      notes: [...this.notes(key)],
     };
   }
 
@@ -382,7 +399,9 @@ export class Supervisor extends EventEmitter {
       const history = this.log(key)
         .filter((r) => r.id !== run.id && r.state !== "running")
         .slice(-HISTORY_LOOKS);
-      const prompt = managerPrompt(project, board, attention, effective, messages, history);
+      // Its standing notes as it sees them now: "forget" numbers refer to this list.
+      const shownNotes = [...this.notes(key)];
+      const prompt = managerPrompt(project, board, attention, effective, messages, history, shownNotes);
       // Reviewing finished work itself: it may read the chats' folders and run read-only git and gh commands.
       const reviews = reviewsWork(effective) ? attention.filter((a) => a.view.status === "review") : [];
       const job = await this.generator.startPrompt({
@@ -402,7 +421,7 @@ export class Supervisor extends EventEmitter {
       const answer = parseAnswer(ended.answer);
       run.summary = answer.summary;
       if (answer.reply) run.reply = answer.reply;
-      await this.carryOut(key, answer, attention, run, effective);
+      await this.carryOut(key, answer, attention, run, effective, shownNotes);
       run.state = "done";
       this.handled.set(key, fingerprint);
       this.failures.delete(key);
@@ -482,7 +501,14 @@ export class Supervisor extends EventEmitter {
     return out;
   }
 
-  private async carryOut(key: string, answer: ManagerAnswer, attention: Attention[], run: ManagerRun, settings: ManagerSettings): Promise<void> {
+  private async carryOut(
+    key: string,
+    answer: ManagerAnswer,
+    attention: Attention[],
+    run: ManagerRun,
+    settings: ManagerSettings,
+    shownNotes: ManagerNote[] = [],
+  ): Promise<void> {
     const listed = new Map(attention.map((a) => [a.view.task.id, a]));
     const acted = new Set<string>();
     let dropped = 0;
@@ -690,6 +716,20 @@ export class Supervisor extends EventEmitter {
       }
     }
 
+    // Its standing notes: first what no longer holds (numbers as it saw them), then what to keep.
+    if (answer.forget?.length || answer.remember?.length) {
+      const list = this.notes(key);
+      const seen = [...shownNotes];
+      // The person's own notes go only when the person asked in this look.
+      const drop = new Set(
+        (answer.forget ?? []).map((i) => seen[i]).filter((n): n is ManagerNote => Boolean(n) && (n!.from !== "person" || Boolean(run.message))),
+      );
+      if (drop.size) list.splice(0, list.length, ...list.filter((n) => !drop.has(n)));
+      const added = (answer.remember ?? []).filter((text) => this.remember(key, text, "manager"));
+      this.persist(key);
+      done("notes", undefined, true, [added.length ? `kept: ${added.join(" | ")}` : "", drop.size ? `dropped: ${[...drop].map((n) => n.text).join(" | ")}` : ""].filter(Boolean).join(" · "));
+    }
+
     if (answer.plan && (answer.plan.tasks.length || answer.plan.links.length || answer.plan.ignore.length)) {
       try {
         const result = await applyPlan(this.manager, key, answer.plan, "manager");
@@ -773,7 +813,7 @@ export class Supervisor extends EventEmitter {
   private log(key: string): ManagerRun[] {
     let list = this.logs.get(key);
     if (!list) {
-      let raw: { runs?: ManagerRun[]; approvals?: ManagerApproval[] } = {};
+      let raw: { runs?: ManagerRun[]; approvals?: ManagerApproval[]; notes?: ManagerNote[] } = {};
       try {
         raw = JSON.parse(readFileSync(this.file(key), "utf8")) as typeof raw;
       } catch {
@@ -784,8 +824,63 @@ export class Supervisor extends EventEmitter {
       for (const r of list) if (r.state === "running") Object.assign(r, { state: "failed", error: "The app closed during this run." });
       this.logs.set(key, list);
       this.approved.set(key, Array.isArray(raw.approvals) ? raw.approvals.filter((a) => a && typeof a.task === "string") : []);
+      this.kept.set(
+        key,
+        (Array.isArray(raw.notes) ? raw.notes : [])
+          .filter((n) => n && typeof n.text === "string" && n.text.trim())
+          .map((n) => ({ text: clip(n.text, 300), at: typeof n.at === "string" ? n.at : new Date(0).toISOString(), from: n.from === "person" ? ("person" as const) : ("manager" as const) }))
+          .slice(-MAX_NOTES),
+      );
     }
     return list;
+  }
+
+  private notes(key: string): ManagerNote[] {
+    this.log(key);
+    let list = this.kept.get(key);
+    if (!list) {
+      list = [];
+      this.kept.set(key, list);
+    }
+    return list;
+  }
+
+  /** Keeps a note across looks; the same text again is not added twice. */
+  private remember(key: string, text: string, from: ManagerNote["from"]): boolean {
+    const clean = clip(text, 300);
+    if (!clean) return false;
+    const list = this.notes(key);
+    const same = (n: ManagerNote) => n.text.toLowerCase() === clean.toLowerCase();
+    if (list.some(same)) return false;
+    list.push({ text: clean, at: new Date().toISOString(), from });
+    if (list.length > MAX_NOTES) list.splice(0, list.length - MAX_NOTES);
+    return true;
+  }
+
+  /** The person adds a note the manager keeps across looks (a decision, a rule). */
+  addNote(key: string, text: string): ManagerState {
+    this.manager.context(key);
+    const t = String(text ?? "").trim();
+    if (!t) throw new HttpError(400, "The note is empty.");
+    this.remember(key, t, "person");
+    this.persist(key);
+    // A new rule may change what it decides: it looks again.
+    this.handled.delete(key);
+    this.schedule(key, Math.min(1000, this.delayMs));
+    this.changed(key);
+    return this.state(key);
+  }
+
+  /** The person removes notes that no longer hold (by their text), or all of them. */
+  removeNotes(key: string, texts: string[] | "all"): ManagerState {
+    this.manager.context(key);
+    const list = this.notes(key);
+    const gone = texts === "all" ? null : new Set(texts.map((x) => x.trim().toLowerCase()));
+    const rest = gone ? list.filter((n) => !gone.has(n.text.toLowerCase())) : [];
+    list.splice(0, list.length, ...rest);
+    this.persist(key);
+    this.changed(key);
+    return this.state(key);
   }
 
   private approvals(key: string): ManagerApproval[] {
@@ -820,7 +915,7 @@ export class Supervisor extends EventEmitter {
     } catch {
       // Written below or not at all.
     }
-    const body = { runs: this.log(key), approvals: this.approvals(key) };
+    const body = { runs: this.log(key), approvals: this.approvals(key), notes: this.notes(key) };
     void writeFileAtomic(this.file(key), JSON.stringify(body, null, 1) + "\n").catch(() => undefined);
   }
 
@@ -831,6 +926,9 @@ export class Supervisor extends EventEmitter {
 
 interface ManagerAnswer {
   actions: Array<Record<string, unknown>>;
+  /** Notes to keep across looks, and numbers of notes that no longer hold. */
+  remember?: string[];
+  forget?: number[];
   plan?: IntegrationPlan;
   summary?: string;
   /** Its answer to what the person wrote. */
@@ -841,7 +939,7 @@ interface ManagerAnswer {
 export function parseAnswer(text: string): ManagerAnswer {
   const found = jsonObjectsIn(text)
     .map((o) => o.value)
-    .filter((v) => "actions" in v || "plan" in v || "reply" in v);
+    .filter((v) => "actions" in v || "plan" in v || "reply" in v || "remember" in v || "forget" in v);
   const last = found[found.length - 1];
   if (!last) throw new Error("The manager's answer has no actions.");
   const actions = Array.isArray(last.actions) ? last.actions.filter((a): a is Record<string, unknown> => Boolean(a) && typeof a === "object") : [];
@@ -853,8 +951,15 @@ export function parseAnswer(text: string): ManagerAnswer {
       plan = undefined;
     }
   }
+  const remember = (Array.isArray(last.remember) ? last.remember : typeof last.remember === "string" ? [last.remember] : [])
+    .filter((x): x is string => typeof x === "string" && x.trim() !== "")
+    .map((x) => clip(x, 300))
+    .slice(0, 5);
+  const forget = (Array.isArray(last.forget) ? last.forget : [last.forget]).map(Number).filter((n) => Number.isInteger(n) && n >= 0);
   return {
     actions: actions.slice(0, 40),
+    ...(remember.length && { remember }),
+    ...(forget.length && { forget }),
     ...(plan && { plan }),
     ...(typeof last.summary === "string" && { summary: clip(last.summary, 1000) }),
     ...(typeof last.reply === "string" && last.reply.trim() && { reply: last.reply.trim().slice(0, 4000) }),
@@ -1043,6 +1148,7 @@ export function managerPrompt(
   settings: ManagerSettings,
   messages: string[] = [],
   history: ManagerRun[] = [],
+  kept: ManagerNote[] = [],
 ): string {
   const language = project.settings.language === "tr" ? "Turkish" : "English";
   const fromPerson = messages.length
@@ -1096,13 +1202,17 @@ ${PLAN_RULES}
 Answer with one JSON object in a \`\`\`json fence, and nothing after it:
 {"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${reviewShapes(settings)}${
     settings.fullAuthority ? ',{"type":"grant","task":"<id>","issue":0},{"type":"assign","task":"<id>","to":"<chat id>","note":"…"},{"type":"drop","task":"<id>","note":"…"}' : ""
-  }],"plan":${PLAN_SHAPE},"summary":"<what you did, in one or two sentences>"${messages.length ? ',"reply":"<your answer to the person>"' : ""}}
+  }],"plan":${PLAN_SHAPE},"remember":["<a standing note>"],"forget":[0],"summary":"<what you did, in one or two sentences>"${messages.length ? ',"reply":"<your answer to the person>"' : ""}}
 Leave out what you do not use.
 
 ${fromPerson}ATTENTION (tasks waiting for a decision, failed${approves(settings) ? ", or finished and waiting for approval" : ""})
 ${attention.length ? attention.map((a) => attentionText(a, settings)).join("\n\n") : "(none)"}
 
-${historyText(history)}PROPOSALS (work chats left for later)
+${historyText(history)}STANDING NOTES (kept across your looks; follow them, keep them true)
+${kept.length ? kept.map((n, i) => `[${i}] ${n.text} (${n.from === "person" ? "the person" : "you"}, ${n.at.slice(0, 10)})`).join("\n") : "(none)"}
+Add with "remember" only what stays true across looks and changes how you decide: the person's decisions and rules for this project (who does which kind of work, what not to do, what waits for what), and facts you would otherwise have to find out again. One short sentence each, at most ${MAX_NOTES} in all. Not what happened (that is in your recent looks). With "forget", give the numbers of notes that no longer hold or that the person overrode. A note from the person stays until the person changes it.
+
+PROPOSALS (work chats left for later)
 ${proposals.length ? proposalsTable(proposals) : "(none)"}
 
 NOTES (written by chats; nobody has to act on them right away)

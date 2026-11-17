@@ -644,6 +644,40 @@ describe("agent runners", () => {
     }
   });
 
+  it("keeps standing notes across the manager's looks: the person's rules stay, its own come and go", { timeout: 20000 }, async () => {
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_SCENARIO = "ask";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({ actions: [], remember: ["PR work goes to Agent B", "  "], forget: [0], summary: "Noted." });
+    const managerState = async () => (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+    try {
+      expect((await call("POST", `/api/projects/${key}/manager/notes`, { text: "Never merge on Fridays" }, false)).status).toBe(401);
+      expect((await call("POST", `/api/projects/${key}/manager/notes`, { text: "  " })).status).toBe(400);
+      expect((await call("POST", `/api/projects/${key}/manager/notes`, { text: "Never merge on Fridays" })).json.notes).toMatchObject([{ text: "Never merge on Fridays", from: "person" }]);
+      await setRunner("b", { provider: "claude" });
+      await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+      await waitFor("T3", "blocked");
+      await call("POST", `/api/projects/${key}/manager`, { enabled: true, provider: "claude", binary: FAKE });
+      let state = await managerState();
+      for (let i = 0; i < 200 && !(state.log[0]?.state === "done"); i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        state = await managerState();
+      }
+      // Its own note is kept; the person's note is not dropped by the manager on its own.
+      expect(state.notes.map((n: { text: string; from: string }) => `${n.from}:${n.text}`)).toEqual(["person:Never merge on Fridays", "manager:PR work goes to Agent B"]);
+      expect(state.log[0].actions.find((a: { type: string }) => a.type === "notes").detail).toBe("kept: PR work goes to Agent B");
+      const prompt = (await invocations()).find((i) => i.stdin.includes("You are the manager"))!.stdin;
+      expect(prompt).toContain("STANDING NOTES");
+      expect(prompt).toMatch(/\[0\] Never merge on Fridays \(the person, \d{4}-\d{2}-\d{2}\)/);
+      expect(prompt).toContain('"remember":["<a standing note>"]');
+      // The person removes what no longer holds.
+      const left = await call("POST", `/api/projects/${key}/manager/notes/remove`, { texts: ["never merge on fridays"] });
+      expect(left.json.notes.map((n: { text: string }) => n.text)).toEqual(["PR work goes to Agent B"]);
+      expect((await call("POST", `/api/projects/${key}/manager/notes/remove`, { all: true })).json.notes).toEqual([]);
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
   it("keeps a task a chat holds when it moves it: the new chat starts it over; and takes out only tasks nobody started", { timeout: 20000 }, async () => {
     process.env.FAKE_FORMAT = "codex";
     process.env.FAKE_SCENARIO = "sandbox";

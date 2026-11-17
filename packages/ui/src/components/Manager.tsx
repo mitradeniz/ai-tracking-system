@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type ManagerApproval, type ManagerProvider, type ManagerRun, type ManagerSettings } from "../api.ts";
+import { api, type ManagerApproval, type ManagerProvider, type ManagerRun, type ManagerSettings, type ManagerState } from "../api.ts";
 import { useI18n, type Key } from "../i18n.ts";
 import { formatTime, localError, type Model } from "../model.ts";
 import { Dialog } from "./Dialogs.tsx";
@@ -8,7 +8,68 @@ import { useEyeHidden } from "./ManagerEye.tsx";
 import { CLI_NAME, GENERATORS, useProviders } from "./NewProject.tsx";
 import { waitingForYou } from "../waiting.ts";
 
-const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve", "revise", "merge", "grant", "assign", "drop"]);
+const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve", "revise", "merge", "grant", "assign", "drop", "notes"]);
+
+/** What the manager keeps across its looks; the person adds rules and removes what no longer holds. */
+function ManagerNotes({ projectKey, notes, onError }: { projectKey: string; notes: NonNullable<ManagerState["notes"]>; onError: (m: string) => void }) {
+  const { t } = useI18n();
+  const [draft, setDraft] = useState("");
+  const add = async () => {
+    const text = draft.trim();
+    if (!text) return;
+    try {
+      await api.addManagerNote(projectKey, text);
+      setDraft("");
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
+  return (
+    <section className="section">
+      <h3 className="row">
+        <span>
+          {t("mgr_notes")} · {notes.length}
+        </span>
+        <InfoTip text={t("mgr_notesHint")} />
+      </h3>
+      {notes.length === 0 ? (
+        <p className="small muted">{t("mgr_notesNone")}</p>
+      ) : (
+        <ul className="facts">
+          {notes.map((n) => (
+            <li key={n.text}>
+              <span className="grow">{n.text}</span>
+              <span className="small muted">{t(n.from === "person" ? "mgr_noteYou" : "mgr_noteManager")} · {n.at.slice(0, 10)}</span>
+              <button
+                className="icon-btn"
+                title={t("facts_remove")}
+                aria-label={t("facts_remove")}
+                onClick={() => void api.removeManagerNotes(projectKey, [n.text]).catch((e: Error) => onError(e.message))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="row">
+        <input
+          className="input grow"
+          value={draft}
+          maxLength={300}
+          placeholder={t("mgr_notePlaceholder")}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.nativeEvent.isComposing) void add();
+          }}
+        />
+        <button className="btn small" disabled={!draft.trim()} onClick={() => void add()}>
+          {t("mgr_noteAdd")}
+        </button>
+      </div>
+    </section>
+  );
+}
 
 /** What the manager left for the person in its recent runs, newest first, once each. */
 function leftForYou(log: ManagerRun[]): string[] {
@@ -347,6 +408,7 @@ export function ManagerDialog({
           </ul>
         </section>
       )}
+      <ManagerNotes projectKey={key} notes={state.notes ?? []} onError={onError} />
       {(state.approvals?.length ?? 0) > 0 && (
         <section className="section">
           <h3 className="row">

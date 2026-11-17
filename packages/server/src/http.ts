@@ -548,6 +548,19 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     const tasks = Array.isArray(body.tasks) ? body.tasks.filter((t: unknown): t is string => typeof t === "string").slice(0, 200) : undefined;
     send(ctx.res, 200, supervisor().markSeen(key!, tasks));
   });
+  // What the manager keeps across its looks: the person adds a rule, or removes what no longer holds.
+  route("POST", "/api/projects/:key/manager/notes", async (ctx, [key]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    send(ctx.res, 200, supervisor().addNote(key!, typeof body.text === "string" ? body.text.slice(0, 2000) : ""));
+  });
+  route("POST", "/api/projects/:key/manager/notes/remove", async (ctx, [key]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    const texts = body.all === true ? "all" : Array.isArray(body.texts) ? body.texts.filter((x: unknown): x is string => typeof x === "string") : null;
+    if (!texts) throw new HttpError(400, '"texts" or "all" is required.');
+    send(ctx.res, 200, supervisor().removeNotes(key!, texts));
+  });
   route("POST", "/api/projects/:key/manager/run", async (ctx, [key]) => {
     control(ctx);
     const run = supervisor().run(key!, "manual");
