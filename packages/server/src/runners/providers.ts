@@ -612,11 +612,13 @@ function parseClaude(o: Record<string, unknown>): StreamEvent[] {
       },
     });
     const ok = o.is_error !== true && (o.subtype === undefined || o.subtype === "success");
+    // What went wrong in words ("No conversation found with session ID …"), not only its code.
+    const said = (Array.isArray(o.errors) ? o.errors : []).filter((e): e is string => typeof e === "string" && e.trim() !== "").join("; ");
     out.push({
       kind: "result",
       ok,
       text: typeof o.result === "string" ? o.result : undefined,
-      error: ok ? undefined : String(o.result || o.subtype || "error"),
+      error: ok ? undefined : String(o.result || (said ? `${said}${o.subtype ? ` (${String(o.subtype)})` : ""}` : "") || o.subtype || "error"),
     });
     return out;
   }

@@ -107,6 +107,8 @@ sequenceDiagram
 
 Run details show what each run used. Codex counts tokens for its whole conversation and Claude Code its cost; a run that continues a conversation shows only what it added.
 
+A conversation belongs to the CLI that had it: when a chat is moved to another CLI, the tracker forgets its conversations and the next task starts a new one. When a CLI cannot find the conversation it was asked to continue (it was deleted, or the id is another CLI's) and the run did nothing yet, the run starts again once in a new conversation, with the task and the person's words, instead of failing.
+
 **Stop** ends a run; the task stays with the chat as blocked, so you can reply or send it again. It is on the running line of the chat's lane, in the floating window, in the task drawer and its live output, and as **Stop all** next to automatic dispatch; the small buttons ask once more before they stop. Automatic dispatch gives a chat you stopped nothing new until you send it something (or switch automatic dispatch off and on); **Stop all** also switches automatic dispatch off. Runs that were going when the app quit are marked blocked on the next start.
 
 ## Stopping, and going on

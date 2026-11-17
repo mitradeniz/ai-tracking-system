@@ -373,6 +373,23 @@ export class RunnerStore {
     await this.save();
   }
 
+  /** Forgets every conversation the tracker knew for a chat (it now runs with another CLI). */
+  async forgetChatSessions(key: string, agentId: string): Promise<void> {
+    const p = this.entry(key);
+    if (!p.taskSessions?.[agentId] && !p.sessionPrompts?.[agentId]) return;
+    if (p.taskSessions) {
+      const rest = { ...p.taskSessions };
+      delete rest[agentId];
+      p.taskSessions = rest;
+    }
+    if (p.sessionPrompts) {
+      const rest = { ...p.sessionPrompts };
+      delete rest[agentId];
+      p.sessionPrompts = rest;
+    }
+    await this.save();
+  }
+
   async forgetTaskSession(key: string, agentId: string, task: string): Promise<void> {
     const p = this.entry(key);
     const mine = p.taskSessions?.[agentId];

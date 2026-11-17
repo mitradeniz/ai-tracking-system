@@ -79,6 +79,7 @@ All notable changes to this project are documented here. The format follows [Kee
 
 - The × of the task drawer and of dialogs closes them again in the desktop app: they lay over the window's drag strip, which took the click as a window move.
 - Run details no longer show a Codex conversation's running total (or Claude Code's running cost) as what one run used.
+- A chat moved to another CLI (Codex to Claude Code, say) no longer tries to continue the old CLI's conversation, which failed every run at once with `error_during_execution`: changing the CLI forgets its conversations, and a run whose conversation the CLI cannot find starts once in a new conversation instead of failing. A failure shows what the CLI wrote ("No conversation found …"), not only its code.
 
 ## [0.1.0] - 2026-11-12
 

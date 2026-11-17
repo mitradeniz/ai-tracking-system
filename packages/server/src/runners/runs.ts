@@ -59,7 +59,14 @@ interface Run extends RunSummary {
   usageBase?: SessionUsage;
   /** It started a new conversation instead of continuing one. */
   fresh?: boolean;
+  /** It is the new start after a conversation that was gone: it is not started over again. */
+  retried?: boolean;
+  /** The person's own words in it, given again if it starts over. */
+  extra?: string;
 }
+
+/** A CLI's words for a conversation it was asked to continue and does not have. */
+const SESSION_GONE = /no conversation found|(?:session|conversation|thread)[^\n]{0,40}not found|unknown (?:session|conversation|thread)|could not (?:find|resume) (?:the )?(?:session|conversation|thread)/i;
 
 /** CLIs that take other folders besides their working folder (--add-dir, --include-directories). */
 export const FOLDER_CLIS = new Set<ProviderId>(["claude", "codex", "deepseek", "copilot", "antigravity", "gemini"]);
@@ -437,7 +444,7 @@ export class RunManager extends EventEmitter {
   }
 
   private summary(r: Run): RunSummary {
-    const { child: _c, log: _l, logBase: _b, file: _f, stopRequested: _s, stopNote: _n, lastProgressAt: _p, lastUsageEmit: _u, usageBase: _ub, fresh: _fr, ...rest } = r;
+    const { child: _c, log: _l, logBase: _b, file: _f, stopRequested: _s, stopNote: _n, lastProgressAt: _p, lastUsageEmit: _u, usageBase: _ub, fresh: _fr, retried: _rt, extra: _ex, ...rest } = r;
     return { ...rest, lines: r.logBase + r.log.length };
   }
 
@@ -452,10 +459,16 @@ export class RunManager extends EventEmitter {
     const { project } = this.manager.context(key);
     if (!project.agents.some((a) => a.id === agentId)) throw new HttpError(404, `Unknown chat "${agentId}"`);
     let runner: ChatRunner;
+    const before = this.store.chat(key, agentId);
     try {
-      runner = normalizeRunner(input, this.store.chat(key, agentId));
+      runner = normalizeRunner(input, before);
     } catch (e) {
       throw new HttpError(400, (e as Error).message);
+    }
+    // A conversation belongs to the CLI that had it: another CLI starts a new one.
+    if (runner.provider !== before.provider) {
+      if (runner.sessionId === before.sessionId) runner = { ...runner, sessionId: undefined };
+      await this.store.forgetChatSessions(key, agentId);
     }
     if (runner.workdir && !(existsSync(runner.workdir) && statSync(runner.workdir).isDirectory())) {
       throw new HttpError(400, `Folder not found: ${runner.workdir}`);
@@ -517,7 +530,7 @@ export class RunManager extends EventEmitter {
   }
 
   /** Sends a task to a chat: starts or continues the chat's session with the task prompt. */
-  async start(key: string, taskId: string, agentId?: string, options: { auto?: boolean; extra?: string } = {}): Promise<RunSummary> {
+  async start(key: string, taskId: string, agentId?: string, options: { auto?: boolean; extra?: string; retried?: boolean } = {}): Promise<RunSummary> {
     const { project, board } = this.manager.context(key);
     const view = board.byId.get(taskId);
     if (!view) throw new HttpError(404, `Unknown task "${taskId}"`);
@@ -596,7 +609,7 @@ export class RunManager extends EventEmitter {
     }
     const extra = options.extra?.trim();
     if (extra) parts.push(`ADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\n${extra}`);
-    return this.launch({ key, task: taskId, agent, runner, prompt: parts.join("\n\n---\n\n"), resume, kind: "task", auto: options.auto === true, sessionPrompt });
+    return this.launch({ key, task: taskId, agent, runner, prompt: parts.join("\n\n---\n\n"), resume, kind: "task", auto: options.auto === true, sessionPrompt, retried: options.retried, extra });
   }
 
   /** Continues a chat's session with the person's message (an answer, an approval, a correction). */
@@ -620,7 +633,7 @@ export class RunManager extends EventEmitter {
     // Steps allowed for this one run (Claude Code rules), on top of the chat's own.
     const extra = runner.provider === "claude" ? (options.extraTools ?? []) : [];
     const forRun = extra.length ? { ...runner, allowedTools: [runner.allowedTools ?? "", ...extra].filter(Boolean).join("\n") } : runner;
-    return this.launch({ key, task, agent: agentId, runner: forRun, prompt: text, resume, kind: "reply", auto: false });
+    return this.launch({ key, task, agent: agentId, runner: forRun, prompt: text, resume, kind: "reply", auto: false, extra: text });
   }
 
   private async launch(input: {
@@ -634,6 +647,10 @@ export class RunManager extends EventEmitter {
     auto: boolean;
     /** Hash of the session prompt this run gives the conversation, to record once its session is known. */
     sessionPrompt?: string;
+    /** It starts over after the conversation it was to continue turned out to be gone. */
+    retried?: boolean;
+    /** The person's own words in it (their reply, or what they added to the task): given again if it starts over. */
+    extra?: string;
   }): Promise<RunSummary> {
     const { key, task, agent, runner, prompt, resume, kind, auto, sessionPrompt } = input;
     // Once the session is known: the prompt it read, and the conversation this task has.
@@ -722,6 +739,8 @@ export class RunManager extends EventEmitter {
       priorSession: runner.sessionId,
       usageBase: resume ? this.store.sessionUsage(key, resume) : undefined,
       fresh: !resume,
+      retried: input.retried === true,
+      ...(input.extra && { extra: input.extra }),
       limitKey: limitKeyOf(runner),
     };
     // The first run on a CLI after its window reset starts a new 5-hour window.
@@ -864,12 +883,11 @@ export class RunManager extends EventEmitter {
       settled = true;
       const result = parser.result;
       const ok = !error && code === 0 && (result ? result.ok : true);
-      const reason =
-        error ??
-        (result && !result.ok ? result.error : undefined) ??
-        parser.errors[parser.errors.length - 1] ??
-        stderrTail.slice(-3).join(" ").trim() ??
-        "";
+      // A bare code ("error_during_execution") says little: what the CLI wrote about it comes first.
+      const failed = result && !result.ok ? result.error : undefined;
+      const said = parser.errors.filter((e) => e !== failed).pop() || stderrTail.slice(-3).join(" ").trim();
+      const bare = Boolean(failed && /^[a-z]+(?:_[a-z]+)+$/.test(failed));
+      const reason = error ?? (failed ? (bare && said ? `${said} (${failed})` : failed) : said) ?? "";
       run.tools = parser.tools;
       run.usage = runUsage(run.provider, parser.usage, run.usageBase);
       // What the CLI counts for the whole conversation: the next run in it shows only what it adds.
@@ -917,8 +935,17 @@ export class RunManager extends EventEmitter {
     const withDenied = (issues: TaskIssue[] | undefined) => (denied.length ? [...(issues ?? []), ...denied] : issues);
     // A task the chat finished anyway needs nothing from the person for the steps it skipped.
     const finishedAnyway = (s: string) => s === "done" || s === "review";
+    // The conversation it was to continue is gone (another CLI's, or deleted) and nothing was done:
+    // it starts again in a new conversation, once, instead of failing.
+    let again = false;
     try {
-      if (run.stopRequested) {
+      if (!run.stopRequested && !outcome.ok && !run.fresh && !run.retried && !run.tools && !run.usage?.output && SESSION_GONE.test(outcome.error ?? "")) {
+        run.state = "failed";
+        run.error = outcome.error;
+        await this.forgetDeadSession(run, outcome.error ?? "");
+        this.append(run, "↻ The conversation to continue was not found; starting a new one with the task.");
+        again = true;
+      } else if (run.stopRequested) {
         run.state = "stopped";
         this.append(run, "■ Stopped.");
         const reason = run.stopNote ?? "Stopped from the tracker. Reply to continue or send it again.";
@@ -978,6 +1005,17 @@ export class RunManager extends EventEmitter {
     run.file = null;
     await this.persistActive();
     this.emit("run", { key, run: this.summary(run) });
+    if (again) {
+      try {
+        await this.start(key, task, agent, { auto: run.auto, extra: run.extra, retried: true });
+      } catch (e) {
+        if (stillOpen) {
+          await this.manager
+            .addEvent(key, { type: "failed", task, agent, reason: `${outcome.error ?? `${name} failed.`} — and starting a new conversation failed: ${(e as Error).message}` }, "runner")
+            .catch((err) => this.emit("warning", err));
+        }
+      }
+    }
     this.scheduleAuto(key);
   }
 
@@ -987,7 +1025,7 @@ export class RunManager extends EventEmitter {
    * exist. The same when the CLI says the session it was asked to resume is gone.
    */
   private async forgetDeadSession(run: Run, error: string): Promise<void> {
-    const gone = /no conversation found|session[^\n]{0,40}not found|unknown session|could not (?:find|resume) (?:the )?session/i.test(error);
+    const gone = SESSION_GONE.test(error);
     // The task's own conversation (saving mode): the next run of the task starts a new one.
     if (run.sessionId && this.store.taskSession(run.key, run.agent, run.task) === run.sessionId && (gone || (run.fresh && !run.tools && !run.usage?.output))) {
       await this.store.forgetTaskSession(run.key, run.agent, run.task);

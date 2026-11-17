@@ -203,6 +203,39 @@ describe("agent runners", () => {
     expect(second.stdin).toBe("Yes, go ahead.");
   });
 
+  it("starts a new conversation when the one to continue is gone, and when a chat moves to another CLI", async () => {
+    // A chat moved from Codex to Claude Code: its Codex thread is not Claude's.
+    await setRunner("a", { provider: "codex" });
+    await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
+    await waitFor("T1", "done");
+    expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a.sessionId).toBe("thread-123");
+    await setRunner("a", { provider: "claude" });
+    expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a.sessionId).toBeUndefined();
+
+    // A conversation the CLI no longer has: one new start, not a failed task.
+    process.env.FAKE_FORMAT = "claude";
+    process.env.FAKE_GONE = "0b5a0c2e-dead-4bee-9000-000000000001";
+    try {
+      await setRunner("b", { provider: "claude", sessionId: process.env.FAKE_GONE });
+      await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+      await waitFor("T3", "done");
+      const calls = (await invocations()).filter((i) => i.chat === "b");
+      expect(calls).toHaveLength(2);
+      expect(calls[0]!.args[calls[0]!.args.indexOf("--resume") + 1]).toBe(process.env.FAKE_GONE);
+      expect(calls[1]!.args).toContain("--session-id");
+      expect(calls[1]!.args).not.toContain("--resume");
+      expect(calls[1]!.stdin).toContain("TASK T3");
+      const state = (await call("GET", `/api/projects/${key}/runners`)).json;
+      expect(state.settings.chats.b.sessionId).not.toBe(process.env.FAKE_GONE);
+      const failed = state.runs.find((r: { agent: string; state: string }) => r.agent === "b" && r.state === "failed");
+      expect(failed.error).toContain("No conversation found");
+      const detail = (await call("GET", `/api/projects/${key}`)).json;
+      expect(detail.events.some((e: { task: string; type: string }) => e.task === "T3" && e.type === "failed")).toBe(false);
+    } finally {
+      delete process.env.FAKE_GONE;
+    }
+  });
+
   it("keeps run metrics and turns refused tools into problems with a fix prompt", async () => {
     process.env.FAKE_FORMAT = "claude";
     process.env.FAKE_DENY = "1";

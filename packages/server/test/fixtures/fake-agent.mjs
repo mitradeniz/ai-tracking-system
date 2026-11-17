@@ -155,6 +155,12 @@ if (format === "dsh") {
   out({ type: "turn.completed", usage: total.length === 3 && total.every(Number.isFinite) ? { input_tokens: total[0], cached_input_tokens: total[1], output_tokens: total[2] } : {} });
 } else if (format === "claude") {
   const sid = flag("--resume") ?? flag("--session-id");
+  // FAKE_GONE: a conversation Claude Code does not have (another CLI's, or deleted).
+  if (process.env.FAKE_GONE && flag("--resume") === process.env.FAKE_GONE) {
+    process.stderr.write(`No conversation found with session ID: ${process.env.FAKE_GONE}\n`);
+    out({ type: "result", subtype: "error_during_execution", is_error: true, session_id: sid });
+    process.exit(1);
+  }
   // FAKE_MODE: the mode the CLI really runs in (auto mode may be unavailable for the account).
   out({ type: "system", subtype: "init", session_id: sid, permissionMode: process.env.FAKE_MODE ?? flag("--permission-mode") ?? "default" });
   if (scenario === "project") {
