@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProjectFileSchema, serializeProject } from "@aitrack/core";
 import { startServer, type RunningServer } from "../src/index.ts";
+import type { DetectedProvider } from "../src/runners/env.ts";
 import { clearAutoModeCache, helpHasAutoMode, parseAgyModels, parseCodexModels, parseCopilotModels, parseCursorModels } from "../src/runners/env.ts";
 import { claudeMemoryDir, conversationUsage, gitCommonDir, runUsage } from "../src/runners/runs.ts";
 import { normalizeHook } from "../src/runners/hooks.ts";
@@ -22,6 +23,33 @@ let file: string;
 let running: RunningServer;
 let key: string;
 let fakeLog: string;
+
+/** What the manager is told is installed here: Codex lists the account's models, one with efforts of its own. */
+const PROVIDERS_HERE = async (): Promise<DetectedProvider[]> => [
+  {
+    id: "codex",
+    name: "Codex CLI",
+    path: "/usr/bin/codex",
+    version: "1",
+    models: [
+      { id: "gpt-fast", label: "GPT Fast", efforts: ["low", "medium"] },
+      { id: "gpt-big", label: "GPT Big" },
+    ],
+    efforts: ["low", "medium", "high", "xhigh", "max"],
+    listed: true,
+  },
+  {
+    id: "claude",
+    name: "Claude Code",
+    path: "/usr/bin/claude",
+    version: "1",
+    models: [
+      { id: "opus", label: "Opus" },
+      { id: "sonnet", label: "Sonnet" },
+    ],
+    efforts: ["low", "medium", "high", "xhigh", "max"],
+  },
+];
 
 const project = ProjectFileSchema.parse({
   format: "aitrack",
@@ -104,7 +132,7 @@ beforeEach(async () => {
   process.env.FAKE_SCENARIO = "done";
   process.env.FAKE_FORMAT = "codex";
   await writeFile(file, serializeProject(project));
-  running = await startServer({ port: 0, dataDir: path.join(dir, "data"), projects: [file], watch: false, controlToken: TOKEN, managerDelayMs: 80 });
+  running = await startServer({ port: 0, dataDir: path.join(dir, "data"), projects: [file], watch: false, controlToken: TOKEN, managerDelayMs: 80, managerProviders: PROVIDERS_HERE });
   key = running.manager.list()[0]!.key;
 });
 
@@ -711,6 +739,125 @@ describe("agent runners", () => {
     } finally {
       delete process.env.FAKE_MANAGER_ANSWER;
     }
+  });
+
+  it("optimizes for tokens and speed: saving mode on, and with full authority it sets model and effort, puts tasks first, makes tasks wait", { timeout: 20000 }, async () => {
+    process.env.FAKE_FORMAT = "codex";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
+      actions: [
+        { type: "tune", chat: "a", model: "made-up" },
+        { type: "tune", chat: "a", model: "gpt-fast", note: "CI fixes" },
+        { type: "tune", chat: "b", effort: "low" },
+        { type: "tune", chat: "b", effort: "medium" },
+        { type: "next", task: "T3", note: "unblocks the others" },
+        { type: "next", task: "T1" },
+        { type: "depend", task: "T3", on: ["T1"], note: "touches the same gate" },
+        { type: "depend", task: "T1", on: ["T3"] },
+      ],
+      reply: "Done.",
+      summary: "Optimized.",
+    });
+    const managerState = async () => (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+    try {
+      await setRunner("a", { provider: "codex", effort: "high" });
+      await setRunner("b", { provider: "claude", model: "opus" });
+      // Full authority, but the manager stays off: nothing is dispatched while it is checked.
+      await call("POST", `/api/projects/${key}/manager`, { provider: "codex", binary: FAKE, fullAuthority: true });
+      expect((await call("POST", `/api/projects/${key}/manager/optimize`, {}, false)).status).toBe(401);
+      const res = await call("POST", `/api/projects/${key}/manager/optimize`, {});
+      expect(res.status).toBe(202);
+      expect(res.json.savingTurnedOn).toBe(true);
+      let state = await managerState();
+      for (let i = 0; i < 200 && !(state.log[0]?.state === "done"); i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        state = await managerState();
+      }
+      const run = state.log[0];
+      expect(run.message).toBe("⚡ Optimize for tokens and speed");
+      expect(run.reply).toBe("Done.");
+      expect(run.actions.map((a: { type: string; ok: boolean }) => `${a.type}:${a.ok}`)).toEqual([
+        "tune:false",
+        "tune:true",
+        "tune:true",
+        "tune:false",
+        "next:true",
+        "next:true",
+        "depend:true",
+        "depend:false",
+      ]);
+      expect(run.actions[0].detail).toContain("gpt-fast, gpt-big");
+      // The new model does not take the effort the chat had: it runs at the model's default.
+      expect(run.actions[1].detail).toBe("a: model default → gpt-fast, effort high → default — CI fixes");
+      expect(run.actions[3].detail).toBe("One change per chat in a look.");
+      expect(run.actions[7].detail).toContain("cycle");
+      const runners = (await call("GET", `/api/projects/${key}/runners`)).json.settings;
+      expect(runners.saving).toBe(true);
+      expect(runners.chats.a).toMatchObject({ provider: "codex", model: "gpt-fast" });
+      expect(runners.chats.a.effort).toBeUndefined();
+      expect(runners.chats.b).toMatchObject({ model: "opus", effort: "low" });
+      expect(runners.firstUp).toEqual(["T3", "T1"]);
+      const detail = (await call("GET", `/api/projects/${key}`)).json;
+      expect(detail.project.tasks.find((t: { id: string }) => t.id === "T3").dependsOn).toEqual(["T1"]);
+      expect(detail.project.tasks.find((t: { id: string }) => t.id === "T1").dependsOn).toEqual([]);
+      const prompt = (await invocations()).find((i) => i.stdin.includes("You are the manager"))!.stdin;
+      expect(prompt).toContain("OPTIMIZE FOR TOKENS AND SPEED");
+      expect(prompt).toContain("a | Agent A | codex · model default · effort high · access edit");
+      expect(prompt).toContain("codex: models gpt-fast (efforts low|medium), gpt-big — the ones this account may use · efforts low|medium|high|xhigh|max");
+      expect(prompt).toContain('{"type":"tune","chat":"<chat id>"');
+      // The person sees and changes the order; only tasks nobody started.
+      expect((await call("POST", `/api/projects/${key}/first-up`, { tasks: ["nope"] })).status).toBe(400);
+      expect((await call("POST", `/api/projects/${key}/first-up`, { tasks: ["T2", "T1"] })).json.firstUp).toEqual(["T2", "T1"]);
+      expect((await call("POST", `/api/projects/${key}/first-up`, { tasks: [] })).json.firstUp).toEqual([]);
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
+  it("refuses model, order and dependency changes without full authority; optimize then only asks for a list", { timeout: 20000 }, async () => {
+    process.env.FAKE_FORMAT = "codex";
+    process.env.FAKE_MANAGER_ANSWER = JSON.stringify({
+      actions: [
+        { type: "tune", chat: "a", effort: "low" },
+        { type: "next", task: "T3" },
+        { type: "depend", task: "T3", on: ["T1"] },
+      ],
+      reply: "I would lower a's effort.",
+    });
+    try {
+      await setRunner("a", { provider: "codex" });
+      expect((await call("POST", `/api/projects/${key}/runners`, { saving: true })).json.saving).toBe(true);
+      await call("POST", `/api/projects/${key}/manager`, { provider: "codex", binary: FAKE });
+      const res = await call("POST", `/api/projects/${key}/manager/optimize`, {});
+      expect(res.json.savingTurnedOn).toBe(false);
+      let state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      for (let i = 0; i < 200 && !(state.log[0]?.state === "done"); i += 1) {
+        await new Promise((r) => setTimeout(r, 60));
+        state = (await call("GET", `/api/projects/${key}/runners`)).json.manager;
+      }
+      expect(state.log[0].actions.map((a: { type: string; ok: boolean }) => `${a.type}:${a.ok}`)).toEqual(["tune:false", "next:false", "depend:false"]);
+      const runners = (await call("GET", `/api/projects/${key}/runners`)).json.settings;
+      expect(runners.chats.a.effort).toBeUndefined();
+      expect(runners.firstUp).toEqual([]);
+      const prompt = (await invocations()).find((i) => i.stdin.includes("You are the manager"))!.stdin;
+      expect(prompt).toContain("You do not have full authority: change nothing");
+      expect(prompt).not.toContain('{"type":"tune"');
+    } finally {
+      delete process.env.FAKE_MANAGER_ANSWER;
+    }
+  });
+
+  it("dispatches tasks put first before the board's own order, and takes them off the list when they start", { timeout: 20000 }, async () => {
+    process.env.FAKE_FORMAT = "codex";
+    const added = await call("POST", `/api/projects/${key}/tasks`, { task: { id: "T4", title: "Four", agent: "a", prompts: ["p"] } });
+    expect(added.status).toBe(200);
+    await setRunner("a", { provider: "codex" });
+    expect((await call("POST", `/api/projects/${key}/first-up`, { tasks: ["T4"] })).json.firstUp).toEqual(["T4"]);
+    await call("POST", `/api/projects/${key}/runners`, { autoDispatch: true, maxConcurrent: 1 });
+    await waitFor("T4", "done");
+    const state = (await call("GET", `/api/projects/${key}/runners`)).json;
+    // Runs are listed newest first: T4 went before T1, which the board would give first.
+    expect(state.runs.map((r: { task: string }) => r.task).reverse()[0]).toBe("T4");
+    expect(state.settings.firstUp).toEqual([]);
   });
 
   it("in saving mode gives each task a conversation of its own and passes on what chats checked", { timeout: 20000 }, async () => {

@@ -8,7 +8,47 @@ import { useEyeHidden } from "./ManagerEye.tsx";
 import { CLI_NAME, GENERATORS, useProviders } from "./NewProject.tsx";
 import { waitingForYou } from "../waiting.ts";
 
-const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve", "revise", "merge", "grant", "assign", "drop", "notes"]);
+const ACTIONS = new Set(["reply", "choose", "allow", "wait", "resend", "close", "plan", "leave", "approve", "revise", "merge", "grant", "assign", "drop", "notes", "tune", "next", "depend"]);
+/** How the server writes the optimize brief into the manager's log (see OPTIMIZE_SHOWN). */
+const OPTIMIZE_SHOWN = "⚡ Optimize for tokens and speed";
+
+/** Tasks put first for automatic dispatch: the person sees the order and can take tasks off. */
+function FirstUp({ projectKey, tasks, onOpenTask, onError }: { projectKey: string; tasks: string[]; onOpenTask?: (id: string) => void; onError: (m: string) => void }) {
+  const { t } = useI18n();
+  if (!tasks.length) return null;
+  const set = (list: string[]) => void api.setFirstUp(projectKey, list).catch((e: Error) => onError(e.message));
+  return (
+    <section className="section">
+      <h3 className="row">
+        <span>
+          {t("mgr_firstUp")} · {tasks.length}
+        </span>
+        <InfoTip text={t("mgr_firstUpHint")} />
+        <span className="spacer" />
+        <button className="btn small ghost" onClick={() => set([])}>
+          {t("mgr_firstUpClear")}
+        </button>
+      </h3>
+      <ol className="first-up small">
+        {tasks.map((id, i) => (
+          <li key={id}>
+            <span className="muted">{i + 1}.</span>
+            {onOpenTask ? (
+              <button className="linklike mono" onClick={() => onOpenTask(id)}>
+                {id}
+              </button>
+            ) : (
+              <span className="mono">{id}</span>
+            )}
+            <button className="icon-btn" title={t("mgr_firstUpRemove")} aria-label={t("mgr_firstUpRemove")} onClick={() => set(tasks.filter((x) => x !== id))}>
+              ×
+            </button>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 /** What the manager keeps across its looks; the person adds rules and removes what no longer holds. */
 function ManagerNotes({ projectKey, notes, onError }: { projectKey: string; notes: NonNullable<ManagerState["notes"]>; onError: (m: string) => void }) {
@@ -196,7 +236,11 @@ function RunEntry({ run, lang, onOpenTask }: { run: ManagerRun; lang: string; on
       </div>
       {run.message && (
         <div className="small mgr-said">
-          <strong>{t("mgr_message")}:</strong> {run.message}
+          <strong>{t("mgr_message")}:</strong>{" "}
+          {run.message
+            .split("\n\n")
+            .map((m) => (m === OPTIMIZE_SHOWN ? t("mgr_optimizeAsked") : m))
+            .join("\n\n")}
         </div>
       )}
       {run.reply && (
@@ -287,6 +331,17 @@ export function ManagerDialog({
     mergeGreen: Boolean(draft.mergeGreen),
     fullAuthority: authority,
   });
+  const optimize = async () => {
+    setBusy(true);
+    try {
+      const res = await api.optimizeManager(key);
+      onInfo([t("mgr_optimizeStarted"), res.savingTurnedOn ? t("mgr_optimizeSaving") : ""].filter(Boolean).join(" "));
+    } catch (e) {
+      onError(localError((e as Error).message, t));
+    } finally {
+      setBusy(false);
+    }
+  };
   const runNow = async () => {
     setBusy(true);
     try {
@@ -396,6 +451,10 @@ export function ManagerDialog({
         <button className="btn" disabled={busy || state.running} onClick={() => void runNow()} title={t("mgr_runNowHint")}>
           {state.running ? t("mgr_working") : t("mgr_runNow")}
         </button>
+        <button className="btn" disabled={busy || (Boolean(providers) && !installed.length)} onClick={() => void optimize()} title={t("mgr_optimizeHint")}>
+          {t("mgr_optimize")}
+        </button>
+        <InfoTip text={t("mgr_optimizeHint")} />
       </div>
 
       {forYou.length > 0 && (
@@ -409,6 +468,7 @@ export function ManagerDialog({
         </section>
       )}
       <ManagerNotes projectKey={key} notes={state.notes ?? []} onError={onError} />
+      <FirstUp projectKey={key} tasks={model.runners?.settings.firstUp ?? []} onOpenTask={onOpenTask} onError={onError} />
       {(state.approvals?.length ?? 0) > 0 && (
         <section className="section">
           <h3 className="row">

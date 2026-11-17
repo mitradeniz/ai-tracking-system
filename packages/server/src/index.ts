@@ -2,6 +2,7 @@ import type { Server } from "node:http";
 import { ensureControlToken } from "./control.ts";
 import { createHttpServer } from "./http.ts";
 import { ProjectManager } from "./manager.ts";
+import type { DetectedProvider } from "./runners/env.ts";
 import { ProjectGenerator } from "./runners/generate.ts";
 import { RunManager } from "./runners/runs.ts";
 import { RunnerStore } from "./runners/store.ts";
@@ -34,6 +35,8 @@ export interface StartOptions {
   managerDelayMs?: number;
   /** Waits before the manager tries again after a failed run. */
   managerRetryMs?: number[];
+  /** The CLIs and models the manager may choose from (tests give their own instead of looking them up). */
+  managerProviders?: () => Promise<DetectedProvider[]>;
 }
 
 export interface RunningServer {
@@ -76,7 +79,7 @@ export async function startServer(options: StartOptions = {}): Promise<RunningSe
   const runs = new RunManager(manager, new RunnerStore(dataDir), dataDir);
 
   const generator = new ProjectGenerator();
-  const supervisor = new Supervisor(manager, runs, generator, dataDir, { delayMs: options.managerDelayMs, retryMs: options.managerRetryMs });
+  const supervisor = new Supervisor(manager, runs, generator, dataDir, { delayMs: options.managerDelayMs, retryMs: options.managerRetryMs, providers: options.managerProviders });
   supervisor.on("warning", (e: unknown) => manager.emit("warning", e));
   const server = createHttpServer(manager, { uiDir: options.uiDir, runs, generator, controlToken, supervisor });
   const preferred = options.port ?? 4317;

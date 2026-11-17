@@ -5699,6 +5699,24 @@ details.advanced[open] {
   min-width: 0;
 }
 
+/* Tasks put first for automatic dispatch, in order. */
+.first-up {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+.first-up li {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.first-up .icon-btn {
+  margin-left: 4px;
+}
+
 /* Full authority: the manager option that hands over the person's decisions stands out a little. */
 .check.strong-check {
   border-color: var(--warn-line, var(--edge-strong));

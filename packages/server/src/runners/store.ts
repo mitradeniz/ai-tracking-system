@@ -82,6 +82,11 @@ export interface ProjectRunners {
   facts?: Fact[];
   /** Folders every chat of the project may use besides its working folder, one absolute path per line. */
   extraDirs?: string;
+  /**
+   * Tasks put first (by the manager or the person): automatic dispatch gives these to a free chat
+   * that can take them before any other ready task, in this order. A task leaves the list when it starts.
+   */
+  firstUp?: string[];
 }
 
 /** Counters a CLI reports for a whole conversation, not for one run. */
@@ -104,6 +109,7 @@ export interface Fact {
 const MAX_FACTS = 40;
 const MAX_TASK_SESSIONS = 200;
 const MAX_SESSION_RECORDS = 300;
+export const MAX_FIRST_UP = 30;
 
 /** The same fact in other words: letters and digits only, lower case. */
 const factKey = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -267,6 +273,7 @@ function normalizeProject(input: unknown): ProjectRunners {
       at: typeof f.at === "string" ? f.at : new Date(0).toISOString(),
     }))
     .slice(-MAX_FACTS);
+  const firstUp = [...new Set((Array.isArray(o.firstUp) ? o.firstUp : []).filter((x): x is string => typeof x === "string" && x.trim() !== ""))].slice(0, MAX_FIRST_UP);
   return {
     autoDispatch: o.autoDispatch === true,
     maxConcurrent: Number.isInteger(max) && max >= 1 && max <= 10 ? max : DEFAULT_PROJECT_RUNNERS.maxConcurrent,
@@ -279,6 +286,7 @@ function normalizeProject(input: unknown): ProjectRunners {
     ...(Object.keys(sessionUsage).length && { sessionUsage }),
     ...(facts.length && { facts }),
     ...(typeof o.extraDirs === "string" && splitDirs(o.extraDirs).every((d) => path.isAbsolute(d)) && splitDirs(o.extraDirs).length && { extraDirs: splitDirs(o.extraDirs).join("\n") }),
+    ...(firstUp.length && { firstUp }),
   };
 }
 
@@ -409,6 +417,22 @@ export class RunnerStore {
     delete rest[task];
     p.taskSessions = { ...p.taskSessions, [agentId]: rest };
     await this.save();
+  }
+
+  /** Tasks put first, in order. */
+  firstUp(key: string): string[] {
+    return [...(this.data.projects[key]?.firstUp ?? [])];
+  }
+
+  async setFirstUp(key: string, ids: string[]): Promise<string[]> {
+    const list = [...new Set(ids.map((x) => x.trim()).filter(Boolean))].slice(0, MAX_FIRST_UP);
+    const p = this.entry(key);
+    const before = p.firstUp ?? [];
+    if (before.length === list.length && before.every((x, i) => x === list[i])) return list;
+    if (list.length) p.firstUp = list;
+    else delete p.firstUp;
+    await this.save();
+    return list;
   }
 
   /** What the CLI last reported for a whole conversation. */

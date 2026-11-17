@@ -542,6 +542,11 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     const body = await readJson(ctx.req);
     send(ctx.res, 202, await supervisor().message(key!, typeof body.text === "string" ? body.text : ""));
   });
+  // "Optimize for tokens and speed": saving mode on, and the manager goes over the whole project once.
+  route("POST", "/api/projects/:key/manager/optimize", async (ctx, [key]) => {
+    control(ctx);
+    send(ctx.res, 202, await supervisor().optimize(key!));
+  });
   // The person looked over what the manager approved (some tasks, or all of them).
   route("POST", "/api/projects/:key/manager/approvals/seen", async (ctx, [key]) => {
     const body = await readJson(ctx.req);
@@ -654,6 +659,14 @@ export function createHttpServer(manager: ProjectManager, options: HttpOptions =
     const texts = body.all === true ? "all" : Array.isArray(body.texts) ? body.texts.filter((x: unknown): x is string => typeof x === "string") : null;
     if (!texts) throw new HttpError(400, '"texts" or "all" is required.');
     send(ctx.res, 200, { facts: await runs().removeFacts(key!, texts) });
+  });
+  // Tasks put first for automatic dispatch, in order (an empty list clears it).
+  route("POST", "/api/projects/:key/first-up", async (ctx, [key]) => {
+    control(ctx);
+    const body = await readJson(ctx.req);
+    if (!Array.isArray(body.tasks)) throw new HttpError(400, '"tasks" is required.');
+    const tasks = body.tasks.filter((x: unknown): x is string => typeof x === "string").slice(0, 30);
+    send(ctx.res, 200, { firstUp: await runs().setFirstUp(key!, tasks) });
   });
   route("POST", "/api/projects/:key/runners/:agent", async (ctx, [key, agent]) => {
     control(ctx);

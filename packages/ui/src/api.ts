@@ -175,7 +175,15 @@ export interface RunnerState {
   manager?: ManagerState;
   /** saving: each task gets its own conversation, and what chats checked is passed on (saving mode). */
   /** extraDirs: folders every chat of the project may use besides its working folder, one per line. */
-  settings: { autoDispatch: boolean; maxConcurrent: number; chats: Record<string, ChatRunner>; saving?: boolean; extraDirs?: string };
+  settings: {
+    autoDispatch: boolean;
+    maxConcurrent: number;
+    chats: Record<string, ChatRunner>;
+    saving?: boolean;
+    extraDirs?: string;
+    /** Tasks put first for automatic dispatch, in order (none started yet). */
+    firstUp?: string[];
+  };
   /** What chats checked about the environment and the project, newest last. */
   facts?: Array<{ text: string; task?: string; agent?: string; at: string }>;
   /** Chats the person stopped; automatic dispatch leaves them alone until they get a task again. */
@@ -537,6 +545,8 @@ export const api = {
   // The manager: a CLI that answers waiting chats and keeps the plan up to date while the person is away.
   saveManager: (key: string, patch: Partial<ManagerSettings>) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager`, patch),
   runManager: (key: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/run`, {}),
+  optimizeManager: (key: string) => request<ManagerState & { savingTurnedOn: boolean }>("POST", `/api/projects/${enc(key)}/manager/optimize`, {}),
+  setFirstUp: (key: string, tasks: string[]) => request<{ firstUp: string[] }>("POST", `/api/projects/${enc(key)}/first-up`, { tasks }),
   /** Writes to the manager: it looks at once with the message and answers. */
   messageManager: (key: string, text: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/message`, { text }),
   addManagerNote: (key: string, text: string) => request<ManagerState>("POST", `/api/projects/${enc(key)}/manager/notes`, { text }),

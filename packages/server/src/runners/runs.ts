@@ -163,7 +163,11 @@ const CONTINUE_AFTER_LIMIT =
   "The usage limit has reset. Continue the task where you stopped; do not redo the steps you finished. Report with the aitrack-report block when you are done or need something.";
 
 /** The run settings the app shows; what the tracker keeps for itself (sessions, counters) stays out. */
-export type PublicRunners = Pick<ProjectRunners, "autoDispatch" | "maxConcurrent" | "chats" | "manager" | "extraDirs"> & { saving: boolean };
+export type PublicRunners = Pick<ProjectRunners, "autoDispatch" | "maxConcurrent" | "chats" | "manager" | "extraDirs"> & {
+  saving: boolean;
+  /** Tasks put first that no chat has started yet, in order: automatic dispatch gives these first. */
+  firstUp: string[];
+};
 
 export interface RunnerState {
   settings: PublicRunners;
@@ -401,7 +405,7 @@ export class RunManager extends EventEmitter {
     const base = defaultWorkdir(ctx.filePath, ctx.project.settings.repoPath);
     const p = this.store.project(key);
     return {
-      settings: { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true, ...(p.extraDirs && { extraDirs: p.extraDirs }) },
+      settings: { ...this.publicSettings(p), firstUp: this.firstUp(key) },
       facts: this.store.facts(key),
       held: [...this.held].filter((h) => h.startsWith(`${key}:`)).map((h) => h.slice(key.length + 1)),
       limits: Object.entries(this.store.project(key).chats).flatMap(([agent, runner]) => {
@@ -488,12 +492,47 @@ export class RunManager extends EventEmitter {
     } catch (e) {
       throw new HttpError(400, (e as Error).message);
     }
-    const settings: PublicRunners = { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true, ...(p.extraDirs && { extraDirs: p.extraDirs }) };
+    const settings: PublicRunners = { ...this.publicSettings(p), firstUp: this.firstUp(key) };
     // Switching automatic dispatch on again releases the chats the person stopped.
     if (patch.autoDispatch === true) for (const h of [...this.held]) if (h.startsWith(`${key}:`)) this.held.delete(h);
     this.emit("runners", { key });
     this.scheduleAuto(key);
     return settings;
+  }
+
+  private publicSettings(p: ProjectRunners): Omit<PublicRunners, "firstUp"> {
+    return { autoDispatch: p.autoDispatch, maxConcurrent: p.maxConcurrent, chats: p.chats, manager: p.manager, saving: p.saving === true, ...(p.extraDirs && { extraDirs: p.extraDirs }) };
+  }
+
+  /** Tasks put first that no chat has started yet, in order. */
+  firstUp(key: string): string[] {
+    let board;
+    try {
+      board = this.manager.context(key).board;
+    } catch {
+      return [];
+    }
+    return this.store.firstUp(key).filter((id) => {
+      const status = board.byId.get(id)?.status;
+      return status === "waiting" || status === "ready";
+    });
+  }
+
+  /**
+   * Puts tasks first, in this order (an empty list clears it): automatic dispatch gives them to a free
+   * chat that can take them before any other ready task. Only tasks no chat has started.
+   */
+  async setFirstUp(key: string, ids: string[]): Promise<string[]> {
+    const { board } = this.manager.context(key);
+    for (const id of ids) {
+      const status = board.byId.get(id)?.status;
+      if (!status) throw new HttpError(400, `Unknown task "${id}".`);
+      if (status !== "waiting" && status !== "ready") throw new HttpError(409, `Task ${id} is ${status}; only a task no chat has started is put first.`);
+    }
+    await this.store.setFirstUp(key, ids);
+    this.emit("runners", { key });
+    this.scheduleAuto(key);
+    return this.firstUp(key);
   }
 
   /** The person removes facts that are wrong or out of date (by their text), or all of them. */
@@ -609,7 +648,11 @@ export class RunManager extends EventEmitter {
     }
     const extra = options.extra?.trim();
     if (extra) parts.push(`ADDITIONAL INSTRUCTIONS FROM THE PERSON (they take precedence):\n${extra}`);
-    return this.launch({ key, task: taskId, agent, runner, prompt: parts.join("\n\n---\n\n"), resume, kind: "task", auto: options.auto === true, sessionPrompt, retried: options.retried, extra });
+    const started = await this.launch({ key, task: taskId, agent, runner, prompt: parts.join("\n\n---\n\n"), resume, kind: "task", auto: options.auto === true, sessionPrompt, retried: options.retried, extra });
+    // A task put first leaves that list once it starts.
+    const first = this.store.firstUp(key);
+    if (first.includes(taskId)) await this.store.setFirstUp(key, first.filter((id) => id !== taskId)).catch(() => undefined);
+    return started;
   }
 
   /** Continues a chat's session with the person's message (an answer, an approval, a correction). */
@@ -1127,7 +1170,9 @@ export class RunManager extends EventEmitter {
         const runner = settings.chats[agent];
         if (!runner || runner.provider === "manual" || !view.hasRoom || this.activeFor(key, agent) || this.held.has(`${key}:${agent}`)) continue;
         if (this.limits.has(limitKeyOf(runner))) continue;
-        const next = view.dispatchable.find((id) => !taken.has(id) && board.byId.get(id)?.status === "ready");
+        // Tasks put first come before the board's own order.
+        const first = (settings.firstUp ?? []).filter((id) => view.dispatchable.includes(id));
+        const next = [...first, ...view.dispatchable].find((id) => !taken.has(id) && board.byId.get(id)?.status === "ready");
         if (!next) continue;
         taken.add(next);
         try {

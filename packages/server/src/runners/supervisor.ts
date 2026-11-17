@@ -17,10 +17,12 @@ import {
   type TaskView,
 } from "@aitrack/core";
 import { HttpError, type ProjectManager } from "../manager.ts";
-import { applyPlan, chatsTable, notesTable, openNotes, PLAN_RULES, PLAN_SHAPE, planTable, proposalsTable } from "../proposals.ts";
+import { applyPlan, chatsTable, notesTable, openNotes, PLAN_RULES, PLAN_SHAPE, proposalsTable } from "../proposals.ts";
 import { writeFileAtomic } from "../store.ts";
 import type { ProjectGenerator } from "./generate.ts";
+import { detectProviders, type DetectedProvider } from "./env.ts";
 import { usageLimit } from "./limits.ts";
+import { PROVIDER_INFO, type ChatRunner, type ModelChoice } from "./providers.ts";
 import { defaultWorkdir, planFolder, type RunManager } from "./runs.ts";
 import { approves, mergesGreen, reviewsWork, type ManagerSettings } from "./store.ts";
 
@@ -33,8 +35,9 @@ import { approves, mergesGreen, reviewsWork, type ManagerSettings } from "./stor
  * credentials, legal terms, publishing, deleting, pushing and risky steps stay with the person;
  * merging into main only when the person turned on "merge green PRs", and then by the task's own chat.
  * With full authority it also grants permissions, moves tasks between chats, takes duplicate tasks
- * out of the plan and has chats merge the PRs a task needs; payments, credentials and accounts,
- * legal terms, deleting data and publishing still stay with the person.
+ * out of the plan, has chats merge the PRs a task needs, sets each chat's model and effort, puts
+ * tasks first and makes tasks wait for others; payments, credentials and accounts, legal terms,
+ * deleting data and publishing still stay with the person.
  */
 
 export interface ManagerAction {
@@ -108,6 +111,8 @@ interface Options {
   delayMs?: number;
   /** After a manager run failed (CLI limit, network), try again after these waits; the last one repeats. */
   retryMs?: number[];
+  /** The CLIs installed here and their models (tests give their own). */
+  providers?: () => Promise<DetectedProvider[]>;
 }
 
 const STOPPED = "Stopped from the tracker.";
@@ -142,6 +147,10 @@ export const MERGE_TOOLS = [
 const AUTHORITY_STEPS = new Set<RefusedStep["what"]>(["network", "gitPush"]);
 /** At most this many tasks taken out of the plan in one look: a guard against a manager that clears the plan. */
 const MAX_DROPS = 10;
+/** At most this many dependencies added to the plan in one look. */
+const MAX_DEPENDS = 15;
+/** Models of a CLI listed to the manager, at most. */
+const MAX_MODELS_SHOWN = 15;
 /** At most this many standing notes; a new one pushes out the oldest. */
 export const MAX_NOTES = 20;
 /** How many of its last looks the manager is shown, and at most how many of their actions. */
@@ -185,11 +194,12 @@ export class Supervisor extends EventEmitter {
   private handled = new Map<string, string>();
   /** Tasks the manager left for the person, and how they looked then: not shown to it again until they change. */
   private leftFor = new Map<string, string>();
-  /** What the person wrote to the manager and it has not read yet. */
-  private pending = new Map<string, string[]>();
+  /** What the person wrote to the manager and it has not read yet ("shown": how its log shows a brief the app wrote). */
+  private pending = new Map<string, Pending[]>();
   private closed = false;
   private readonly delayMs: number;
   private readonly retryMs: number[];
+  private readonly providers: () => Promise<DetectedProvider[]>;
 
   constructor(
     private readonly manager: ProjectManager,
@@ -201,6 +211,7 @@ export class Supervisor extends EventEmitter {
     super();
     this.delayMs = options.delayMs ?? 15_000;
     this.retryMs = options.retryMs?.length ? options.retryMs : [2 * 60_000, 5 * 60_000, 15 * 60_000, 30 * 60_000];
+    this.providers = options.providers ?? (() => detectProviders());
   }
 
   start(): void {
@@ -323,12 +334,12 @@ export class Supervisor extends EventEmitter {
    * The person writes to the manager: it looks at once (or right after the look it is in) with the
    * message, acts on it within its rules and answers. A message may ask it to approve finished work.
    */
-  async message(key: string, text: string): Promise<ManagerState> {
+  async message(key: string, text: string, shown?: string): Promise<ManagerState> {
     const message = String(text ?? "").trim();
     if (!message) throw new HttpError(400, "The message is empty.");
-    if (message.length > 4000) throw new HttpError(400, "The message is too long.");
+    if (message.length > 4000 && !shown) throw new HttpError(400, "The message is too long.");
     this.manager.context(key);
-    this.pending.set(key, [...(this.pending.get(key) ?? []), message].slice(-5));
+    this.pending.set(key, [...(this.pending.get(key) ?? []), { text: message, ...(shown && { shown }) }].slice(-5));
     if (!this.busy.has(key)) {
       const look = this.run(key, "manual").catch((e) => this.emit("warning", e));
       await Promise.race([look, new Promise((r) => setTimeout(r, 300))]);
@@ -337,9 +348,23 @@ export class Supervisor extends EventEmitter {
     return this.state(key);
   }
 
+  /**
+   * "Optimize for tokens and speed": turns saving mode on and has the manager go over the whole
+   * project once (effort and models, what goes first, what waits for what, tasks that keep failing).
+   * Without full authority it changes nothing and lists what it would change.
+   */
+  async optimize(key: string): Promise<ManagerState & { savingTurnedOn: boolean }> {
+    this.manager.context(key);
+    const savingTurnedOn = this.runs.store.project(key).saving !== true;
+    if (savingTurnedOn) await this.runs.saveProject(key, { saving: true });
+    const state = await this.message(key, optimizeBrief(this.settings(key)), OPTIMIZE_SHOWN);
+    return { ...state, savingTurnedOn };
+  }
+
   async run(key: string, trigger: "auto" | "manual"): Promise<ManagerRun | null> {
     const settings = this.settings(key);
-    const messages = this.pending.get(key) ?? [];
+    const pending = this.pending.get(key) ?? [];
+    const messages = pending.map((m) => m.text);
     const asked = messages.length > 0;
     if (trigger === "auto" && !settings.enabled && !asked) return null;
     if (this.busy.has(key)) {
@@ -391,7 +416,7 @@ export class Supervisor extends EventEmitter {
       startedAt: new Date().toISOString(),
       actions: [],
       forYou: [],
-      ...(asked && { message: messages.join("\n\n") }),
+      ...(asked && { message: pending.map((m) => m.shown ?? m.text).join("\n\n") }),
     };
     this.record(key, run);
     try {
@@ -401,7 +426,14 @@ export class Supervisor extends EventEmitter {
         .slice(-HISTORY_LOOKS);
       // Its standing notes as it sees them now: "forget" numbers refer to this list.
       const shownNotes = [...this.notes(key)];
-      const prompt = managerPrompt(project, board, attention, effective, messages, history, shownNotes);
+      // The chats' run settings, and the models and efforts it may pick (full authority, or when asked).
+      const providers = effective.fullAuthority || asked ? await this.providers().catch(() => [] as DetectedProvider[]) : [];
+      const context: PromptContext = {
+        chats: this.chatLines(key, project),
+        ...(providers.length && { options: cliOptions(project, this.runs.store.project(key).chats, providers) }),
+        firstUp: this.runs.firstUp(key),
+      };
+      const prompt = managerPrompt(project, board, attention, effective, messages, history, shownNotes, context);
       // Reviewing finished work itself: it may read the chats' folders and run read-only git and gh commands.
       const reviews = reviewsWork(effective) ? attention.filter((a) => a.view.status === "review") : [];
       const job = await this.generator.startPrompt({
@@ -421,7 +453,7 @@ export class Supervisor extends EventEmitter {
       const answer = parseAnswer(ended.answer);
       run.summary = answer.summary;
       if (answer.reply) run.reply = answer.reply;
-      await this.carryOut(key, answer, attention, run, effective, shownNotes);
+      await this.carryOut(key, answer, attention, run, effective, shownNotes, providers);
       run.state = "done";
       this.handled.set(key, fingerprint);
       this.failures.delete(key);
@@ -436,7 +468,7 @@ export class Supervisor extends EventEmitter {
       this.retryAt.set(key, limit?.known ? limit.until : Date.now() + Math.max(limit ? limit.until - Date.now() : 0, this.retryMs[Math.min(n, this.retryMs.length - 1)]!));
       this.dirty.add(key);
       // What the person wrote is read again on the next look.
-      if (asked) this.pending.set(key, [...messages, ...(this.pending.get(key) ?? [])].slice(-5));
+      if (asked) this.pending.set(key, [...pending, ...(this.pending.get(key) ?? [])].slice(-5));
     } finally {
       run.endedAt = new Date().toISOString();
       this.busy.delete(key);
@@ -448,6 +480,29 @@ export class Supervisor extends EventEmitter {
       void this.run(key, "manual").catch((e) => this.emit("warning", e));
     } else if (this.dirty.delete(key)) this.schedule(key);
     return run;
+  }
+
+  /** Each chat's run settings and what it is doing, as the manager is shown them. */
+  private chatLines(key: string, project: ProjectFile): ChatLine[] {
+    const chats = this.runs.store.project(key).chats;
+    const running = new Map(
+      this.runs
+        .state(key)
+        .runs.filter((r) => r.state === "running")
+        .map((r) => [r.agent, r.task]),
+    );
+    return project.agents.map((agent) => {
+      const runner = chats[agent.id];
+      return {
+        id: agent.id,
+        provider: runner?.provider ?? "manual",
+        ...(runner?.model && { model: runner.model }),
+        ...(runner?.effort && { effort: runner.effort }),
+        access: runner?.access ?? "edit",
+        ...(running.has(agent.id) && { running: running.get(agent.id) }),
+        ...(this.runs.isLimited(key, agent.id) && { limited: true }),
+      };
+    });
   }
 
   /** Tasks that wait for the person and that the manager may act on. */
@@ -508,10 +563,15 @@ export class Supervisor extends EventEmitter {
     run: ManagerRun,
     settings: ManagerSettings,
     shownNotes: ManagerNote[] = [],
+    providers: DetectedProvider[] = [],
   ): Promise<void> {
     const listed = new Map(attention.map((a) => [a.view.task.id, a]));
     const acted = new Set<string>();
     let dropped = 0;
+    let depends = 0;
+    /** Tasks it put first in this look, in its order; chats whose settings it changed. */
+    const first: string[] = [];
+    const tuned = new Set<string>();
     const done = (type: string, task: string | undefined, ok: boolean, detail: string) => {
       run.actions.push({ type, ...(task && { task }), ok, detail: clip(detail, 500) });
       this.record(key, run);
@@ -530,6 +590,40 @@ export class Supervisor extends EventEmitter {
           run.forYou.push(task ? `${task}: ${message}` : message);
           if (task && this.manager.context(key).board.byId.has(task)) await note(task, `left for you — ${message}`);
           done(type, task, true, message);
+          continue;
+        }
+        // With full authority it sets a chat's model and effort, for its next runs.
+        if (type === "tune") {
+          if (!settings.fullAuthority) throw new Error("Changing a chat's model or effort needs full authority; left for the person.");
+          const chat = String(a.chat ?? a.agent ?? "").trim();
+          if (tuned.has(chat)) throw new Error("One change per chat in a look.");
+          const detail = await this.tune(key, chat, a, providers);
+          tuned.add(chat);
+          done(type, undefined, true, detail);
+          continue;
+        }
+        // With full authority it decides what goes first, and what waits for what, among tasks nobody started.
+        if (type === "next" || type === "depend") {
+          if (!settings.fullAuthority) throw new Error("Changing the order of the plan needs full authority; left for the person.");
+          if (!task) throw new Error("No task given.");
+          const board = this.manager.context(key).board;
+          const status = board.byId.get(task)?.status;
+          if (!status) throw new Error("Unknown task.");
+          if (status !== "waiting" && status !== "ready") throw new Error(`It is ${status}; only a task no chat has started is put first or made to wait.`);
+          const why = typeof a.note === "string" ? clip(a.note, 300) : "";
+          if (type === "next") {
+            if (!first.includes(task)) first.push(task);
+            done(type, task, true, `first up${why ? ` — ${why}` : ""}`);
+            continue;
+          }
+          const on = [...new Set((Array.isArray(a.on) ? a.on : [a.on ?? a.for]).filter((x): x is string => typeof x === "string"))].filter(
+            (id) => id !== task && board.byId.has(id) && board.byId.get(id)!.status !== "done",
+          );
+          if (!on.length) throw new Error("Those tasks are done already, or unknown.");
+          if ((depends += 1) > MAX_DEPENDS) throw new Error(`At most ${MAX_DEPENDS} tasks are made to wait in one look.`);
+          const added = await this.manager.addWaitDependencies(key, task, on);
+          if (!added.length) throw new Error("It waits for them already, or that would make a cycle.");
+          done(type, task, true, `waits for ${added.join(", ")}${why ? ` — ${why}` : ""}`);
           continue;
         }
         // With full authority it changes who does a task, or takes one nobody started out of the plan.
@@ -716,6 +810,14 @@ export class Supervisor extends EventEmitter {
       }
     }
 
+    // What it put first goes before what was first already, in its order.
+    if (first.length) {
+      const board = this.manager.context(key).board;
+      const open = (id: string) => ["waiting", "ready"].includes(board.byId.get(id)?.status ?? "");
+      const order = [...first, ...this.runs.firstUp(key).filter((id) => !first.includes(id))].filter(open);
+      await this.runs.setFirstUp(key, order).catch((e) => done("next", undefined, false, (e as Error).message));
+    }
+
     // Its standing notes: first what no longer holds (numbers as it saw them), then what to keep.
     if (answer.forget?.length || answer.remember?.length) {
       const list = this.notes(key);
@@ -766,6 +868,47 @@ export class Supervisor extends EventEmitter {
     });
     if (settled.length) await this.manager.setIssueStates(key, view.task.id, settled.map(({ i, index }) => ({ index, title: i.title })), "resolved");
     return grant.how === "full" ? "full access" : grant.how === "none" ? `${grant.shown} (it had it already)` : grant.shown;
+  }
+
+  /**
+   * Sets a chat's model and effort for its next runs, to what its CLI offers (the models the CLI
+   * lists for the account, the efforts that CLI or model takes). Returns what changed.
+   */
+  private async tune(key: string, chat: string, a: Record<string, unknown>, providers: DetectedProvider[]): Promise<string> {
+    const { project } = this.manager.context(key);
+    if (!project.agents.some((x) => x.id === chat)) throw new Error(`Unknown chat "${chat}".`);
+    const runner = this.runs.store.chat(key, chat);
+    if (runner.provider === "manual" || runner.provider === "custom") throw new Error("This chat has no CLI whose model or effort can be set.");
+    const cli = PROVIDER_INFO[runner.provider];
+    const found = providers.find((p) => p.id === runner.provider);
+    const models = found?.models.length ? found.models : cli.models;
+    const model = typeof a.model === "string" ? a.model.trim() : "";
+    const effort = typeof a.effort === "string" ? a.effort.trim().toLowerCase() : "";
+    if (!model && !effort) throw new Error("Give a model or an effort.");
+    const patch: { model?: string; effort?: string } = {};
+    if (model && model !== runner.model) {
+      if (!models.some((m) => m.id === model)) {
+        throw new Error(models.length ? `"${model}" is not one of the models ${cli.name} offers: ${models.map((m) => m.id).join(", ")}.` : `${cli.name} lists no models here; only its effort can be set.`);
+      }
+      patch.model = model;
+    }
+    const efforts = effortsOf(models.find((m) => m.id === (patch.model ?? runner.model)), found?.efforts ?? cli.efforts);
+    if (effort && effort !== runner.effort) {
+      if (!efforts.length) throw new Error(`${cli.name} has no effort setting.`);
+      if (!efforts.includes(effort)) throw new Error(`"${effort}" is not an effort ${cli.name} takes: ${efforts.join(", ")}.`);
+      patch.effort = effort;
+    } else if (patch.model && runner.effort && !efforts.includes(runner.effort)) {
+      // The new model does not take the effort the chat had: it runs at the model's default.
+      patch.effort = undefined;
+    }
+    if (!Object.keys(patch).length) throw new Error("It has these settings already.");
+    await this.runs.saveChat(key, chat, patch);
+    const why = typeof a.note === "string" ? clip(a.note, 300) : "";
+    const changes = [
+      "model" in patch ? `model ${runner.model ?? "default"} → ${patch.model}` : "",
+      "effort" in patch ? `effort ${runner.effort ?? "default"} → ${patch.effort ?? "default"}` : "",
+    ].filter(Boolean);
+    return `${chat}: ${changes.join(", ")}${why ? ` — ${why}` : ""}`;
   }
 
   /** Gives a task to another chat; a task its chat holds is released first. Returns what was done. */
@@ -922,6 +1065,99 @@ export class Supervisor extends EventEmitter {
   private changed(key: string): void {
     this.emit("manager", { key });
   }
+}
+
+/** Something the person wrote to the manager; "shown" is how its log shows a brief the app wrote for them. */
+interface Pending {
+  text: string;
+  shown?: string;
+}
+
+/** A chat's run settings and state, as the manager is shown them. */
+export interface ChatLine {
+  id: string;
+  provider: ChatRunner["provider"];
+  model?: string;
+  effort?: string;
+  access: ChatRunner["access"];
+  /** The task it runs now. */
+  running?: string;
+  /** Its CLI waits for a usage limit. */
+  limited?: boolean;
+}
+
+/** What the manager is shown besides the board: the chats' settings, what each CLI offers, what goes first. */
+export interface PromptContext {
+  chats?: ChatLine[];
+  /** One line per CLI the chats use: its models and efforts. */
+  options?: string[];
+  firstUp?: string[];
+}
+
+/** The efforts a model takes: its own list when the CLI gives one, else the CLI's. */
+function effortsOf(model: ModelChoice | undefined, cli: string[]): string[] {
+  return model?.efforts?.length ? model.efforts : cli;
+}
+
+/** What each CLI the project's chats use offers: its models (as the CLI lists them for the account) and efforts. */
+export function cliOptions(project: ProjectFile, chats: Record<string, ChatRunner>, providers: DetectedProvider[]): string[] {
+  const used = [...new Set(project.agents.map((a) => chats[a.id]?.provider))].filter((p): p is Exclude<ChatRunner["provider"], "manual" | "custom"> => Boolean(p) && p !== "manual" && p !== "custom");
+  return used.map((id) => {
+    const found = providers.find((p) => p.id === id);
+    const models = (found?.models.length ? found.models : PROVIDER_INFO[id].models).slice(0, MAX_MODELS_SHOWN);
+    const efforts = found?.efforts ?? PROVIDER_INFO[id].efforts;
+    const shown = models.map((m) => {
+      const own = m.efforts?.length && m.efforts.join("|") !== efforts.join("|") ? ` (efforts ${m.efforts.join("|")})` : "";
+      return `${m.id}${own}`;
+    });
+    return `${id}: models ${shown.length ? shown.join(", ") : "(none listed: leave the model)"}${found?.listed ? " — the ones this account may use" : ""} · efforts ${efforts.length ? efforts.join("|") : "(none)"}`;
+  });
+}
+
+function chatsText(project: ProjectFile, lines: ChatLine[] | undefined): string {
+  if (!lines?.length) return chatsTable(project);
+  const byId = new Map(lines.map((l) => [l.id, l]));
+  return project.agents
+    .map((a) => {
+      const l = byId.get(a.id);
+      const run = !l || l.provider === "manual" ? "run by hand" : `${l.provider} · model ${l.model ?? "default"} · effort ${l.effort ?? "default"} · access ${l.access}`;
+      const now = l?.running ? ` · RUNNING ${l.running}` : l?.limited ? " · waits for its usage limit" : "";
+      return `${a.id} | ${a.name}${a.role ? ` | ${clip(a.role, 120)}` : ""} | ${run}${now}`;
+    })
+    .join("\n");
+}
+
+/** The plan as the manager sees it: with what goes first, and how often a task failed or was sent back. */
+function planText(project: ProjectFile, board: Board, firstUp: string[] = []): string {
+  return project.tasks
+    .map((t) => {
+      const v = board.byId.get(t.id);
+      const deps = t.dependsOn.length ? ` | after ${t.dependsOn.join(", ")}` : "";
+      const holder = v?.runtime.agent && v.runtime.agent !== t.agent && v.status !== "done" ? ` (with ${v.runtime.agent})` : "";
+      const failed = v?.runtime.history.filter((e) => e.type === "failed").length ?? 0;
+      const back = v?.runtime.history.filter((e) => e.type === "note" && e.message?.startsWith("Manager: sent back")).length ?? 0;
+      const at = firstUp.indexOf(t.id);
+      const marks = [at >= 0 ? `FIRST #${at + 1}` : "", failed ? `failed ${failed}×` : "", back ? `sent back ${back}×` : ""].filter(Boolean);
+      return `${t.id} | ${clip(t.title, 90)} | ${t.agent}${holder} | ${v?.status ?? "?"}${deps}${marks.length ? ` | ${marks.join(", ")}` : ""}`;
+    })
+    .join("\n");
+}
+
+/** How the manager's log shows the optimize brief. */
+export const OPTIMIZE_SHOWN = "⚡ Optimize for tokens and speed";
+
+/** What the manager is asked when the person presses "Optimize for tokens and speed". */
+export function optimizeBrief(s: ManagerSettings): string {
+  const act = s.fullAuthority
+    ? "Make the changes with your actions."
+    : 'You do not have full authority: change nothing about settings or the plan. In "reply", list the changes you would make (chat → model/effort, what goes first, what waits for what, what to split or drop) so the person can make them.';
+  return `OPTIMIZE FOR TOKENS AND SPEED (the person pressed "Optimize"; saving mode is on now, so each task gets a conversation of its own and what chats checked is passed on). Go over the whole project once and make the work cheaper and faster without losing quality. ${act}
+1. Effort and models (tune): look at CHATS and at the tasks each chat has ready or waiting. Mechanical work (CI and PR fixes, merging, small edits, docs, tests that follow a pattern) runs well at low or medium effort, and on a smaller, faster model when its CLI lists one. Design, architecture, hard debugging and security keep high effort. Change a chat only when its coming work clearly fits; leave a chat that is running alone unless its next tasks are clearly of another kind.
+2. What goes first (next): tasks that unblock others: failing gates (CI, lint, types, build), shared fixes, tasks many others wait for. The FIRST marks in the plan show the order now.
+3. What waits (depend): a task that will touch a failing gate, or files another task is fixing now, waits for that task, so two chats do not work on the same failure.
+4. Repeats: a task that failed or was sent back twice or more is split into smaller tasks (plan) or given to a chat that can do it (assign); a task another one covers is dropped.
+5. Keep what you decided as standing notes ("remember"), for example "CI fixes run at low effort on Codex", so later looks keep to it.
+Do not stop or send again running work, do not grant permissions for this, and do not change your own settings. In "reply", say in short lines what you changed and why, and what needs the person.`;
 }
 
 interface ManagerAnswer {
@@ -1112,7 +1348,10 @@ function authorityActions(s: ManagerSettings): string {
   return `
 - grant: give a task's chat, for good, the permission one of its problems needs (marked [asks permission] or [needs permission]; "issue" is its number, or leave it out). The app changes the chat's run settings: an allowed command, network in its sandbox, another folder, or full access when its CLI has nothing finer. Then the chat goes on.
 - assign: give a task to another chat ("to": the chat id, "note": why). Any task of the plan that waits, is ready, blocked or failed; one its chat holds starts over with the new chat. Use it to spread work (PR and computer-use work to the chat that can do it, say) and for a chat that cannot do the task.
-- drop: take a task no chat has started out of the plan when it is not needed: it duplicates another task, or another task covers it ("note": which one). Tasks that depended on it take over its dependencies.`;
+- drop: take a task no chat has started out of the plan when it is not needed: it duplicates another task, or another task covers it ("note": which one). Tasks that depended on it take over its dependencies.
+- tune: set a chat's model and/or effort for its next runs ("chat", "model", "effort", "note": why), only to what CLI OPTIONS lists for its CLI. Lower effort (or a faster model) for mechanical work, higher for design and hard problems. One change per chat per look.
+- next: put a task no chat has started first ("note": why): automatic dispatch gives it to a free chat that can take it before other ready tasks. Several "next" actions keep your order. Use it for tasks that unblock others.
+- depend: make a task no chat has started wait for other tasks ("on": their ids, "note": why), in the plan: when it would touch what they are fixing, or needs their result.`;
 }
 
 /**
@@ -1149,6 +1388,7 @@ export function managerPrompt(
   messages: string[] = [],
   history: ManagerRun[] = [],
   kept: ManagerNote[] = [],
+  context: PromptContext = {},
 ): string {
   const language = project.settings.language === "tr" ? "Turkish" : "English";
   const fromPerson = messages.length
@@ -1176,7 +1416,7 @@ At most one action per task, plus "close" (put "close" before the action it make
 ${
   settings.fullAuthority
     ? `
-FULL AUTHORITY: the person gave you their authority over this project. Decide and act as they would; do not leave them what you can do with your actions: grant the permissions chats need, move tasks between chats, take duplicates out of the plan, have green PRs merged, continue stopped work, choose between options. What you left for the person before comes back to you below: handle it now. "leave" is only for what a person has to do themselves: pay, sign in or create an account, accept terms, a check on a real device or by eye that the task asks the person for. Act on the tasks under ATTENTION; "assign" and "drop" may also name any task of the plan.
+FULL AUTHORITY: the person gave you their authority over this project. Decide and act as they would; do not leave them what you can do with your actions: grant the permissions chats need, move tasks between chats, take duplicates out of the plan, have green PRs merged, continue stopped work, choose between options, set the chats' model and effort, decide what goes first and what waits. What you left for the person before comes back to you below: handle it now. "leave" is only for what a person has to do themselves: pay, sign in or create an account, accept terms, a check on a real device or by eye that the task asks the person for. Act on the tasks under ATTENTION; "assign", "drop", "next" and "depend" may also name any task of the plan, "tune" any chat.
 `
     : ""
 }
@@ -1201,7 +1441,9 @@ ${PLAN_RULES}
 
 Answer with one JSON object in a \`\`\`json fence, and nothing after it:
 {"actions":[{"type":"reply","task":"<id>","text":"…"},{"type":"choose","task":"<id>","issue":0,"choice":0},{"type":"allow","task":"<id>"},{"type":"wait","task":"<id>","for":["<task id>"]},{"type":"resend","task":"<id>","note":"…"},{"type":"close","task":"<id>","issues":[0],"state":"resolved"},{"type":"leave","task":"<id>","message":"…"}${reviewShapes(settings)}${
-    settings.fullAuthority ? ',{"type":"grant","task":"<id>","issue":0},{"type":"assign","task":"<id>","to":"<chat id>","note":"…"},{"type":"drop","task":"<id>","note":"…"}' : ""
+    settings.fullAuthority
+      ? ',{"type":"grant","task":"<id>","issue":0},{"type":"assign","task":"<id>","to":"<chat id>","note":"…"},{"type":"drop","task":"<id>","note":"…"},{"type":"tune","chat":"<chat id>","model":"…","effort":"…","note":"…"},{"type":"next","task":"<id>","note":"…"},{"type":"depend","task":"<id>","on":["<task id>"],"note":"…"}'
+      : ""
   }],"plan":${PLAN_SHAPE},"remember":["<a standing note>"],"forget":[0],"summary":"<what you did, in one or two sentences>"${messages.length ? ',"reply":"<your answer to the person>"' : ""}}
 Leave out what you do not use.
 
@@ -1218,10 +1460,10 @@ ${proposals.length ? proposalsTable(proposals) : "(none)"}
 NOTES (written by chats; nobody has to act on them right away)
 ${notes.length ? notesTable(notes) : "(none)"}
 
-CHATS (id | name | role)
-${chatsTable(project)}
-
-TASKS OF THE PLAN (id | title | chat | status | depends on)
-${planTable(project, board)}
+CHATS (id | name | role${context.chats?.length ? " | CLI · model · effort · access" : ""})
+${chatsText(project, context.chats)}
+${context.options?.length ? `\nCLI OPTIONS (models and efforts each CLI takes; "default" is the CLI's own)\n${context.options.join("\n")}\n` : ""}
+TASKS OF THE PLAN (id | title | chat | status | depends on | marks)
+${planText(project, board, context.firstUp)}
 `;
 }
