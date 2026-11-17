@@ -129,6 +129,9 @@ export const MERGE_TOOLS = [
 const AUTHORITY_STEPS = new Set<RefusedStep["what"]>(["network", "gitPush"]);
 /** At most this many tasks taken out of the plan in one look: a guard against a manager that clears the plan. */
 const MAX_DROPS = 10;
+/** How many of its last looks the manager is shown, and at most how many of their actions. */
+const HISTORY_LOOKS = 15;
+const HISTORY_ACTIONS = 40;
 /** Not a setting: only a guard against a loop, when every run of the manager causes another. */
 const SAFETY_RUNS_PER_HOUR = 30;
 const clip = (s: string, n: number) => {
@@ -375,7 +378,11 @@ export class Supervisor extends EventEmitter {
     };
     this.record(key, run);
     try {
-      const prompt = managerPrompt(project, board, attention, effective, messages);
+      // What it did in its last looks and what the person and it said: each look starts from nothing otherwise.
+      const history = this.log(key)
+        .filter((r) => r.id !== run.id && r.state !== "running")
+        .slice(-HISTORY_LOOKS);
+      const prompt = managerPrompt(project, board, attention, effective, messages, history);
       // Reviewing finished work itself: it may read the chats' folders and run read-only git and gh commands.
       const reviews = reviewsWork(effective) ? attention.filter((a) => a.view.status === "review") : [];
       const job = await this.generator.startPrompt({
@@ -1003,8 +1010,40 @@ function authorityActions(s: ManagerSettings): string {
 - drop: take a task no chat has started out of the plan when it is not needed: it duplicates another task, or another task covers it ("note": which one). Tasks that depended on it take over its dependencies.`;
 }
 
+/**
+ * What the manager did in its last looks, newest first, and what the person and it said: its memory,
+ * so it can answer for what it did (a task it took out of the plan is no longer in the plan) and
+ * does not do the same again.
+ */
+export function historyText(history: ManagerRun[]): string {
+  const when = (iso: string) => iso.slice(0, 16).replace("T", " ") + "Z";
+  const lines: string[] = [];
+  for (const run of [...history].reverse()) {
+    for (const a of run.actions) {
+      if (lines.length >= HISTORY_ACTIONS) break;
+      lines.push(`- ${when(run.startedAt)} ${a.type}${a.task ? ` ${a.task}` : ""} ${a.ok ? "done" : "refused"} — ${clip(a.detail, 220)}`);
+    }
+  }
+  const talks = history
+    .filter((r) => r.message)
+    .slice(-5)
+    .map((r) => `> person (${when(r.startedAt)}): ${clip(r.message!, 400)}\n  you: ${clip(r.reply ?? r.summary ?? r.error ?? "—", 400)}`);
+  if (!lines.length && !talks.length) return "";
+  return `YOUR RECENT LOOKS (your memory: what you did, newest first; tasks you took out of the plan are only here)
+${lines.length ? lines.join("\n") : "(no actions)"}
+${talks.length ? `\nYOUR LAST CONVERSATIONS WITH THE PERSON (oldest first)\n${talks.join("\n")}\n` : ""}
+`;
+}
+
 /** What the manager is told: its job, the limits, the actions, and the project as it is now. */
-export function managerPrompt(project: ProjectFile, board: Board, attention: Attention[], settings: ManagerSettings, messages: string[] = []): string {
+export function managerPrompt(
+  project: ProjectFile,
+  board: Board,
+  attention: Attention[],
+  settings: ManagerSettings,
+  messages: string[] = [],
+  history: ManagerRun[] = [],
+): string {
   const language = project.settings.language === "tr" ? "Turkish" : "English";
   const fromPerson = messages.length
     ? `MESSAGE FROM THE PERSON (written to you just now; it comes before your usual choices, never before NEVER)
@@ -1063,7 +1102,7 @@ Leave out what you do not use.
 ${fromPerson}ATTENTION (tasks waiting for a decision, failed${approves(settings) ? ", or finished and waiting for approval" : ""})
 ${attention.length ? attention.map((a) => attentionText(a, settings)).join("\n\n") : "(none)"}
 
-PROPOSALS (work chats left for later)
+${historyText(history)}PROPOSALS (work chats left for later)
 ${proposals.length ? proposalsTable(proposals) : "(none)"}
 
 NOTES (written by chats; nobody has to act on them right away)

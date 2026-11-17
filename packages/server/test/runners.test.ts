@@ -624,6 +624,9 @@ describe("agent runners", () => {
       const prompt = [...(await invocations())].reverse().find((i) => i.stdin.includes("You are the manager"))!.stdin;
       expect(prompt).toContain("FULL AUTHORITY");
       expect(prompt).toContain('{"type":"grant"');
+      // It remembers its last looks: what it was refused before.
+      expect(prompt).toContain("YOUR RECENT LOOKS");
+      expect(prompt).toMatch(/drop T2 refused — Moving and removing tasks needs full authority/);
       await waitFor("T1", "done");
       const settings = (await call("GET", `/api/projects/${key}/runners`)).json.settings;
       expect(settings.chats.a.network).toBe(true);
