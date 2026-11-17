@@ -125,6 +125,8 @@ export function localMessage(message: string, t: T): string {
   if (m) return t("run_msg_working", { provider: m[1]! });
   m = /^Reply sent: ([\s\S]*)$/.exec(message);
   if (m) return t("run_msg_reply", { text: m[1]! });
+  m = /^Runner: (.+?) did not find the conversation to continue \(([^)]*)\); the task started again in a new conversation\.$/.exec(message);
+  if (m) return t("msg_runner_sessionGone", { cli: m[1]!, id: m[2]! });
   m = /^Manager: moved to (\S+)(?: — ([\s\S]*))?$/.exec(message);
   if (m) return t("msg_manager_moved", { to: m[1]!, text: m[2] ?? "" });
   m = /^Manager: (replied|left for you|allowed|sent it again|approved|sent back|asked to merge|granted)(?: — )?([\s\S]*)$/.exec(message);
@@ -288,6 +290,8 @@ export interface Problem {
   steps?: RefusedStep[];
   /** A decision: the options the chat offered, as buttons. */
   choices?: IssueChoice[];
+  /** The chat's saved conversation is gone or another CLI's: reset it and send the task again. */
+  resetSession?: boolean;
   /** A permission the chat asked for (or that its problem shows), which the person can allow for it from now on. */
   permission?: NeededPermission;
 }
@@ -316,6 +320,21 @@ const SIGN_IN = /not logged in|please run \/login|not authenticated|unauthori[sz
 const SESSION_GONE = /no conversation found|unknown session|could not (?:find|resume) (?:the )?session/i;
 /** Claude Code refused auto mode (an older version, or turned off for the account). */
 const AUTO_MODE = /auto mode|invalid[^\n]{0,80}permission-mode|permission-mode[^\n]{0,80}(?:invalid|choices)/i;
+
+/**
+ * The CLI a chat's saved conversation belongs to, when that is not the CLI it runs with now: that
+ * CLI cannot continue it, and the conversation id should be reset. From what the tracker recorded,
+ * else from the id's shape (Codex threads are UUID v7; the ids the tracker picks for Claude Code,
+ * Copilot and Gemini are v4).
+ */
+export function foreignSession(runner: ChatRunner | null | undefined): string | null {
+  if (!runner?.sessionId || runner.provider === "manual" || runner.provider === "custom") return null;
+  if (runner.sessionProvider) return runner.sessionProvider !== runner.provider ? runner.sessionProvider : null;
+  const version = /^[0-9a-f]{8}-[0-9a-f]{4}-([0-9a-f])[0-9a-f]{3}-/i.exec(runner.sessionId)?.[1];
+  if (version === "7" && ["claude", "copilot", "gemini"].includes(runner.provider)) return "codex";
+  if (version === "4" && runner.provider === "codex") return "claude";
+  return null;
+}
 
 /** Problems of a task: what the chat reported, plus failures and blocks the tracker knows about. */
 export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
@@ -368,7 +387,7 @@ export function problemsOf(model: Model, s: TaskSnapshot, t: T): Problem[] {
       command: how?.login,
     });
   } else if (runFailedNow && SESSION_GONE.test(s.reason!)) {
-    out.unshift({ kind: "warning", title: t("issue_sessionGone"), detail: t("issue_sessionGoneDetail"), fix: "" });
+    out.unshift({ kind: "needs-you", title: t("issue_sessionGone"), detail: t("issue_sessionGoneDetail"), fix: "", resetSession: true });
   } else if (runFailedNow && lastRun!.provider === "claude" && AUTO_MODE.test(s.reason!)) {
     out.unshift({ kind: "warning", title: t("issue_autoMode"), detail: t("issue_autoModeDetail"), fix: "", settings: true, command: "claude update" });
   } else if (s.status === "failed" && s.reason && !out.some((p) => p.detail === s.reason)) {

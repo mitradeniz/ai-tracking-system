@@ -250,6 +250,16 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
     );
     if (done === "sent") onInfo?.(t("perm_done", { agent: agentName(model, msgAgent), what: grant.how === "full" ? t("perm_fullShort") : grant.shown }));
   };
+  // The chat's conversation is gone or another CLI's: forget it and send the task again in a new one.
+  const resetSession = async (agentId: string) => {
+    try {
+      await api.saveRunner(model.detail.key, agentId, { sessionId: "" });
+      await api.runTask(model.detail.key, task.id, agentId);
+      onInfo?.(t("session_resetSent", { agent: agentName(model, agentId) }));
+    } catch (e) {
+      onError((e as Error).message);
+    }
+  };
   // An option the chat offered for a decision: tell it, and close the question.
   const choose = async (problem: Problem, choice: IssueChoice) => {
     const done = await sendMessage(choiceReply(problem, choice, t), undefined, true);
@@ -551,6 +561,7 @@ export function TaskDrawer({ model, taskId, onClose, onOpen, onError, onInfo, on
                       : undefined
                   }
                   onChoose={p.choices && !running ? (c) => void choose(p, c) : undefined}
+                  onResetSession={p.resetSession && msgAgent && msgRunner && !running ? () => void resetSession(msgAgent) : undefined}
                 />
               ))}
               {closed.length > 0 && (
@@ -853,6 +864,7 @@ function ProblemCard({
   onAllow,
   onChoose,
   permit,
+  onResetSession,
 }: {
   problem: Problem;
   canSend: boolean;
@@ -867,6 +879,8 @@ function ProblemCard({
   onChoose?: (choice: IssueChoice) => void;
   /** Allows what the chat asked for, for good, and lets it go on. */
   permit?: { grant: PermissionGrant; agent: string; cli: string; onPermit: (grant: PermissionGrant) => void };
+  /** Resets the chat's conversation id and sends the task again in a new conversation. */
+  onResetSession?: () => void;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -991,6 +1005,11 @@ function ProblemCard({
             }}
           >
             {copied ? `✓ ${t("copied")}` : t("copy")}
+          </button>
+        )}
+        {onResetSession && (
+          <button className="btn small primary" disabled={busy} title={t("session_resetSendHint")} onClick={onResetSession}>
+            ↻ {t("session_resetSend")}
           </button>
         )}
         {onSettings && (

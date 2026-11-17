@@ -208,9 +208,14 @@ describe("agent runners", () => {
     await setRunner("a", { provider: "codex" });
     await call("POST", `/api/projects/${key}/tasks/T1/run`, {});
     await waitFor("T1", "done");
-    expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a.sessionId).toBe("thread-123");
+    expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a).toMatchObject({ sessionId: "thread-123", sessionProvider: "codex" });
     await setRunner("a", { provider: "claude" });
-    expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a.sessionId).toBeUndefined();
+    const moved = (await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a;
+    expect(moved.sessionId).toBeUndefined();
+    expect(moved.sessionProvider).toBeUndefined();
+    // An id pasted by hand belongs to the chat's CLI.
+    await setRunner("a", { sessionId: "4a6f1ed1-028f-4211-ba7e-7c2fb199efda" });
+    expect((await call("GET", `/api/projects/${key}/runners`)).json.settings.chats.a.sessionProvider).toBe("claude");
 
     // A conversation the CLI no longer has: one new start, not a failed task.
     process.env.FAKE_FORMAT = "claude";
@@ -231,6 +236,10 @@ describe("agent runners", () => {
       expect(failed.error).toContain("No conversation found");
       const detail = (await call("GET", `/api/projects/${key}`)).json;
       expect(detail.events.some((e: { task: string; type: string }) => e.task === "T3" && e.type === "failed")).toBe(false);
+      // The person is told why it started over.
+      expect(detail.events.find((e: { task: string; type: string }) => e.task === "T3" && e.type === "note").message).toBe(
+        `Runner: Claude Code did not find the conversation to continue (${process.env.FAKE_GONE}); the task started again in a new conversation.`,
+      );
     } finally {
       delete process.env.FAKE_GONE;
     }

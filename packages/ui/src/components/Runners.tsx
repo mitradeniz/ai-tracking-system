@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, copyText, desktop, type ChatRunner, type DetectedProvider, type RunLogEvent, type RunnerProvider, type RunSummary } from "../api.ts";
 import { RUNLOG_EVENT } from "../hooks.ts";
 import { useI18n, type Key, type T } from "../i18n.ts";
-import { activeRun, agentName, INSTALL, PROVIDER_LABEL, runnerOf, untilText, type Model } from "../model.ts";
+import { activeRun, agentName, foreignSession, INSTALL, PROVIDER_LABEL, runnerOf, untilText, type Model } from "../model.ts";
 import { Dialog } from "./Dialogs.tsx";
 import { InfoTip } from "./Info.tsx";
 
@@ -79,6 +79,14 @@ export function RunnerDialog({
   const defaultWorkdir = model.runners?.defaultWorkdir ?? "";
   const workdir = form.workdir || defaultWorkdir;
   const resume = form.sessionId && RESUME[p] ? `cd ${shellQuote(workdir)} && ${RESUME[p]!.replace("{id}", form.sessionId)}` : null;
+  // A conversation of another CLI: the chat cannot continue it with this one.
+  const owner = form.sessionId ? (initial && initial.provider !== p && initial.sessionId === form.sessionId ? initial.provider : foreignSession(form)) : null;
+  const sessionWarning = owner
+    ? t(initial && initial.provider !== p ? "session_otherCliChanged" : "session_otherCli", {
+        old: PROVIDER_LABEL[owner] || owner,
+        cli: PROVIDER_LABEL[p] || p,
+      })
+    : null;
   const hooks = model.runners?.hooks;
 
   const save = async () => {
@@ -288,6 +296,17 @@ export function RunnerDialog({
               ))}
             </div>
           </div>
+          {sessionWarning && (
+            <div className="warn-box small session-warn" role="alert">
+              <span className="bang" aria-hidden="true">
+                !
+              </span>
+              <span className="grow">{sessionWarning}</span>
+              <button className="btn small primary" onClick={() => set({ sessionId: "", sessionProvider: undefined })}>
+                ↻ {t("session_reset")}
+              </button>
+            </div>
+          )}
           {form.session === "keep" && (
             <div className="field">
               <label htmlFor="run-session">{t("run_sessionId")}</label>
@@ -839,17 +858,25 @@ export function RunnerBadge({ model, agentId, onClick }: { model: Model; agentId
   const runner = runnerOf(model, agentId);
   const run = activeRun(model, agentId);
   const error = model.runners?.errors[agentId];
+  // Its saved conversation is another CLI's: the next run cannot continue it.
+  const foreign = run ? null : foreignSession(runner);
   if (!model.runners) return null;
+  const warn = foreign ? t("session_otherCli", { old: PROVIDER_LABEL[foreign] || foreign, cli: runner ? PROVIDER_LABEL[runner.provider] || runner.provider : "" }) : null;
   return (
     <button
       data-tour="runner"
-      className={`runner-badge ${runner ? "on" : ""} ${run ? "running" : ""} ${error ? "error" : ""}`}
-      title={error ?? (runner ? `${t("run_setup")} · ${PROVIDER_LABEL[runner.provider]}` : t("run_setup"))}
+      className={`runner-badge ${runner ? "on" : ""} ${run ? "running" : ""} ${error || warn ? "error" : ""}`}
+      title={error ?? warn ?? (runner ? `${t("run_setup")} · ${PROVIDER_LABEL[runner.provider]}` : t("run_setup"))}
       aria-label={`${t("run_setup")}: ${agentName(model, agentId)}`}
       onClick={onClick}
     >
       {run ? <span className="pulse" aria-hidden="true" /> : <span aria-hidden="true">{runner ? "▶" : "⚙"}</span>}
       {runner ? PROVIDER_LABEL[runner.provider] : t("run_badgeManual")}
+      {warn && (
+        <span className="bang" aria-hidden="true">
+          !
+        </span>
+      )}
     </button>
   );
 }

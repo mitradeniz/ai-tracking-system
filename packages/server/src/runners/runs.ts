@@ -467,7 +467,7 @@ export class RunManager extends EventEmitter {
     }
     // A conversation belongs to the CLI that had it: another CLI starts a new one.
     if (runner.provider !== before.provider) {
-      if (runner.sessionId === before.sessionId) runner = { ...runner, sessionId: undefined };
+      if (runner.sessionId === before.sessionId) runner = { ...runner, sessionId: undefined, sessionProvider: undefined };
       await this.store.forgetChatSessions(key, agentId);
     }
     if (runner.workdir && !(existsSync(runner.workdir) && statSync(runner.workdir).isDirectory())) {
@@ -944,6 +944,10 @@ export class RunManager extends EventEmitter {
         run.error = outcome.error;
         await this.forgetDeadSession(run, outcome.error ?? "");
         this.append(run, "↻ The conversation to continue was not found; starting a new one with the task.");
+        // Told on the task, so the person sees why it started over.
+        await this.manager
+          .addEvent(key, { type: "note", task, agent, message: `Runner: ${name} did not find the conversation to continue (${run.sessionId ?? "?"}); the task started again in a new conversation.` }, "runner")
+          .catch((e) => this.emit("warning", e));
         again = true;
       } else if (run.stopRequested) {
         run.state = "stopped";

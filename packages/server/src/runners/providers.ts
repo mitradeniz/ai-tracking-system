@@ -29,6 +29,8 @@ export interface ChatRunner {
   session: SessionMode;
   /** Conversation that the next message continues. Filled automatically, can be pasted by hand. */
   sessionId?: string;
+  /** The CLI that conversation belongs to: another CLI cannot continue it. */
+  sessionProvider?: ProviderId;
   /** Tell the agent not to wait for a plan approval; it still stops for anything risky. */
   unattended: boolean;
   /** Codex only: allow network access inside the workspace sandbox. */

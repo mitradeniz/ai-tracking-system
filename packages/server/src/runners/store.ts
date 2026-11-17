@@ -192,6 +192,17 @@ export function normalizeRunner(input: unknown, base: ChatRunner = DEFAULT_RUNNE
     access,
     session,
     sessionId,
+    // Whose conversation it is: kept while the id stays, the CLI's own when an id is given by hand.
+    ...(sessionId && {
+      sessionProvider:
+        sessionId === base.sessionId && base.sessionProvider
+          ? base.sessionProvider
+          : PROVIDERS.includes(o.sessionProvider as never)
+            ? (o.sessionProvider as ChatRunner["sessionProvider"])
+            : sessionId !== base.sessionId && provider !== "manual"
+              ? provider
+              : base.sessionProvider,
+    }),
     unattended: typeof o.unattended === "boolean" ? o.unattended : base.unattended,
     network: typeof o.network === "boolean" ? o.network : base.network,
     workCommands: typeof o.workCommands === "boolean" ? o.workCommands : base.workCommands,
@@ -453,7 +464,12 @@ export class RunnerStore {
   async setSession(key: string, agentId: string, sessionId: string | undefined): Promise<void> {
     const current = this.chat(key, agentId);
     if (current.sessionId === sessionId) return;
-    await this.setChat(key, agentId, { ...current, sessionId });
+    const { sessionProvider: _old, ...rest } = current;
+    await this.setChat(key, agentId, {
+      ...rest,
+      sessionId,
+      ...(sessionId && current.provider !== "manual" && current.provider !== "custom" && { sessionProvider: current.provider }),
+    });
   }
 
   private async save(): Promise<void> {

@@ -6018,3 +6018,15 @@ details.advanced[open] {
   --eye-badge-ink: #ffffff;
   box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(0, 0, 0, 0.25);
 }
+
+/* A chat whose saved conversation is another CLI's: a ! on its badge, and a warning with a reset in its settings. */
+.runner-badge .bang {
+  min-width: 14px;
+  height: 14px;
+  margin-left: 2px;
+  font-size: 10px;
+}
+.session-warn .grow {
+  flex: 1;
+  min-width: 220px;
+}

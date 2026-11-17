@@ -48,6 +48,8 @@ export interface ChatRunner {
   access: "readonly" | "edit" | "full";
   session: "keep" | "perTask";
   sessionId?: string;
+  /** The CLI that conversation belongs to: another CLI cannot continue it. */
+  sessionProvider?: RunnerProvider;
   unattended: boolean;
   network: boolean;
   allowedTools?: string;

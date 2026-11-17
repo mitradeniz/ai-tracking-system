@@ -3,7 +3,7 @@ import { splitReport } from "../src/components/Markdown.tsx";
 import type { TaskSnapshot } from "@aitrack/core";
 import type { RunSummary } from "../src/api.ts";
 import { translator } from "../src/i18n.ts";
-import { cardNote, explainStep, localMessage, notesOf, permissionRules, problemsOf, shownStatus, type Model } from "../src/model.ts";
+import { cardNote, explainStep, foreignSession, localMessage, notesOf, permissionRules, problemsOf, shownStatus, type Model } from "../src/model.ts";
 import { choiceReply, continueAfterAllow, continueAfterPermission, permissionGrant, settledBy } from "../src/problemActions.ts";
 import { waitingForYou } from "../src/waiting.ts";
 import type { ChatRunner } from "../src/api.ts";
@@ -207,6 +207,21 @@ describe("refused steps and decisions", () => {
     expect(waitingForYou(model, log, { fullAuthority: true }, t).map((i) => i.task ?? null)).toEqual(["T2", null]);
     // An item keeps its id while it says the same thing.
     expect(waitingForYou(model, log, { fullAuthority: false }, t)[0]!.id).toBe(items[0]!.id);
+  });
+
+  it("tells when a chat's saved conversation is another CLI's", () => {
+    const base: ChatRunner = { provider: "claude", access: "edit", session: "keep", unattended: false, network: false };
+    // A Codex thread (UUID v7) on a chat that now runs Claude Code.
+    expect(foreignSession({ ...base, sessionId: "01a1e0c2-a844-7e61-91d4-7e6b5aca3d73" })).toBe("codex");
+    expect(foreignSession({ ...base, sessionId: "4a6f1ed1-028f-4211-ba7e-7c2fb199efda" })).toBeNull();
+    expect(foreignSession({ ...base, provider: "codex", sessionId: "4a6f1ed1-028f-4211-ba7e-7c2fb199efda" })).toBe("claude");
+    // What the tracker recorded comes first.
+    expect(foreignSession({ ...base, sessionId: "anything", sessionProvider: "antigravity" })).toBe("antigravity");
+    expect(foreignSession({ ...base, sessionId: "01a1e0c2-a844-7e61-91d4-7e6b5aca3d73", sessionProvider: "claude" })).toBeNull();
+    expect(foreignSession({ ...base, provider: "manual", sessionId: "01a1e0c2-a844-7e61-91d4-7e6b5aca3d73" })).toBeNull();
+    expect(localMessage("Runner: Claude Code did not find the conversation to continue (abc); the task started again in a new conversation.", translator("tr"))).toBe(
+      "Claude Code devam edilecek konuşmayı bulamadı (abc); görev yeni bir konuşmada yeniden başladı.",
+    );
   });
 
   it("shows the permission a chat asked for on its problem", () => {
