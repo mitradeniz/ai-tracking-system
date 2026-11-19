@@ -19,15 +19,19 @@ export interface GrantRunner {
   allowedTools?: string;
   extraDirs?: string;
   network?: boolean;
+  /** Claude Code: its runs open in a Terminal window, where computer use works. */
+  terminal?: boolean;
 }
 
 /** How a permission a chat asked for is given to it, from now on, with the CLI it runs on. */
 export interface PermissionGrant {
   /** rule: an allowed-tools entry; folder: another folder; network: network in its sandbox;
-   * full: only full access covers it (this CLI has no finer setting); none: nothing to change. */
-  how: "rule" | "folder" | "network" | "full" | "none";
+   * terminal: its runs open in a Terminal window (Claude Code's computer use);
+   * full: only full access covers it (this CLI has no finer setting); none: nothing to change;
+   * elsewhere: no setting of this CLI gives it (computer use outside Claude Code): another chat must do it. */
+  how: "rule" | "folder" | "network" | "terminal" | "full" | "none" | "elsewhere";
   /** The change to the chat's run settings. */
-  patch: { access?: "edit" | "full"; allowedTools?: string; extraDirs?: string; network?: boolean };
+  patch: { access?: "edit" | "full"; allowedTools?: string; extraDirs?: string; network?: boolean; terminal?: boolean };
   /** What is allowed, for the person and the chat. */
   shown: string;
 }
@@ -50,6 +54,8 @@ const SANDBOX =
 /** An absolute folder named in the problem, with words that say it is outside what the chat may use. */
 const OUTSIDE = /(?:outside|not (?:allowed|writable)|read-only|dışında|yazılamıyor)/i;
 const FOLDER = /(?:^|[\s"'`(])((?:\/(?:Users|home|private|tmp|var|opt|Volumes|mnt)\/)[^\s"'`,;:)]+)/;
+/** Computer use was not there: the screen, clicks and typing in apps (Claude Code has it only in an interactive session). */
+const COMPUTER_USE = /computer[- ]use|bilgisayar(?:ı)? kullan|ekran(?:ı)? (?:kontrol|göremi)|screen (?:control|recording)|\bcomputer-use\b/i;
 
 /**
  * The permission a problem stands for: the one the chat named, or one read from its words when the
@@ -58,8 +64,11 @@ const FOLDER = /(?:^|[\s"'`(])((?:\/(?:Users|home|private|tmp|var|opt|Volumes|mn
  */
 export function neededPermission(issue: Pick<TaskIssue, "title" | "detail" | "fix" | "permission">, provider?: string): NeededPermission | undefined {
   if (issue.permission) return issue.permission;
-  if (!provider || !SANDBOXED.has(provider)) return undefined;
+  if (!provider) return undefined;
   const text = [issue.title, issue.detail, issue.fix].filter(Boolean).join("\n");
+  // Whatever the CLI: a problem about computer use needs computer use, not more access.
+  if (COMPUTER_USE.test(text)) return { kind: "computer-use", inferred: true };
+  if (!SANDBOXED.has(provider)) return undefined;
   if (NETWORK.test(text) || LOOPBACK.test(text)) return { kind: "network", inferred: true };
   if (!SANDBOX.test(text)) return undefined;
   const folder = OUTSIDE.test(text) ? FOLDER.exec(text)?.[1]?.replace(/[.]+$/, "") : undefined;
@@ -91,6 +100,12 @@ export function permissionGrant(runner: GrantRunner, permission: IssuePermission
   const value = (permission.value ?? "").replace(/^\$\s*/, "").trim();
   const p = runner.provider;
   const none = (shown: string): PermissionGrant => ({ how: "none", patch: {}, shown });
+  if (permission.kind === "computer-use") {
+    // Full access does not bring it: Claude Code offers computer use only in an interactive session.
+    if (p !== "claude") return { how: "elsewhere", patch: {}, shown: "computer use" };
+    if (runner.terminal) return none("computer use (Terminal window)");
+    return { how: "terminal", patch: { terminal: true }, shown: "computer use (runs open in a Terminal window)" };
+  }
   if (runner.access === "full" || p === "manual" || p === "custom") return none(value || permission.kind);
   const full: PermissionGrant = { how: "full", patch: { access: "full" }, shown: value || permission.kind };
   if (permission.kind === "command") {

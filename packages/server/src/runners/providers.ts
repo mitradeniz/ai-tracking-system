@@ -51,6 +51,15 @@ export interface ChatRunner {
   autoPermissions?: boolean;
   /** Claude Code: other folders the chat may use, one absolute path per line (passed with --add-dir). */
   extraDirs?: string;
+  /**
+   * Claude Code on macOS: open each run in a Terminal window as an interactive session instead of
+   * running it in the background with `-p`. Computer use needs this: Claude Code offers it only in
+   * an interactive session, asks there which apps it may control, and macOS gives the screen and
+   * accessibility permissions to the terminal app. Hooks keep the board up to date.
+   */
+  terminal?: boolean;
+  /** The app a Terminal run opens in (default "Terminal"; iTerm and others that open .command files work too). */
+  terminalApp?: string;
   /** Extra command line arguments, appended as written (quotes are respected). */
   extraArgs?: string;
   /** Full path of the CLI when it is not found on PATH. */
@@ -287,6 +296,8 @@ export interface Invocation {
   files?: { path: string; content: string }[];
   /** Claude Code: the permission mode asked for. */
   permissionMode?: string;
+  /** Claude Code in a Terminal window: the prompt goes first on the command line, nothing is read from the output. */
+  interactive?: boolean;
 }
 
 export interface BuildInput {
@@ -301,6 +312,13 @@ export interface BuildInput {
   addDirs?: string[];
   /** Claude Code: the installed CLI has auto mode and it worked here (see ChatRunner.autoPermissions). */
   autoMode?: boolean;
+  /**
+   * Claude Code: an interactive session for a Terminal window (no `-p`, no JSON output). The prompt
+   * is not in the arguments; the launcher puts it first, before the options.
+   */
+  interactive?: boolean;
+  /** Claude Code, interactive: extra settings as a JSON string (the tracker's hooks), passed with --settings. */
+  settings?: string;
 }
 
 /**
@@ -357,7 +375,7 @@ export function buildInvocation(input: BuildInput): Invocation {
       return { command: runner.binary || "codex", args, stdin: prompt, format: "codex" };
     }
     case "claude": {
-      const args = ["-p", "--output-format", "stream-json", "--verbose"];
+      const args = input.interactive ? [] : ["-p", "--output-format", "stream-json", "--verbose"];
       if (resume) args.push("--resume", resume);
       else args.push("--session-id", newSessionId);
       const auto = runner.access === "edit" && runner.autoPermissions !== false && input.autoMode === true;
@@ -375,6 +393,11 @@ export function buildInvocation(input: BuildInput): Invocation {
         ...splitTools(runner.allowedTools),
       ];
       if (tools.length) args.push("--allowedTools", ...tools);
+      if (input.interactive) {
+        // After the lists above: an option ends them, so nothing is read as one more folder or tool.
+        if (input.settings) args.push("--settings", input.settings);
+        return { command: runner.binary || "claude", args, sessionId: resume ?? newSessionId, format: "claude", permissionMode, interactive: true };
+      }
       return { command: runner.binary || "claude", args, stdin: prompt, sessionId: resume ?? newSessionId, format: "claude", permissionMode };
     }
     case "copilot": {

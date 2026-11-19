@@ -13,6 +13,10 @@ import { claudeMemoryDir, conversationUsage, gitCommonDir, runUsage } from "../s
 import { normalizeHook } from "../src/runners/hooks.ts";
 import { normalizeRunner, RunnerStore } from "../src/runners/store.ts";
 import { buildInvocation, DEFAULT_RUNNER, OutputParser, splitArgs } from "../src/runners/providers.ts";
+import { promptArgument, shq, terminalAppName, terminalScript } from "../src/runners/terminal.ts";
+import { trackerHookSettings } from "../src/runners/hooks.ts";
+import { execFile } from "node:child_process";
+import { chmod } from "node:fs/promises";
 
 process.env.AITRACK_NO_LOGIN_SHELL = "1";
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "fake-agent.mjs");
@@ -1644,5 +1648,152 @@ describe("provider adapters", () => {
     expect(second).not.toContain("--resume");
     state = (await call("GET", `/api/projects/${key}/runners`)).json;
     expect(state.settings.chats.a.sessionId).toBe(second[second.indexOf("--session-id") + 1]);
+  });
+});
+
+describe("Terminal runs (computer use)", () => {
+  /** Replaces opening Terminal: keeps the launcher's text instead. */
+  function catchTerminal(): { app: string; file: string; script: string }[] {
+    const opened: { app: string; file: string; script: string }[] = [];
+    running.runs.terminalPlatform = "darwin";
+    running.runs.openTerminal = async (app, f) => {
+      opened.push({ app, file: f, script: await readFile(f, "utf8") });
+    };
+    return opened;
+  }
+  const hook = (body: Record<string, unknown>) => call("POST", "/api/hook?tool=claude", { chat: "b", project: "demo", ...body }, false).then((r) => r.json);
+
+  it("opens a Claude task in a Terminal window as an interactive session and follows it through hooks", async () => {
+    const opened = catchTerminal();
+    await setRunner("b", { provider: "claude", access: "full", terminal: true, terminalApp: "iTerm" });
+    const res = await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    expect(res.status).toBe(201);
+    expect(res.json.state).toBe("terminal");
+    expect(res.json.inTerminal).toBe(true);
+    expect(opened).toHaveLength(1);
+    expect(opened[0]!.app).toBe("iTerm");
+    const script = opened[0]!.script;
+    // Interactive: no -p and no JSON output; the hooks come with it and name the project.
+    expect(script).not.toMatch(/'-p'|stream-json/);
+    expect(script).toContain(`'--session-id' '${res.json.sessionId}'`);
+    expect(script).toContain("'--permission-mode' 'bypassPermissions'");
+    expect(script).toContain("'--settings'");
+    expect(script).toContain("X-Aitrack-Project");
+    expect(script).toContain("unset AITRACK_RUN");
+    expect(script).toContain("export AITRACK_CHAT='b'");
+    // The prompt is kept apart, for this user only, and tells the chat a person is there.
+    const promptFile = opened[0]!.file.replace(/\.command$/, ".prompt");
+    const prompt = await readFile(promptFile, "utf8");
+    expect(prompt).toContain("TASK T3");
+    expect(prompt).toContain("in a Terminal window");
+    expect((await import("node:fs")).statSync(promptFile).mode & 0o077).toBe(0);
+    // Nothing ran in the background.
+    expect(await invocations()).toHaveLength(0);
+    await waitFor("T3", "dispatched");
+
+    const session = res.json.sessionId as string;
+    await hook({ hook_event_name: "UserPromptSubmit", session_id: session, cwd: dir, prompt: "go" });
+    await waitFor("T3", "in_progress");
+    await hook({ hook_event_name: "Stop", session_id: session, cwd: dir, last_assistant_message: "Which window?" });
+    await waitFor("T3", "blocked");
+    let runs = (await call("GET", `/api/projects/${key}/runners`)).json.runs;
+    expect(runs[0].state).toBe("waiting");
+    await hook({ hook_event_name: "UserPromptSubmit", session_id: session, cwd: dir, prompt: "the main one" });
+    await waitFor("T3", "in_progress");
+    const report = "Done.\n```aitrack-report\n" + JSON.stringify({ task: "T3", status: "done", summary: "clicked through" }) + "\n```";
+    const stop = { hook_event_name: "Stop", session_id: session, cwd: dir, last_assistant_message: report };
+    // The person's own hook may send the same turn end: it is taken once.
+    const [first, second] = [await hook(stop), await hook(stop)];
+    expect(first.handled).toBe(true);
+    expect(second.detail).toBe("Already taken.");
+    await waitFor("T3", "done");
+    runs = (await call("GET", `/api/projects/${key}/runners`)).json.runs;
+    expect(runs[0].state).toBe("finished");
+    const detail = (await call("GET", `/api/projects/${key}`)).json;
+    expect(detail.events.filter((e: { type: string; task: string }) => e.task === "T3" && e.type === "done")).toHaveLength(1);
+  });
+
+  it("leaves Terminal chats to the person, refuses them off macOS and reports a terminal that does not open", async () => {
+    await setRunner("b", { provider: "claude", access: "full", terminal: true });
+    running.runs.terminalPlatform = "linux";
+    let res = await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    expect(res.status).toBe(400);
+    expect(res.json.error).toMatch(/macOS/);
+    const opened = catchTerminal();
+    // Automatic dispatch and the manager do not open windows nobody answers.
+    await expect(running.runs.start(key, "T3", "b", { auto: true })).rejects.toThrow(/Terminal window/);
+    await call("POST", `/api/projects/${key}/runners`, { autoDispatch: true });
+    await new Promise((r) => setTimeout(r, 800));
+    expect(opened).toHaveLength(0);
+    expect(await statusOf("T3")).toBe("ready");
+    await call("POST", `/api/projects/${key}/runners`, { autoDispatch: false });
+    // A terminal app that is not there: the task fails with the reason.
+    running.runs.openTerminal = async (app) => {
+      throw new Error(`Unable to find application named '${app}'`);
+    };
+    res = await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    expect(res.status).toBe(201);
+    await waitFor("T3", "failed");
+    const detail = (await call("GET", `/api/projects/${key}`)).json;
+    expect(detail.board.tasks.find((t: { id: string }) => t.id === "T3").reason).toContain("Unable to find application");
+  });
+
+  it("builds Claude Code's interactive command line: options only, the hooks last", () => {
+    const runner = { ...DEFAULT_RUNNER, provider: "claude" as const, access: "edit" as const, model: "opus", extraDirs: "/Users/me/docs" };
+    const settings = trackerHookSettings("http://127.0.0.1:4317");
+    const inv = buildInvocation({ runner, prompt: "TASK T1", cwd: "/repo", newSessionId: "s-1", addDirs: ["/Users/me/docs"], interactive: true, settings });
+    expect(inv.interactive).toBe(true);
+    expect(inv.stdin).toBeUndefined();
+    expect(inv.args).not.toContain("-p");
+    expect(inv.args).not.toContain("TASK T1");
+    expect(inv.args.slice(-2)).toEqual(["--settings", settings]);
+    expect(inv.args).toContain("--add-dir");
+    expect(inv.args[inv.args.indexOf("--session-id") + 1]).toBe("s-1");
+    const resumed = buildInvocation({ runner, prompt: "yes", cwd: "/repo", resume: "s-1", newSessionId: "s-2", interactive: true });
+    expect(resumed.args.slice(0, 2)).toEqual(["--resume", "s-1"]);
+    const hooks = JSON.parse(settings).hooks;
+    expect(Object.keys(hooks)).toEqual(["UserPromptSubmit", "Stop", "Notification"]);
+    expect(hooks.Stop[0].hooks[0].command).toContain("http://127.0.0.1:4317/api/hook?tool=claude");
+    // Not a Terminal run: the background command line as before.
+    expect(buildInvocation({ runner, prompt: "x", cwd: "/repo", newSessionId: "s-3" }).args.slice(0, 1)).toEqual(["-p"]);
+  });
+
+  it("writes a launcher that starts the CLI with the prompt first, quoted, and deletes the prompt", async () => {
+    expect(shq("it's")).toBe(`'it'\\''s'`);
+    expect(terminalAppName("iTerm")).toBe("iTerm");
+    expect(terminalAppName("/Applications/x; rm -rf ~")).toBe("Terminal");
+    expect(promptArgument("--help me")).toBe(" --help me");
+    const work = await mkdtemp(path.join(tmpdir(), "aitrack-term-"));
+    const out = path.join(work, "out.json");
+    const cli = path.join(work, "claude");
+    await writeFile(cli, `#!/bin/sh\nnode -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({args: process.argv.slice(2), cwd: process.cwd(), chat: process.env.AITRACK_CHAT, run: process.env.AITRACK_RUN || null}))' ${shq(out)} "$@"\n`);
+    await chmod(cli, 0o755);
+    const promptFile = path.join(work, "p.prompt");
+    const tricky = "Fix the `modal` — it's $HOME \"quoted\"\nsecond line";
+    await writeFile(promptFile, tricky);
+    const script = path.join(work, "run.command");
+    await writeFile(
+      script,
+      terminalScript({ cwd: work, binary: cli, args: ["--session-id", "s-1", "--settings", '{"a":"$(x) it\'s"}'], promptFile, path: process.env.PATH ?? "", env: { AITRACK_CHAT: "b", AITRACK_RUN: "nope" }, title: "b · task T3" }),
+      { mode: 0o700 },
+    );
+    await new Promise<void>((resolve, reject) =>
+      execFile("bash", [script], { env: { ...process.env, AITRACK_RUN: "r-1" } }, (err) => (err ? reject(err) : resolve())),
+    );
+    const got = JSON.parse(await readFile(out, "utf8"));
+    expect(got.args).toEqual([tricky, "--session-id", "s-1", "--settings", '{"a":"$(x) it\'s"}']);
+    expect(await realpath(got.cwd)).toBe(await realpath(work));
+    expect(got.chat).toBe("b");
+    expect(got.run).toBeNull();
+    // The prompt file and the launcher are gone.
+    expect(existsSync(promptFile)).toBe(false);
+    expect(existsSync(script)).toBe(false);
+    await rm(work, { recursive: true, force: true });
+  });
+
+  it("keeps the Terminal settings of a Claude chat and refuses an app name that is not one", () => {
+    expect(normalizeRunner({ provider: "claude", terminal: true, terminalApp: "iTerm" })).toMatchObject({ terminal: true, terminalApp: "iTerm" });
+    expect(normalizeRunner({ provider: "claude", terminal: false }).terminal).toBeUndefined();
+    expect(() => normalizeRunner({ provider: "claude", terminalApp: "/bin/sh -c x" })).toThrow(/name of an app/);
   });
 });

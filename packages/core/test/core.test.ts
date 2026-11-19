@@ -278,6 +278,19 @@ describe("reports", () => {
     expect(permissionGrant({ provider: "gemini", access: "edit" }, { kind: "folder", value: "/Users/me/docs" })).toEqual({ how: "folder", patch: { extraDirs: "/Users/me/docs" }, shown: "/Users/me/docs" });
   });
 
+  it("gives computer use by opening Claude Code in a Terminal window, never by full access", () => {
+    const cu = { title: "Computer use is not available", detail: "The computer-use tools are not in this session (claude -p)." };
+    // Read from the problem whatever the CLI, since more access would not bring it.
+    expect(neededPermission(cu, "claude")).toEqual({ kind: "computer-use", inferred: true });
+    expect(neededPermission({ title: "Ekranı göremiyorum", detail: "Bilgisayar kullanımı bu oturumda yok." }, "codex")).toEqual({ kind: "computer-use", inferred: true });
+    const need = { kind: "computer-use" as const };
+    expect(permissionGrant({ provider: "claude", access: "edit" }, need)).toEqual({ how: "terminal", patch: { terminal: true }, shown: "computer use (runs open in a Terminal window)" });
+    expect(permissionGrant({ provider: "claude", access: "full" }, need).how).toBe("terminal");
+    expect(permissionGrant({ provider: "claude", access: "edit", terminal: true }, need).how).toBe("none");
+    expect(permissionGrant({ provider: "codex", access: "edit" }, need)).toMatchObject({ how: "elsewhere", patch: {} });
+    expect(parseReports('{"task":"T3","status":"blocked","issues":[{"title":"needs the screen","permission":{"kind":"computer-use"}}]}').reports[0]!.issues![0]!.permission).toEqual({ kind: "computer-use" });
+  });
+
   it("reads the tasks a chat waits for, given as a list or one id", () => {
     const asks = parseReports(
       '{"task":"T3","status":"blocked","issues":[{"title":"npm ci needs the network","kind":"needs-you","permission":{"kind":"network","value":"  npm   ci "}},{"title":"x","permission":"folder"},{"title":"y","permission":{"kind":"root"}}]}',

@@ -110,8 +110,11 @@ export const EVENT_TYPES = [
  */
 export const ISSUE_KINDS = ["error", "missing", "needs-you", "warning"] as const;
 
-/** What a chat may ask permission for: a command, network access, or a folder outside its working folder. */
-export const PERMISSION_KINDS = ["command", "network", "folder"] as const;
+/**
+ * What a chat may ask permission for: a command, network access, a folder outside its working folder,
+ * or computer use (the screen and apps of this computer, which Claude Code has only in a Terminal window).
+ */
+export const PERMISSION_KINDS = ["command", "network", "folder", "computer-use"] as const;
 
 export const TaskIssueSchema = z.object({
   title: z.string().min(1).max(300).describe("One line in plain language."),
@@ -131,7 +134,9 @@ export const TaskIssueSchema = z.object({
     .describe("For a decision only the person can make: the options to pick from, the recommended one first."),
   permission: z
     .object({
-      kind: z.enum(PERMISSION_KINDS).describe("command: a command the chat may not run; network: network access; folder: a folder outside its working folder."),
+      kind: z
+        .enum(PERMISSION_KINDS)
+        .describe("command: a command the chat may not run; network: network access; folder: a folder outside its working folder; computer-use: the screen and apps of this computer."),
       value: z.string().max(500).optional().describe("The command's first words (e.g. \"npm ci\", \"open\") or the folder's absolute path."),
     })
     .optional()

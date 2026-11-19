@@ -213,12 +213,21 @@ export function normalizeRunner(input: unknown, base: ChatRunner = DEFAULT_RUNNE
     network: typeof o.network === "boolean" ? o.network : base.network,
     workCommands: typeof o.workCommands === "boolean" ? o.workCommands : base.workCommands,
     autoPermissions: typeof o.autoPermissions === "boolean" ? o.autoPermissions : base.autoPermissions,
+    terminal: typeof o.terminal === "boolean" ? o.terminal || undefined : base.terminal,
+    terminalApp: terminalApp(pick("terminalApp", 80)),
     allowedTools: pick("allowedTools", 2000),
     extraDirs: splitDirs(extraDirs).join("\n") || undefined,
     extraArgs: pick("extraArgs", 2000),
     binary,
     command: pick("command", 4000),
   };
+}
+
+/** The app a Terminal run opens in: a name such as "Terminal" or "iTerm", no path. */
+function terminalApp(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (!/^[\w .+-]{1,80}$/.test(value)) throw new Error(`"${value}" is not the name of an app. Give the terminal app's name, for example "Terminal" or "iTerm".`);
+  return value;
 }
 
 function normalizeProject(input: unknown): ProjectRunners {

@@ -9,12 +9,14 @@ import { createInterface } from "node:readline";
 import { limitReason, parseLimitReason, parseReports, renderBootstrapPrompt, renderTaskPrompt, type Report, type TaskIssue } from "@aitrack/core";
 import { HttpError, type ProjectManager } from "../manager.ts";
 import { agentPath, claudeHasAutoMode, resolveBinary, which } from "./env.ts";
-import { hookSnippets, type HookSignal } from "./hooks.ts";
+import { hookSnippets, trackerHookSettings, type HookSignal } from "./hooks.ts";
+import { openInTerminal, promptArgument, terminalAppName, terminalScript } from "./terminal.ts";
 import { codexRecordedReset, usageLimit, type UsageLimit } from "./limits.ts";
 import { buildInvocation, OutputParser, PROVIDER_INFO, writeInvocationFiles, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
 import { normalizeRunner, splitDirs, type Fact, type ProjectRunners, type RunnerStore, type SessionUsage } from "./store.ts";
 
-export type RunState = "running" | "waiting" | "finished" | "failed" | "stopped";
+/** "terminal": handed to a Terminal window (an interactive Claude Code session the board follows through hooks). */
+export type RunState = "running" | "waiting" | "finished" | "failed" | "stopped" | "terminal";
 
 export interface RunSummary {
   id: string;
@@ -39,6 +41,8 @@ export interface RunSummary {
   usage?: RunUsage;
   /** Tools the CLI refused because of the chat's access level. */
   denials?: string[];
+  /** It was opened in a Terminal window: the person answers it there, hooks tell the board. */
+  inTerminal?: boolean;
 }
 
 interface Run extends RunSummary {
@@ -157,6 +161,11 @@ async function codexReset(threadId: string | undefined): Promise<number | null> 
 /** The CLI account a chat uses, for its usage limit. */
 export function limitKeyOf(runner: { provider: string; binary?: string }): string {
   return `${runner.provider}|${runner.binary ?? ""}`;
+}
+
+/** A chat whose runs open in a Terminal window (Claude Code, for computer use). */
+export function opensInTerminal(runner: Pick<ChatRunner, "provider" | "terminal">): boolean {
+  return runner.provider === "claude" && runner.terminal === true;
 }
 
 const CONTINUE_AFTER_LIMIT =
@@ -289,7 +298,9 @@ export const SESSION_PROMPT_CHANGED =
 /** Short note added to every prompt the tracker sends on its own. */
 export function runnerPreamble(taskId: string, runner: ChatRunner, language = "English"): string {
   const lines = [
-    `You were started by AI Tracking System for task ${taskId}. Nobody watches this session live: a person reads your final message in the tracker and can reply to it.`,
+    runner.provider === "claude" && runner.terminal
+      ? `You were started by AI Tracking System for task ${taskId}, in a Terminal window: the person can watch this session and answer you here, and the tracker reads your final message. Computer use may be available in this session: use it for what needs the screen (native apps, simulators, GUI-only tools), and the shell, MCP servers or the browser for the rest.`
+      : `You were started by AI Tracking System for task ${taskId}. Nobody watches this session live: a person reads your final message in the tracker and can reply to it.`,
     `- Reporting: skip the HTTP call and the report files described below. Just end your final message with the aitrack-report block; the tracker reads it from your output.`,
     `- Solve what you can yourself before asking. Find missing facts with read-only commands (the folders, git, this computer, running services). When a choice is low-risk and easy to undo, take the sensible option, say so in the summary and carry on.`,
     `- Do not stop for something another chat will provide (images, a reference pack, an API that is not merged) or a check that cannot run here: use a placeholder or a mock, finish the task, and list the rest under "followUps" with the task it needs in "after". They become proposed tasks.`,
@@ -331,6 +342,13 @@ export class RunManager extends EventEmitter {
   private windows = new Map<string, number>();
   /** The last limit each CLI hit, to tell a short rate limit from a plan's limit when it comes back. */
   private lastLimit = new Map<string, { basis: UsageLimit["basis"]; at: number }>();
+
+  /** Opens a launcher in a terminal app; replaced in tests. */
+  openTerminal: (app: string, file: string) => Promise<void> = openInTerminal;
+  /** The platform Terminal runs are allowed on (macOS); replaced in tests. */
+  terminalPlatform: NodeJS.Platform = process.platform;
+  /** Hook signals seen in the last seconds: the tracker's own hooks and the person's may both send one. */
+  private recentHooks = new Map<string, number>();
 
   constructor(
     private readonly manager: ProjectManager,
@@ -656,7 +674,7 @@ export class RunManager extends EventEmitter {
   }
 
   /** Continues a chat's session with the person's message (an answer, an approval, a correction). */
-  async reply(key: string, agentId: string, message: string, taskId?: string, options: { extraTools?: string[] } = {}): Promise<RunSummary> {
+  async reply(key: string, agentId: string, message: string, taskId?: string, options: { extraTools?: string[]; auto?: boolean } = {}): Promise<RunSummary> {
     const text = message.trim();
     if (!text) throw new HttpError(400, "The reply is empty.");
     const { board } = this.manager.context(key);
@@ -676,7 +694,7 @@ export class RunManager extends EventEmitter {
     // Steps allowed for this one run (Claude Code rules), on top of the chat's own.
     const extra = runner.provider === "claude" ? (options.extraTools ?? []) : [];
     const forRun = extra.length ? { ...runner, allowedTools: [runner.allowedTools ?? "", ...extra].filter(Boolean).join("\n") } : runner;
-    return this.launch({ key, task, agent: agentId, runner: forRun, prompt: text, resume, kind: "reply", auto: false, extra: text });
+    return this.launch({ key, task, agent: agentId, runner: forRun, prompt: text, resume, kind: "reply", auto: options.auto === true, extra: text });
   }
 
   private async launch(input: {
@@ -713,6 +731,15 @@ export class RunManager extends EventEmitter {
       );
     }
     const provider = runner.provider as ProviderId;
+    // A chat that opens in a Terminal window: an interactive session the person answers.
+    const terminal = provider === "claude" && runner.terminal === true;
+    if (terminal && this.terminalPlatform !== "darwin") {
+      throw new HttpError(400, "Opening a chat in a Terminal window works on macOS only. Turn it off in the chat's run settings.");
+    }
+    if (terminal && auto) {
+      throw new HttpError(409, "This chat opens in a Terminal window, where a person answers it: send it from the board yourself.");
+    }
+    const interactive = terminal ? { interactive: true, settings: trackerHookSettings(this.manager.serverUrl) } : {};
     let invocation: Invocation;
     const newSessionId = randomUUID();
     // The plan's repository, when the chat works elsewhere: the plan and its docs live there.
@@ -736,7 +763,7 @@ export class RunManager extends EventEmitter {
       if (common && !addDirs.includes(common) && !inside(common, workdir)) addDirs.push(common);
     }
     try {
-      invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId, addDirs });
+      invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId, addDirs, ...interactive });
     } catch (e) {
       throw new HttpError(400, (e as Error).message);
     }
@@ -752,7 +779,7 @@ export class RunManager extends EventEmitter {
     // Claude Code's auto mode: a safety check approves routine steps and blocks risky ones.
     if (provider === "claude" && runner.access === "edit" && runner.autoPermissions !== false && !this.autoOff.has(binary)) {
       if (await claudeHasAutoMode(binary, envPath)) {
-        invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId, addDirs, autoMode: true });
+        invocation = buildInvocation({ runner, prompt, cwd: workdir, resume, newSessionId, addDirs, autoMode: true, ...interactive });
       }
     }
 
@@ -836,6 +863,11 @@ export class RunManager extends EventEmitter {
       AITRACK_RUN: id,
     };
     delete env.ELECTRON_RUN_AS_NODE;
+
+    if (invocation.interactive) {
+      await this.handToTerminal(run, invocation, { binary, prompt, path: env.PATH ?? envPath, app: terminalAppName(runner.terminalApp), project: ctxProject });
+      return this.summary(run);
+    }
 
     const parser = new OutputParser(invocation.format);
     const stderrTail: string[] = [];
@@ -955,6 +987,50 @@ export class RunManager extends EventEmitter {
     void this.manager
       .addEvent(run.key, { type: "progress", task: run.task, agent: run.agent, message: clip(text, 500) }, "runner")
       .catch(() => undefined);
+  }
+
+  /**
+   * Opens a run in a Terminal window instead of running it here. The launcher holds no secret; the
+   * prompt goes in a file of its own that only this user can read, which the launcher deletes once
+   * read. From then on the session is the person's: the board follows it through hooks.
+   */
+  private async handToTerminal(
+    run: Run,
+    invocation: Invocation,
+    input: { binary: string; prompt: string; path: string; app: string; project: string },
+  ): Promise<void> {
+    const dir = path.join(this.runsDir, "terminal");
+    const promptFile = path.join(dir, `${run.id}.prompt`);
+    const script = path.join(dir, `${run.id}.command`);
+    try {
+      await mkdir(dir, { recursive: true, mode: 0o700 });
+      await writeFile(promptFile, promptArgument(input.prompt), { mode: 0o600 });
+      await writeFile(
+        script,
+        terminalScript({
+          cwd: run.workdir,
+          binary: input.binary,
+          args: invocation.args,
+          promptFile,
+          path: input.path,
+          env: { AITRACK_SERVER: this.manager.serverUrl, AITRACK_PROJECT: input.project, AITRACK_CHAT: run.agent, AITRACK_TASK: run.task },
+          title: `${run.agent} · task ${run.task}`,
+        }),
+        { mode: 0o700 },
+      );
+      await this.openTerminal(input.app, script);
+    } catch (e) {
+      await this.finish(run, { ok: false, error: `Could not open ${input.app}: ${(e as Error).message}`, final: "" });
+      return;
+    }
+    run.state = "terminal";
+    run.inTerminal = true;
+    this.append(run, `⧉ Opened in ${input.app} as an interactive session (${run.sessionId ?? "new"}). Answer it there; the board follows it.`);
+    this.flushLines();
+    run.file?.end();
+    run.file = null;
+    await this.persistActive();
+    this.emit("run", { key: run.key, run: this.summary(run) });
   }
 
   private async finish(run: Run, outcome: { ok: boolean; error?: string; final: string }): Promise<void> {
@@ -1169,6 +1245,8 @@ export class RunManager extends EventEmitter {
         const agent = view.agent.id;
         const runner = settings.chats[agent];
         if (!runner || runner.provider === "manual" || !view.hasRoom || this.activeFor(key, agent) || this.held.has(`${key}:${agent}`)) continue;
+        // A Terminal window needs a person to answer it: those chats get their tasks from the person.
+        if (opensInTerminal(runner)) continue;
         if (this.limits.has(limitKeyOf(runner))) continue;
         // Tasks put first come before the board's own order.
         const first = (settings.firstUp ?? []).filter((id) => view.dispatchable.includes(id));
@@ -1192,6 +1270,43 @@ export class RunManager extends EventEmitter {
   // ---- hooks from sessions opened by hand -------------------------------------------------------
 
   async hook(signal: HookSignal): Promise<{ handled: boolean; detail: string; task?: string }> {
+    // The tracker's own hooks (Terminal runs) and hooks the person added may both send a signal. A
+    // turn's end or a notification is taken once (a report must not be recorded twice); a second
+    // turn start changes nothing anyway.
+    const seenAt = Date.now();
+    for (const [k, at] of this.recentHooks) if (seenAt - at > 5_000) this.recentHooks.delete(k);
+    if (signal.sessionId && (signal.event === "stop" || signal.event === "attention")) {
+      const id = `${signal.tool}|${signal.event}|${signal.sessionId}|${createHash("sha1").update(signal.message ?? "").digest("hex")}`;
+      if (this.recentHooks.has(id)) return { handled: false, detail: "Already taken." };
+      this.recentHooks.set(id, seenAt);
+    }
+    const result = await this.handleHook(signal);
+    this.followTerminal(signal);
+    return result;
+  }
+
+  /** The latest Terminal run of a session shows what the session does: working, waiting for the person, or done. */
+  private followTerminal(signal: HookSignal): void {
+    if (!signal.sessionId || (signal.event !== "prompt" && signal.event !== "stop")) return;
+    const run = [...this.runs.values()].reverse().find((r) => r.inTerminal && r.sessionId === signal.sessionId);
+    if (run && (run.state === "terminal" || run.state === "waiting" || run.state === "finished")) {
+      let status: string | undefined;
+      try {
+        status = this.manager.context(run.key).board.byId.get(run.task)?.status;
+      } catch {
+        status = undefined;
+      }
+      const next: RunState =
+        signal.event === "prompt" ? "terminal" : status === "blocked" ? "waiting" : status === "done" || status === "review" ? "finished" : "terminal";
+      if (signal.event === "stop" && signal.message) run.lastMessage = clip(signal.message, 2000);
+      if (next === run.state && signal.event === "prompt") return;
+      run.state = next;
+      if (next !== "terminal") run.endedAt = now();
+      this.emit("run", { key: run.key, run: this.summary(run) });
+    }
+  }
+
+  private async handleHook(signal: HookSignal): Promise<{ handled: boolean; detail: string; task?: string }> {
     if (signal.runId && this.runs.get(signal.runId)?.state === "running") return { handled: false, detail: "Run managed by the tracker." };
     if (signal.sessionId && [...this.runs.values()].some((r) => r.state === "running" && r.sessionId === signal.sessionId)) {
       return { handled: false, detail: "Run managed by the tracker." };
@@ -1380,13 +1495,13 @@ export class RunManager extends EventEmitter {
         if (view.status !== "blocked" || !parseLimitReason(view.runtime.reason)) continue;
         const agent = view.runtime.agent ?? view.task.agent;
         const runner = this.store.chat(key, agent);
-        if (limitKeyOf(runner) !== id || runner.provider === "manual" || this.activeFor(key, agent)) continue;
+        if (limitKeyOf(runner) !== id || runner.provider === "manual" || opensInTerminal(runner) || this.activeFor(key, agent)) continue;
         // The same conversation when one was started; else the task again, told to go on from where it got to.
         const last = [...this.runs.values()].reverse().find((r) => r.key === key && r.agent === agent && r.task === view.task.id);
         const noConversation = Boolean(last?.freshSession) && !last?.tools && !last?.usage?.output;
         try {
           if (noConversation) await this.start(key, view.task.id, agent, { auto: true });
-          else await this.reply(key, agent, CONTINUE_AFTER_LIMIT, view.task.id).catch(() => this.start(key, view.task.id, agent, { auto: true }));
+          else await this.reply(key, agent, CONTINUE_AFTER_LIMIT, view.task.id, { auto: true }).catch(() => this.start(key, view.task.id, agent, { auto: true }));
         } catch (e) {
           this.errors.set(`${key}:${agent}`, (e as Error).message);
         }

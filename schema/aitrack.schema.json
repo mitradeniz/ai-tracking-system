@@ -440,9 +440,10 @@
                           "enum": [
                             "command",
                             "network",
-                            "folder"
+                            "folder",
+                            "computer-use"
                           ],
-                          "description": "command: a command the chat may not run; network: network access; folder: a folder outside its working folder."
+                          "description": "command: a command the chat may not run; network: network access; folder: a folder outside its working folder; computer-use: the screen and apps of this computer."
                         },
                         "value": {
                           "description": "The command's first words (e.g. \"npm ci\", \"open\") or the folder's absolute path.",

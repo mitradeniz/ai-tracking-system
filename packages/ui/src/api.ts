@@ -42,6 +42,10 @@ export interface ChatRunner {
   autoPermissions?: boolean;
   /** Claude Code: other folders the chat may use, one absolute path per line. */
   extraDirs?: string;
+  /** Claude Code on macOS: runs open in a Terminal window as interactive sessions (computer use works there). */
+  terminal?: boolean;
+  /** The app those runs open in (default "Terminal"). */
+  terminalApp?: string;
   workdir?: string;
   model?: string;
   effort?: string;
@@ -66,7 +70,10 @@ export interface RunSummary {
   provider: ProviderId;
   kind: "task" | "reply";
   auto: boolean;
-  state: "running" | "waiting" | "finished" | "failed" | "stopped";
+  /** terminal: opened in a Terminal window, which the person answers; hooks tell the board. */
+  state: "running" | "waiting" | "finished" | "failed" | "stopped" | "terminal";
+  /** It was opened in a Terminal window. */
+  inTerminal?: boolean;
   startedAt: string;
   endedAt?: string;
   workdir: string;

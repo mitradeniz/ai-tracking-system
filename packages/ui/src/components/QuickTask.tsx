@@ -243,6 +243,7 @@ export function QuickTask({
                 const cli = PROVIDER_LABEL[runner.provider] || runner.provider;
                 // Full access is a bigger step: it is given from the main window, where it is explained.
                 if (grant.how === "full") return <span className="small muted">{t("perm_fullInMain", { cli })}</span>;
+                if (grant.how === "elsewhere") return <span className="small muted">{t("perm_elsewhere", { cli })}</span>;
                 return (
                   <button
                     className="btn tiny primary"

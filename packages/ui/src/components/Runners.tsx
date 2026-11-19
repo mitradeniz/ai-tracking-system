@@ -101,6 +101,7 @@ export function RunnerDialog({
         sessionId: form.sessionId ?? "",
         allowedTools: form.allowedTools ?? "",
         extraDirs: form.extraDirs ?? "",
+        terminalApp: form.terminalApp ?? "",
         extraArgs: form.extraArgs ?? "",
         binary: form.binary ?? "",
         command: form.command ?? "",
@@ -280,6 +281,31 @@ export function RunnerDialog({
                     <span className="small muted block">{t("run_workCommandsHint")}</span>
                   </span>
                 </label>
+              )}
+            </div>
+          )}
+          {p === "claude" && (
+            <div className="field">
+              <label className="check plain">
+                <input type="checkbox" checked={form.terminal === true} onChange={(e) => set({ terminal: e.target.checked })} />
+                <span>
+                  {t("run_terminal")}
+                  <span className="small muted block">{t("run_terminalHint")}</span>
+                </span>
+              </label>
+              {form.terminal && (
+                <div className="row">
+                  <label htmlFor="run-terminal-app" className="small">
+                    {t("run_terminalApp")}
+                  </label>
+                  <input
+                    id="run-terminal-app"
+                    className="input"
+                    value={form.terminalApp ?? ""}
+                    placeholder="Terminal"
+                    onChange={(e) => set({ terminalApp: e.target.value })}
+                  />
+                </div>
               )}
             </div>
           )}

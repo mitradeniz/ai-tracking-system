@@ -93,3 +93,16 @@ export function hookSnippets(serverUrl: string): { claude: string; codex: string
   const generic = `curl -s -X POST '${serverUrl}/api/hook?tool=mytool' -H 'Content-Type: application/json' -d '{"event":"stop","sessionId":"...","cwd":"'"$PWD"'","message":"..."}'`;
   return { claude, codex, generic };
 }
+
+/**
+ * Hooks for a session the tracker opens in a Terminal window, passed with `--settings` so they work
+ * without anything in the person's own settings. They name the project too, so a chat id used in
+ * several projects is not mixed up. Hooks the person added themselves may fire as well; the tracker
+ * takes the same signal only once.
+ */
+export function trackerHookSettings(serverUrl: string): string {
+  const headers = `-H 'Content-Type: application/json' -H "X-Aitrack-Chat: \${AITRACK_CHAT:-}" -H "X-Aitrack-Project: \${AITRACK_PROJECT:-}"`;
+  const command = `curl -s -m 3 -X POST '${serverUrl}/api/hook?tool=claude' ${headers} --data-binary @- >/dev/null 2>&1 || true`;
+  const entry = [{ hooks: [{ type: "command", command }] }];
+  return JSON.stringify({ hooks: { UserPromptSubmit: entry, Stop: entry, Notification: entry } });
+}

@@ -689,7 +689,7 @@ export class Supervisor extends EventEmitter {
               throw new Error(`Sent back ${before} times already; left for the person.`);
             }
             if (!item.canReply) throw new Error("Its chat has no session to continue; left for the person.");
-            await this.runs.reply(key, item.agent, `${REVISE_INTRO}\n${text}\n${REVISE_END}`, task);
+            await this.runs.reply(key, item.agent, `${REVISE_INTRO}\n${text}\n${REVISE_END}`, task, { auto: true });
             await note(task, `sent back — ${text}`);
             done(type, task, true, text);
             break;
@@ -705,7 +705,7 @@ export class Supervisor extends EventEmitter {
             if (!item.canReply) throw new Error("Its chat has no session to continue; left for the person.");
             const which = typeof a.note === "string" ? a.note.trim() : "";
             if (view.status !== "review" && !which) throw new Error("Name the PRs to merge.");
-            await this.runs.reply(key, item.agent, mergeText(task, which || view.runtime.pr || "", settings.fullAuthority), task, { extraTools: MERGE_TOOLS });
+            await this.runs.reply(key, item.agent, mergeText(task, which || view.runtime.pr || "", settings.fullAuthority), task, { extraTools: MERGE_TOOLS, auto: true });
             await note(task, `asked to merge${which ? ` — ${which}` : ""}`);
             done(type, task, true, which || "asked its chat to merge its PRs");
             break;
@@ -859,6 +859,9 @@ export class Supervisor extends EventEmitter {
     const need = picked.map((x) => neededPermission(x.i, item.provider)).find(Boolean) ?? neededPermission({ title: view.runtime.reason ?? "" }, item.provider);
     if (!need) throw new Error("No problem of this task asks for a permission.");
     const grant = permissionGrant(runner, need);
+    if (grant.how === "elsewhere") {
+      throw new Error("Its CLI cannot use the computer: assign the task to a Claude Code chat whose runs open in a Terminal window, or leave it for the person.");
+    }
     if (grant.how !== "none") await this.runs.saveChat(key, item.agent, grant.patch);
     const settled = open.filter(({ i }) => {
       const p = neededPermission(i, item.provider);
@@ -1346,7 +1349,7 @@ function reviewShapes(s: ManagerSettings): string {
 function authorityActions(s: ManagerSettings): string {
   if (!s.fullAuthority) return "";
   return `
-- grant: give a task's chat, for good, the permission one of its problems needs (marked [asks permission] or [needs permission]; "issue" is its number, or leave it out). The app changes the chat's run settings: an allowed command, network in its sandbox, another folder, or full access when its CLI has nothing finer. Then the chat goes on.
+- grant: give a task's chat, for good, the permission one of its problems needs (marked [asks permission] or [needs permission]; "issue" is its number, or leave it out). The app changes the chat's run settings: an allowed command, network in its sandbox, another folder, full access when its CLI has nothing finer, or for computer use (Claude Code only) runs that open in a Terminal window, which the person then sends. Then the chat goes on.
 - assign: give a task to another chat ("to": the chat id, "note": why). Any task of the plan that waits, is ready, blocked or failed; one its chat holds starts over with the new chat. Use it to spread work (PR and computer-use work to the chat that can do it, say) and for a chat that cannot do the task.
 - drop: take a task no chat has started out of the plan when it is not needed: it duplicates another task, or another task covers it ("note": which one). Tasks that depended on it take over its dependencies.
 - tune: set a chat's model and/or effort for its next runs ("chat", "model", "effort", "note": why), only to what CLI OPTIONS lists for its CLI. Lower effort (or a faster model) for mechanical work, higher for design and hard problems. One change per chat per look.

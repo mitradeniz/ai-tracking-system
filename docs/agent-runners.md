@@ -126,9 +126,22 @@ When a CLI says the plan's usage limit is used up (Claude Code's 5-hour or weekl
 
 At that time each parked task goes on with its chat — the same conversation when there is one — and automatic dispatch resumes. Limits and windows survive a restart of the app (`~/.aitrack/limits.json`). While a chat waits for its limit, the desktop app keeps the computer from going to sleep on its own; the clock is read again every minute, so after a sleep (a closed lid) the chats go on as soon as the computer wakes. The header shows *⏳ Claude Code limit · 15:00* while one lasts, with where the time comes from; clicking it goes on now (when you know the limit is over). A manager whose own CLI hits its limit looks again when it resets. `POST /api/projects/:key/limits/retry` 🔑 with `{agent}` does the same as the click.
 
+## Computer use: runs in a Terminal window
+
+Claude Code offers computer use (seeing the screen, clicking and typing in apps) only in an **interactive** session: with `-p`, which the tracker uses to run chats in the background, the `computer-use` server is not there at all, and no access level brings it. Full access does not help. So a Claude Code chat can be set to **Open in a Terminal window** (run settings, macOS only):
+
+- **Send** writes a small launcher (`~/.aitrack/runs/terminal/<run>.command`) and the prompt in a file of its own (readable only by you), and opens the launcher with `open -a Terminal` (or the app you name, such as iTerm). The launcher goes to the chat's folder, reads and deletes the prompt and itself, and starts `claude "<prompt>" (--session-id <uuid> | --resume <id>) --permission-mode … --settings <hooks>`: the same options as a background run, without `-p`.
+- The session is yours from then on: Claude asks there which apps it may control, and you answer its questions there. The first time in a folder, type `/mcp`, pick `computer-use` and choose **Enable**. macOS asks for **Screen Recording** and **Accessibility** for Terminal (the app that runs the session); after granting Screen Recording, quit Claude and run `claude --continue`.
+- The board follows the window through the hooks the session is started with (`--settings`, nothing to add to your own settings): the task goes *in progress* when a turn starts, *waiting for your reply* when a turn ends with a question, and *done* from the `aitrack-report` block of the last message. The run shows as **In a Terminal window**. Hooks you added yourself may fire too; a turn's end is taken once.
+- **Reply** from the app opens the session again (`--resume`) in a new window: close the old one first. Only one session can use the computer at a time.
+- Automatic dispatch, the manager and the go-on after a usage limit do not send these chats anything: a window nobody answers would only wait. Give the tasks that need the screen to such a chat, and send them yourself.
+- Requirements are Claude Code's: macOS, a Pro or Max plan signed in through claude.ai (not an API key; if `ANTHROPIC_API_KEY` is set, the launcher says so), Claude Code 2.1.85 or newer.
+
+A chat that reports it needs computer use (`"permission": {"kind": "computer-use"}`, or a problem that says so) is offered **Allow from now on and continue**, which turns this on for a Claude Code chat; other CLIs are told to give the task to such a chat instead of being given full access.
+
 ## Auto-dispatch
 
-The switch in the project header turns it on. Whenever something changes (a task is done, a chat is set up, a run ends), every free chat that runs by itself gets its most urgent **ready** task, until the **At once** limit is reached. It never re-sends a task that failed, and never sends to chats that are run by hand.
+The switch in the project header turns it on. Whenever something changes (a task is done, a chat is set up, a run ends), every free chat that runs by itself gets its most urgent **ready** task, until the **At once** limit is reached. It never re-sends a task that failed, and never sends to chats that are run by hand or open in a Terminal window.
 
 ## The manager
 
@@ -212,7 +225,7 @@ The hook finds the chat by, in order: `AITRACK_CHAT` (start the session as `AITR
 - Starting, replying, stopping and changing run settings need a **control token** (`~/.aitrack/control-token`) on top of the loopback-only and same-origin checks. The desktop app hands it to its own windows; `aitrack serve` prints a link with it (`http://127.0.0.1:4317/#token=…`) for a browser. Other users on the same computer and web pages cannot start agents.
 - Hooks and reports only change task status; they cannot start programs.
 - Agents run as you, in the folder you chose, with the access you chose. Output is shown as text and kept in `~/.aitrack/runs/<run>.log`.
-- Using these CLIs is subject to each provider's terms and your plan's limits. Tasks that need a person (payments, identity checks, legal acceptance, computer use) should stay with a chat that is run by hand.
+- Using these CLIs is subject to each provider's terms and your plan's limits. Tasks that need a person (payments, identity checks, legal acceptance) should stay with a chat that is run by hand; tasks that need computer use go to a Claude Code chat that opens in a Terminal window.
 
 ## API
 
