@@ -10,7 +10,7 @@ import { limitReason, parseLimitReason, parseReports, renderBootstrapPrompt, ren
 import { HttpError, type ProjectManager } from "../manager.ts";
 import { agentPath, claudeHasAutoMode, resolveBinary, which } from "./env.ts";
 import { hookSnippets, trackerHookSettings, type HookSignal } from "./hooks.ts";
-import { openInTerminal, promptArgument, terminalAppName, terminalScript } from "./terminal.ts";
+import { openInTerminal, pidAlive, promptArgument, terminalAppName, terminalScript } from "./terminal.ts";
 import { codexRecordedReset, usageLimit, type UsageLimit } from "./limits.ts";
 import { buildInvocation, OutputParser, PROVIDER_INFO, writeInvocationFiles, type ChatRunner, type Invocation, type ProviderId, type RunUsage } from "./providers.ts";
 import { normalizeRunner, splitDirs, type Fact, type ProjectRunners, type RunnerStore, type SessionUsage } from "./store.ts";
@@ -67,6 +67,8 @@ interface Run extends RunSummary {
   retried?: boolean;
   /** The person's own words in it, given again if it starts over. */
   extra?: string;
+  /** Terminal runs: the file holding the session's process id while its window is open. */
+  pidFile?: string;
 }
 
 /** A CLI's words for a conversation it was asked to continue and does not have. */
@@ -466,7 +468,7 @@ export class RunManager extends EventEmitter {
   }
 
   private summary(r: Run): RunSummary {
-    const { child: _c, log: _l, logBase: _b, file: _f, stopRequested: _s, stopNote: _n, lastProgressAt: _p, lastUsageEmit: _u, usageBase: _ub, fresh: _fr, retried: _rt, extra: _ex, ...rest } = r;
+    const { child: _c, log: _l, logBase: _b, file: _f, stopRequested: _s, stopNote: _n, lastProgressAt: _p, lastUsageEmit: _u, usageBase: _ub, fresh: _fr, retried: _rt, extra: _ex, pidFile: _pf, ...rest } = r;
     return { ...rest, lines: r.logBase + r.log.length };
   }
 
@@ -739,6 +741,11 @@ export class RunManager extends EventEmitter {
     if (terminal && auto) {
       throw new HttpError(409, "This chat opens in a Terminal window, where a person answers it: send it from the board yourself.");
     }
+    // One window per chat: a second one on the same conversation would run beside the first, each
+    // unaware of the other (two copies of the chat, both working on the same branch).
+    if (terminal && this.openWindow(key, agent)) {
+      throw new HttpError(409, "This chat's Terminal window is still open: write to it there, or quit Claude in that window (/exit) and send again.");
+    }
     const interactive = terminal ? { interactive: true, settings: trackerHookSettings(this.manager.serverUrl) } : {};
     let invocation: Invocation;
     const newSessionId = randomUUID();
@@ -1002,6 +1009,7 @@ export class RunManager extends EventEmitter {
     const dir = path.join(this.runsDir, "terminal");
     const promptFile = path.join(dir, `${run.id}.prompt`);
     const script = path.join(dir, `${run.id}.command`);
+    run.pidFile = path.join(dir, `${run.id}.pid`);
     try {
       await mkdir(dir, { recursive: true, mode: 0o700 });
       await writeFile(promptFile, promptArgument(input.prompt), { mode: 0o600 });
@@ -1015,6 +1023,7 @@ export class RunManager extends EventEmitter {
           path: input.path,
           env: { AITRACK_SERVER: this.manager.serverUrl, AITRACK_PROJECT: input.project, AITRACK_CHAT: run.agent, AITRACK_TASK: run.task },
           title: `${run.agent} · task ${run.task}`,
+          pidFile: run.pidFile,
         }),
         { mode: 0o700 },
       );
@@ -1283,6 +1292,11 @@ export class RunManager extends EventEmitter {
     const result = await this.handleHook(signal);
     this.followTerminal(signal);
     return result;
+  }
+
+  /** Whether a Terminal window this chat was opened in still runs its session. */
+  openWindow(key: string, agent: string): boolean {
+    return [...this.runs.values()].some((r) => r.key === key && r.agent === agent && r.inTerminal && r.pidFile && pidAlive(r.pidFile, (f) => readFileSync(f, "utf8")));
   }
 
   /** The latest Terminal run of a session shows what the session does: working, waiting for the person, or done. */

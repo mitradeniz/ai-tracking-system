@@ -942,7 +942,8 @@ function ProblemCard({
       )}
       <div className="row wrap">
         {permit && permit.grant.how === "elsewhere" && <span className="small muted">{t("perm_elsewhere", { cli: permit.cli })}</span>}
-        {permit && permit.grant.how !== "full" && permit.grant.how !== "elsewhere" && (
+        {permit && permit.grant.how === "browser" && <span className="small muted">{t("perm_browser")}</span>}
+        {permit && permit.grant.how !== "full" && permit.grant.how !== "elsewhere" && permit.grant.how !== "browser" && (
           <button
             className="btn small primary"
             disabled={busy}

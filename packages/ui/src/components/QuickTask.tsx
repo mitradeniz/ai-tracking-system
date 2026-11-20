@@ -244,6 +244,7 @@ export function QuickTask({
                 // Full access is a bigger step: it is given from the main window, where it is explained.
                 if (grant.how === "full") return <span className="small muted">{t("perm_fullInMain", { cli })}</span>;
                 if (grant.how === "elsewhere") return <span className="small muted">{t("perm_elsewhere", { cli })}</span>;
+                if (grant.how === "browser") return <span className="small muted">{t("perm_browser")}</span>;
                 return (
                   <button
                     className="btn tiny primary"

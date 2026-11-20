@@ -28,8 +28,9 @@ export interface PermissionGrant {
   /** rule: an allowed-tools entry; folder: another folder; network: network in its sandbox;
    * terminal: its runs open in a Terminal window (Claude Code's computer use);
    * full: only full access covers it (this CLI has no finer setting); none: nothing to change;
-   * elsewhere: no setting of this CLI gives it (computer use outside Claude Code): another chat must do it. */
-  how: "rule" | "folder" | "network" | "terminal" | "full" | "none" | "elsewhere";
+   * elsewhere: no setting of this CLI gives it (computer use outside Claude Code): another chat must do it;
+   * browser: the browser extension is not connected, which the person fixes in Chrome; no setting helps. */
+  how: "rule" | "folder" | "network" | "terminal" | "full" | "none" | "elsewhere" | "browser";
   /** The change to the chat's run settings. */
   patch: { access?: "edit" | "full"; allowedTools?: string; extraDirs?: string; network?: boolean; terminal?: boolean };
   /** What is allowed, for the person and the chat. */
@@ -55,6 +56,8 @@ const SANDBOX =
 const OUTSIDE = /(?:outside|not (?:allowed|writable)|read-only|dışında|yazılamıyor)/i;
 const FOLDER = /(?:^|[\s"'`(])((?:\/(?:Users|home|private|tmp|var|opt|Volumes|mnt)\/)[^\s"'`,;:)]+)/;
 /** Computer use was not there: the screen, clicks and typing in apps (Claude Code has it only in an interactive session). */
+/** The browser (Claude in Chrome) was out of reach: an extension to connect, not computer use to turn on. */
+const BROWSER = /chrome|browser|tarayıcı|extension|uzantı/i;
 const COMPUTER_USE = /computer[- ]use|bilgisayar(?:ı)? kullan|ekran(?:ı)? (?:kontrol|göremi)|screen (?:control|recording)|\bcomputer-use\b/i;
 
 /**
@@ -66,8 +69,9 @@ export function neededPermission(issue: Pick<TaskIssue, "title" | "detail" | "fi
   if (issue.permission) return issue.permission;
   if (!provider) return undefined;
   const text = [issue.title, issue.detail, issue.fix].filter(Boolean).join("\n");
-  // Whatever the CLI: a problem about computer use needs computer use, not more access.
-  if (COMPUTER_USE.test(text)) return { kind: "computer-use", inferred: true };
+  // Whatever the CLI: a problem about computer use needs computer use, not more access. One about the
+  // browser extension is not: computer use only looks at browsers.
+  if (COMPUTER_USE.test(text) && !BROWSER.test(text)) return { kind: "computer-use", inferred: true };
   if (!SANDBOXED.has(provider)) return undefined;
   if (NETWORK.test(text) || LOOPBACK.test(text)) return { kind: "network", inferred: true };
   if (!SANDBOX.test(text)) return undefined;
@@ -101,6 +105,8 @@ export function permissionGrant(runner: GrantRunner, permission: IssuePermission
   const p = runner.provider;
   const none = (shown: string): PermissionGrant => ({ how: "none", patch: {}, shown });
   if (permission.kind === "computer-use") {
+    // Chats name the Chrome extension this way too; computer use cannot click in a browser.
+    if (BROWSER.test(value)) return { how: "browser", patch: {}, shown: value };
     // Full access does not bring it: Claude Code offers computer use only in an interactive session.
     if (p !== "claude") return { how: "elsewhere", patch: {}, shown: "computer use" };
     if (runner.terminal) return none("computer use (Terminal window)");

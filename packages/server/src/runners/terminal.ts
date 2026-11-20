@@ -43,6 +43,8 @@ export interface TerminalScript {
   env: Record<string, string>;
   /** Window title and first line, e.g. "claude-gui · task T3". */
   title: string;
+  /** File the session's process id is written to, so the tracker knows while the window is open. */
+  pidFile?: string;
 }
 
 /** The launcher: goes to the folder, reads and deletes the prompt, then starts the CLI in its place. */
@@ -67,9 +69,28 @@ export function terminalScript(s: TerminalScript): string {
     `echo ${shq("If an earlier window of this chat is still open, close it: one session can use the computer at a time.")}`,
     `[ -n "$ANTHROPIC_API_KEY" ] && echo ${shq("Note: ANTHROPIC_API_KEY is set. Computer use needs a Pro or Max login through claude.ai, not an API key.")}`,
     "echo",
+    // exec keeps this process id: it is the session's while the window is open.
+    ...(s.pidFile ? [`echo $$ > ${shq(s.pidFile)}`] : []),
     `exec ${shq(s.binary)} "$PROMPT" ${s.args.map(shq).join(" ")}`,
     "",
   ].join("\n");
+}
+
+/** Whether the process written to a pid file is still running. */
+export function pidAlive(pidFile: string, read: (f: string) => string): boolean {
+  let pid: number;
+  try {
+    pid = Number(read(pidFile).trim());
+  } catch {
+    return false;
+  }
+  if (!Number.isInteger(pid) || pid <= 1) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === "EPERM";
+  }
 }
 
 /** Opens a launcher in a terminal app (macOS). Fails with the reason `open` gives. */

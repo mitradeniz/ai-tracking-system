@@ -1713,6 +1713,29 @@ describe("Terminal runs (computer use)", () => {
     expect(detail.events.filter((e: { type: string; task: string }) => e.task === "T3" && e.type === "done")).toHaveLength(1);
   });
 
+  it("opens one window per chat: a message while it is open goes to that window, not a second one", async () => {
+    const opened = catchTerminal();
+    await setRunner("b", { provider: "claude", access: "full", terminal: true });
+    const res = await call("POST", `/api/projects/${key}/tasks/T3/run`, {});
+    expect(res.status).toBe(201);
+    expect(opened[0]!.script).toContain(".pid'");
+    const pidFile = opened[0]!.file.replace(/\.command$/, ".pid");
+    // The window runs its session (this process stands in for it).
+    await writeFile(pidFile, String(process.pid));
+    await hook({ hook_event_name: "Stop", session_id: res.json.sessionId, cwd: dir, last_assistant_message: "Which one?" });
+    await waitFor("T3", "blocked");
+    let reply = await call("POST", `/api/projects/${key}/agents/b/reply`, { text: "the first", task: "T3" });
+    expect(reply.status).toBe(409);
+    expect(reply.json.error).toMatch(/still open/);
+    expect(opened).toHaveLength(1);
+    // The window was closed: the next message opens one again, on the same conversation.
+    await writeFile(pidFile, "999999999");
+    reply = await call("POST", `/api/projects/${key}/agents/b/reply`, { text: "the first", task: "T3" });
+    expect(reply.status).toBe(201);
+    expect(opened).toHaveLength(2);
+    expect(opened[1]!.script).toContain(`'--resume' '${res.json.sessionId}'`);
+  });
+
   it("leaves Terminal chats to the person, refuses them off macOS and reports a terminal that does not open", async () => {
     await setRunner("b", { provider: "claude", access: "full", terminal: true });
     running.runs.terminalPlatform = "linux";

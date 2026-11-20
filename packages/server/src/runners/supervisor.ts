@@ -23,7 +23,7 @@ import type { ProjectGenerator } from "./generate.ts";
 import { detectProviders, type DetectedProvider } from "./env.ts";
 import { usageLimit } from "./limits.ts";
 import { PROVIDER_INFO, type ChatRunner, type ModelChoice } from "./providers.ts";
-import { defaultWorkdir, planFolder, type RunManager } from "./runs.ts";
+import { defaultWorkdir, opensInTerminal, planFolder, type RunManager } from "./runs.ts";
 import { approves, mergesGreen, reviewsWork, type ManagerSettings } from "./store.ts";
 
 /**
@@ -859,6 +859,10 @@ export class Supervisor extends EventEmitter {
     const need = picked.map((x) => neededPermission(x.i, item.provider)).find(Boolean) ?? neededPermission({ title: view.runtime.reason ?? "" }, item.provider);
     if (!need) throw new Error("No problem of this task asks for a permission.");
     const grant = permissionGrant(runner, need);
+    if (grant.how === "terminal") {
+      throw new Error("Computer use opens this chat's tasks in Terminal windows that a person answers: the person turns that on; left for the person.");
+    }
+    if (grant.how === "browser") throw new Error("It needs the Claude in Chrome extension connected, which only the person can do; left for the person.");
     if (grant.how === "elsewhere") {
       throw new Error("Its CLI cannot use the computer: assign the task to a Claude Code chat whose runs open in a Terminal window, or leave it for the person.");
     }
@@ -949,6 +953,8 @@ export class Supervisor extends EventEmitter {
   /** Gives text to the chat of a task: continues its session, or sends the task again with it. */
   private async say(key: string, item: Attention, view: TaskView, text: string): Promise<void> {
     if (item.provider === "manual") throw new Error("This chat is run by hand; left for the person.");
+    // Each message would open another Terminal window on the same conversation: the person answers these chats.
+    if (opensInTerminal(this.runs.store.chat(key, item.agent))) throw new Error("This chat opens in a Terminal window; left for the person.");
     if (item.canReply && view.status === "blocked") {
       await this.runs.reply(key, item.agent, text, view.task.id);
       return;

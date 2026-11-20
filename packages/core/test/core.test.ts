@@ -288,6 +288,9 @@ describe("reports", () => {
     expect(permissionGrant({ provider: "claude", access: "full" }, need).how).toBe("terminal");
     expect(permissionGrant({ provider: "claude", access: "edit", terminal: true }, need).how).toBe("none");
     expect(permissionGrant({ provider: "codex", access: "edit" }, need)).toMatchObject({ how: "elsewhere", patch: {} });
+    // The Chrome extension is not computer use: nothing to turn on.
+    expect(permissionGrant({ provider: "claude", access: "full" }, { kind: "computer-use", value: "Claude in Chrome" })).toMatchObject({ how: "browser", patch: {} });
+    expect(neededPermission({ title: "Chrome uzantısı bağlı değil", detail: "computer use tarayıcıyı yalnız okur" }, "claude")).toBeUndefined();
     expect(parseReports('{"task":"T3","status":"blocked","issues":[{"title":"needs the screen","permission":{"kind":"computer-use"}}]}').reports[0]!.issues![0]!.permission).toEqual({ kind: "computer-use" });
   });
 
