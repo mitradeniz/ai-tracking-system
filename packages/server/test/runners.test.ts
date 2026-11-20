@@ -1694,6 +1694,9 @@ describe("Terminal runs (computer use)", () => {
     const session = res.json.sessionId as string;
     await hook({ hook_event_name: "UserPromptSubmit", session_id: session, cwd: dir, prompt: "go" });
     await waitFor("T3", "in_progress");
+    // Its "using your computer" notice needs nobody.
+    expect((await hook({ hook_event_name: "Notification", session_id: session, cwd: dir, message: "Claude is using your computer · press Esc to stop" })).handled).toBe(false);
+    expect(await statusOf("T3")).toBe("in_progress");
     await hook({ hook_event_name: "Stop", session_id: session, cwd: dir, last_assistant_message: "Which window?" });
     await waitFor("T3", "blocked");
     let runs = (await call("GET", `/api/projects/${key}/runners`)).json.runs;

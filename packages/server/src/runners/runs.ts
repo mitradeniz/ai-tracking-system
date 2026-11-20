@@ -1404,6 +1404,10 @@ export class RunManager extends EventEmitter {
       }
       return { handled: false, detail: "No change.", task };
     }
+    // Claude Code tells through the same hook that it is using the computer: that needs nobody.
+    if (signal.event === "attention" && /using your computer|done using|press esc to stop/i.test(signal.message ?? "")) {
+      return { handled: false, detail: "Computer use note.", task };
+    }
     if (signal.event === "attention" && (status === "dispatched" || status === "in_progress")) {
       await this.manager.addEvent(key, { type: "blocked", task, agent, reason: `Needs you: ${clip(signal.message ?? tool, 500)}` }, "hook");
       return { handled: true, detail: "attention", task };
